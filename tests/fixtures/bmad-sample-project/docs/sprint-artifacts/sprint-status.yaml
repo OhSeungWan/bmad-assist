@@ -1,0 +1,139 @@
+# generated: 2025-12-08
+# project: bmad-assist
+# project_key: bmad-assist
+# tracking_system: file-system
+# story_location: docs/sprint-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - drafted: Story file created in stories folder
+#   - ready-for-dev: Draft approved and story context created
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - completed: Retrospective has been done
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically drafts next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2025-12-08
+project: bmad-assist
+project_key: bmad-assist
+tracking_system: file-system
+story_location: docs/sprint-artifacts
+
+development_status:
+  # Epic 1: Project Foundation & CLI Infrastructure
+  epic-1: in-progress
+  1-1-project-initialization-with-pyproject-toml: done
+  1-2-pydantic-configuration-models: review
+  1-3-global-configuration-loading: done
+  1-4-project-configuration-override: review
+  1-5-credentials-security-with-env: done
+  1-6-typer-cli-entry-point: review
+  1-7-interactive-config-generation: review
+  1-8-test-suite-refactoring: done
+  epic-1-retrospective: completed
+
+  # Epic 2: BMAD File Integration
+  epic-2: in-progress
+  2-1-markdown-frontmatter-parser: review
+  2-2-epic-file-parser: review
+  2-3-project-state-reader: done
+  2-4-state-discrepancy-detection: backlog
+  2-5-state-discrepancy-correction: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: State Management & Crash Resilience
+  epic-3: backlog
+  3-1-state-data-model: backlog
+  3-2-atomic-state-persistence: backlog
+  3-3-state-restoration-on-restart: backlog
+  3-4-loop-position-tracking: backlog
+  3-5-resume-interrupted-loop: backlog
+  3-6-state-location-configuration: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: CLI Provider Integration
+  epic-4: backlog
+  4-1-baseprovider-abstract-class: backlog
+  4-2-claude-code-provider: backlog
+  4-3-provider-timeout-handling: backlog
+  4-4-exit-code-detection: backlog
+  4-5-stdout-stderr-capture: backlog
+  4-6-provider-configuration-loading: backlog
+  4-7-codex-provider: backlog
+  4-8-gemini-cli-provider: backlog
+  4-9-provider-registry: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Power-Prompts Engine
+  epic-5: backlog
+  5-1-power-prompt-data-model: backlog
+  5-2-power-prompt-set-loading: backlog
+  5-3-tech-stack-selection: backlog
+  5-4-dynamic-variable-injection: backlog
+  5-5-bmad-workflow-enhancement: backlog
+  5-6-default-power-prompt-sets: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Main Loop Orchestration
+  epic-6: backlog
+  6-1-phase-enum-and-workflow-definition: backlog
+  6-2-single-phase-execution: backlog
+  6-3-story-completion-and-transition: backlog
+  6-4-epic-completion-and-transition: backlog
+  6-5-main-loop-runner: backlog
+  6-6-loop-interruption-handling: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: Multi-LLM Validation & Synthesis
+  epic-7: backlog
+  7-1-parallel-multi-llm-invocation: backlog
+  7-2-multi-llm-output-collection: backlog
+  7-3-validation-report-generation: backlog
+  7-4-master-synthesis-invocation: backlog
+  7-5-master-file-modification-permission: backlog
+  7-6-synthesis-report-saving: backlog
+  epic-7-retrospective: optional
+
+  # Epic 8: Anomaly Guardian
+  epic-8: backlog
+  8-1-guardian-detector-core: backlog
+  8-2-loop-pause-on-anomaly: backlog
+  8-3-anomaly-context-persistence: backlog
+  8-4-user-anomaly-response-interface: backlog
+  8-5-anomaly-resolution-metadata: backlog
+  8-6-loop-resume-after-resolution: backlog
+  8-7-infinite-loop-detection: backlog
+  epic-8-retrospective: optional
+
+  # Epic 9: Dashboard & Reporting
+  epic-9: backlog
+  9-1-dashboard-html-template: backlog
+  9-2-dashboard-data-model: backlog
+  9-3-dashboard-generation: backlog
+  9-4-phase-completion-dashboard-update: backlog
+  9-5-progress-metrics-display: backlog
+  9-6-anomaly-history-display: backlog
+  9-7-code-review-report-generation: backlog
+  9-8-story-validation-report-generation: backlog
+  epic-9-retrospective: optional

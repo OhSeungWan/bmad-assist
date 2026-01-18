@@ -1,0 +1,4 @@
+name: no-template-workflow
+description: "Workflow without template"
+instructions: "{installed_path}/instructions.xml"
+template: false

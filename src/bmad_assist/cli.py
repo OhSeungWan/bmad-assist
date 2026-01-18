@@ -1,0 +1,533 @@
+"""Typer CLI entry point for bmad-assist.
+
+This module provides the command-line interface for bmad-assist.
+It only parses arguments and delegates to core/loop.py - no business logic here.
+"""
+
+import logging
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+import typer
+from rich.console import Console
+
+from bmad_assist.bmad import read_project_state
+from bmad_assist.cli_start_point import apply_start_point_override
+from bmad_assist.cli_utils import (
+    EXIT_CONFIG_ERROR,
+    EXIT_ERROR,
+    EXIT_SIGINT,
+    EXIT_SIGTERM,
+    EXIT_SUCCESS,
+    _error,
+    _get_output_folder,
+    _info,
+    _setup_logging,
+    _success,
+    _validate_project_path,
+    _warning,
+    console,
+)
+from bmad_assist.core.config import (
+    GLOBAL_CONFIG_PATH,
+    PROJECT_CONFIG_NAME,
+    Config,
+    load_config_with_project,
+)
+from bmad_assist.core.config_generator import run_config_wizard
+from bmad_assist.core.exceptions import BmadAssistError, ConfigError
+from bmad_assist.core.loop import LoopExitReason, run_loop
+from bmad_assist.core.loop.interactive import set_non_interactive
+from bmad_assist.core.paths import init_paths
+from bmad_assist.core.state import Phase, get_state_path, load_state, save_state, update_position
+from bmad_assist.core.types import EpicId, epic_sort_key, parse_epic_id
+
+# Module logger
+logger = logging.getLogger(__name__)
+
+
+app = typer.Typer(
+    name="bmad-assist",
+    help="CLI tool for automating BMAD methodology development loop",
+    no_args_is_help=True,
+    rich_markup_mode="rich",
+)
+
+
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context) -> None:
+    """CLI tool for automating BMAD methodology development loop."""
+    if ctx.invoked_subcommand is None:
+        # Show help when no subcommand is provided
+        raise typer.Exit()
+
+
+def _load_epic_data(
+    config: Config, project_path: Path
+) -> tuple[list[EpicId], dict[EpicId, list[str]]]:
+    """Load epic list and story mapping from BMAD files.
+
+    Reads project state from BMAD documentation and extracts:
+    - Sorted list of unique epic numbers
+    - Mapping of epic number to list of story IDs
+
+    Args:
+        config: Loaded configuration with bmad_paths.
+        project_path: Path to project root directory.
+
+    Returns:
+        Tuple of (epic_list, stories_by_epic) where:
+        - epic_list: Sorted list of epic numbers [1, 2, 3, ...]
+        - stories_by_epic: Dict mapping epic -> story IDs {1: ["1.1", "1.2"], ...}
+
+    Raises:
+        FileNotFoundError: If BMAD docs directory doesn't exist.
+
+    """
+    # Determine bmad_path: always use docs/ for read_project_state() to find sprint-status.yaml
+    # Note: bmad_paths.epics points to epics files (docs/epics/), but sprint-status is in docs/
+    bmad_path = project_path / "docs"
+
+    logger.debug("Loading BMAD project state from: %s", bmad_path)
+
+    # Read project state (handles both sharded and single-file patterns, and sprint-status)
+    project_state = read_project_state(bmad_path, use_sprint_status=True)
+
+    # Extract unique epic numbers from stories
+    # CRITICAL: Only include NON-DONE stories to prevent premature RETROSPECTIVE trigger
+    # When all stories in epic are done, epic should transition to RETROSPECTIVE
+    epic_numbers: set[EpicId] = set()
+    stories_by_epic: dict[EpicId, list[str]] = {}
+
+    for story in project_state.all_stories:
+        # Skip stories that are already done - they should not be in the active list
+        if story.status == "done":
+            continue
+
+        epic_part = story.number.split(".")[0]
+        epic_id = parse_epic_id(epic_part)  # Supports int and string epic IDs
+        epic_numbers.add(epic_id)
+
+        if epic_id not in stories_by_epic:
+            stories_by_epic[epic_id] = []
+        stories_by_epic[epic_id].append(story.number)
+
+    epic_list = sorted(epic_numbers, key=epic_sort_key)
+
+    logger.info(
+        "Loaded %d epics with %d total stories",
+        len(epic_list),
+        len(project_state.all_stories),
+    )
+
+    return epic_list, stories_by_epic
+
+
+def _handle_debug_vars(config: Config, project_path: Path) -> None:
+    """Display resolved variables for current phase without running LLM.
+
+    Args:
+        config: Loaded configuration.
+        project_path: Project root path.
+
+    """
+    import xml.etree.ElementTree as ET
+
+    from bmad_assist.compiler import compile_workflow
+    from bmad_assist.compiler.types import CompilerContext
+    from bmad_assist.core.state import get_state_path, load_state
+
+    # Load current state (from project directory)
+    state_path = get_state_path(config, project_root=project_path)
+    try:
+        state = load_state(state_path)
+    except Exception as e:
+        _error(f"Cannot load state: {e}")
+        return
+
+    # Get workflow name from phase
+    if state.current_phase is None:
+        _error("No current phase set in state")
+        return
+
+    workflow_name = state.current_phase.value.replace("_", "-")
+    console.print(f"[bold]Phase:[/bold] {workflow_name}")
+    console.print(f"[bold]Epic:[/bold] {state.current_epic}")
+    console.print(f"[bold]Story:[/bold] {state.current_story}")
+    console.print()
+
+    # Extract story number
+    story_num = state.current_story
+    if story_num and "." in story_num:
+        story_num = story_num.split(".")[-1]
+
+    # Build compiler context
+    context = CompilerContext(
+        project_root=project_path,
+        output_folder=_get_output_folder(project_path),
+        resolved_variables={
+            "epic_num": state.current_epic,
+            "story_num": story_num,
+        },
+    )
+
+    try:
+        result = compile_workflow(workflow_name, context)
+    except Exception as e:
+        _error(f"Cannot compile workflow: {e}")
+        return
+
+    # Extract variables from XML
+    try:
+        root = ET.fromstring(result.context)
+        vars_el = root.find("variables")
+        if vars_el is not None:
+            console.print("[bold]Resolved Variables:[/bold]")
+            for var in vars_el:
+                name = var.get("name", "?")
+                value = var.text or ""
+                # Truncate long values
+                if len(value) > 100:
+                    value = value[:100] + "..."
+                console.print(f"  {name}: [dim]{value}[/dim]")
+        else:
+            console.print("[yellow]No variables found in compiled output[/yellow]")
+    except ET.ParseError as e:
+        _error(f"Cannot parse compiled XML: {e}")
+
+    console.print()
+    console.print(f"[dim]Token estimate: ~{result.token_estimate:,}[/dim]")
+
+
+def _config_exists(project_path: Path, global_config_path: Path | None) -> bool:
+    """Check if any configuration file exists.
+
+    Args:
+        project_path: Path to project directory.
+        global_config_path: Custom global config path, or None for default.
+
+    Returns:
+        True if either global or project config exists.
+
+    """
+    # Check global config
+    resolved_global = global_config_path if global_config_path is not None else GLOBAL_CONFIG_PATH
+    if resolved_global.exists() and resolved_global.is_file():
+        return True
+
+    # Check project config
+    project_config = project_path / PROJECT_CONFIG_NAME
+    return project_config.exists() and project_config.is_file()
+
+
+@app.command()
+def run(
+    project: str = typer.Option(
+        ".",
+        "--project",
+        "-p",
+        help="Path to the project directory",
+    ),
+    config: str | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to configuration file (defaults to ~/.bmad-assist/config.yaml)",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug output (show detailed logging)",
+    ),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        "-q",
+        help="Suppress non-error output (only show errors and final result)",
+    ),
+    no_interactive: bool = typer.Option(
+        False,
+        "--no-interactive",
+        "-n",
+        help="Disable interactive prompts (fail if config missing)",
+    ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Enable debug JSONL logging to ~/.bmad-assist/debug/json/",
+    ),
+    debug_links: bool = typer.Option(
+        False,
+        "--debug-links",
+        help="Show file paths only in compiled prompts (implies --debug)",
+    ),
+    debug_vars: bool = typer.Option(
+        False,
+        "--debug-vars",
+        help="Show resolved variables only (no LLM execution)",
+    ),
+    disable_compiler: bool = typer.Option(
+        False,
+        "--disable-compiler",
+        help="Use legacy YAML handlers instead of compiled prompts",
+    ),
+    git_commit: bool = typer.Option(
+        False,
+        "--git",
+        "-g",
+        help="Auto-commit changes after create-story, dev-story, code-review-synthesis phases",
+    ),
+    epic: str | None = typer.Option(
+        None,
+        "--epic",
+        "-e",
+        help="Start from specified epic (e.g., '22' or 'testarch'). Overrides state.yaml. If --story not specified, starts from first incomplete story.",
+    ),
+    story: str | None = typer.Option(
+        None,
+        "--story",
+        "-s",
+        help="Start from specified story (e.g., '3' for story 22-3). Requires --epic. Story status determines starting phase.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Force restart if story is already 'done'. Without this flag, prompts to skip to next incomplete story (or auto-skips in --no-interactive mode).",
+    ),
+    qa_enabled: bool = typer.Option(
+        False,
+        "--qa",
+        hidden=True,  # Experimental feature - not documented yet
+        help="Enable QA phases (qa-plan-generate, qa-plan-execute) after retrospective.",
+    ),
+) -> None:
+    """Execute the main BMAD development loop.
+
+    Loads configuration, validates project path, and delegates to the main loop.
+    If no configuration exists and interactive mode is enabled, launches the
+    setup wizard to create one.
+    """
+    # Validate mutually exclusive flags
+    if verbose and quiet:
+        _warning("Both --verbose and --quiet specified, --verbose takes precedence")
+
+    # Process debug flags (--debug-links implies --debug)
+    debug_jsonl = debug or debug_links
+
+    # Setup logging first (debug implies verbose for JSONL logging)
+    _setup_logging(verbose or debug_jsonl, quiet)
+
+    # Set non-interactive mode if -n flag is passed
+    # This must be set early, before any interactive prompts can occur
+    if no_interactive:
+        set_non_interactive(True)
+
+    # Set environment variables for flags
+    if debug_jsonl:
+        console.print("[dim]Debug: JSONL logs → ~/.bmad-assist/debug/json/[/dim]")
+    if debug_links:
+        os.environ["BMAD_DEBUG_LINKS"] = "1"
+        console.print("[dim]Debug: showing file paths only (no content)[/dim]")
+    if debug_vars:
+        os.environ["BMAD_DEBUG_VARS"] = "1"
+        console.print("[dim]Debug: showing variables only (no LLM)[/dim]")
+    if disable_compiler:
+        os.environ["BMAD_FORCE_YAML"] = "1"
+        console.print("[dim]Compiler disabled: using legacy YAML handlers[/dim]")
+    if git_commit:
+        os.environ["BMAD_GIT_COMMIT"] = "1"
+        console.print("[dim]Git: auto-commit enabled after phases[/dim]")
+    if qa_enabled:
+        os.environ["BMAD_QA_ENABLED"] = "1"
+        console.print("[dim]QA: E2E test phases enabled after retrospective[/dim]")
+
+    try:
+        # Validate project path
+        project_path = _validate_project_path(project)
+        logger.debug("Project path resolved to: %s", project_path)
+
+        # Early branch switch: ensure correct branch BEFORE loading any state files
+        # This MUST happen before sprint-status.yaml and state.yaml are read,
+        # otherwise we read stale data from the wrong branch
+        if git_commit and epic:
+            from bmad_assist.core.types import parse_epic_id
+            from bmad_assist.git.branch import ensure_epic_branch, is_git_enabled
+
+            epic_id = parse_epic_id(epic.strip())
+            if is_git_enabled():
+                logger.info("Early branch switch to epic-%s before loading state", epic_id)
+                if not ensure_epic_branch(epic_id, project_path):
+                    _warning(
+                        f"Could not switch to branch epic-{epic_id}, continuing on current branch"
+                    )
+
+        # Prepare global config path
+        global_config_path: Path | None = None
+        if config is not None:
+            global_config_path = Path(config).expanduser()
+            logger.debug("Using custom config path: %s", global_config_path)
+
+        # Check if config exists; if not, handle based on interactive mode
+        if not _config_exists(project_path, global_config_path):
+            if no_interactive:
+                _error("No configuration found. Run without --no-interactive for setup wizard.")
+                raise typer.Exit(code=EXIT_CONFIG_ERROR)
+
+            # Run interactive wizard
+            logger.debug("No config found, launching setup wizard...")
+            try:
+                run_config_wizard(project_path, console)
+            except KeyboardInterrupt:
+                _warning("Setup cancelled by user")
+                raise typer.Exit(code=EXIT_ERROR) from None
+            except EOFError:
+                _warning("Setup cancelled - no input available")
+                raise typer.Exit(code=EXIT_ERROR) from None
+            except OSError as e:
+                # Config generation failure = EXIT_CONFIG_ERROR per story requirements
+                _error(f"Failed to save configuration: {e}")
+                raise typer.Exit(code=EXIT_CONFIG_ERROR) from None
+            # SystemExit from wizard rejection propagates naturally
+
+        # Load configuration (includes .env loading per Story 1.5)
+        logger.debug("Loading configuration...")
+        loaded_config = load_config_with_project(
+            project_path=project_path,
+            global_config_path=global_config_path,
+        )
+        logger.debug("Configuration loaded successfully")
+
+        # Initialize project paths singleton
+        paths_config = {
+            "output_folder": loaded_config.paths.output_folder,
+            "planning_artifacts": loaded_config.paths.planning_artifacts,
+            "implementation_artifacts": loaded_config.paths.implementation_artifacts,
+            "project_knowledge": loaded_config.paths.project_knowledge,
+        }
+        project_paths = init_paths(project_path, paths_config)
+        project_paths.ensure_directories()
+        logger.debug("Project paths initialized: %s", project_paths)
+
+        # Validate sprint-status.yaml exists (CRITICAL: fail early with clear error)
+        sprint_status_locations = [
+            project_paths.sprint_status_file,  # New: implementation-artifacts/
+            project_path / "docs" / "sprint-status.yaml",  # Legacy
+            project_path / "docs" / "sprint-artifacts" / "sprint-status.yaml",  # Legacy
+        ]
+        if not any(loc.exists() for loc in sprint_status_locations):
+            _error("sprint-status.yaml not found!")
+            _error("Checked locations:")
+            for loc in sprint_status_locations:
+                _error(f"  - {loc}")
+            _error("")
+            _error("To fix: Create sprint-status.yaml or run /bmad:bmm:workflows:sprint-planning")
+            raise typer.Exit(code=EXIT_ERROR)
+
+        # Initialize notification dispatcher (optional - only if config.notifications set)
+        from bmad_assist.notifications.dispatcher import init_dispatcher
+
+        init_dispatcher(loaded_config.notifications)
+
+        # Load epic list and story mapping from BMAD files
+        try:
+            epic_list, stories_by_epic = _load_epic_data(loaded_config, project_path)
+        except FileNotFoundError as e:
+            _error(f"BMAD documentation not found: {e}")
+            _error("Ensure your project has a docs/ directory with epics.md")
+            raise typer.Exit(code=EXIT_ERROR) from None
+
+        def epic_stories_loader(epic: EpicId) -> list[str]:
+            """Return story IDs for given epic number."""
+            return stories_by_epic.get(epic, [])
+
+        # Validate: --story requires --epic
+        if story and not epic:
+            _error("--story requires --epic")
+            raise typer.Exit(code=EXIT_CONFIG_ERROR)
+
+        # Apply start point override if --epic specified
+        if epic:
+            # Always use docs/ for read_project_state to find sprint-status.yaml
+            bmad_path = project_path / "docs"
+
+            apply_start_point_override(
+                loaded_config,
+                project_path,
+                bmad_path,
+                epic,
+                story,
+                epic_list,
+                stories_by_epic,
+                force,
+            )
+
+        # Handle debug vars mode - display variables and exit without LLM
+        if debug_vars:
+            _handle_debug_vars(loaded_config, project_path)
+            raise typer.Exit(code=EXIT_SUCCESS)
+
+        # Delegate to main loop
+        exit_reason = run_loop(loaded_config, project_path, epic_list, epic_stories_loader)
+
+        # Story 6.6: Handle exit reasons from run_loop
+        if exit_reason == LoopExitReason.INTERRUPTED_SIGINT:
+            _warning("Loop interrupted by Ctrl+C, state saved")
+            raise typer.Exit(code=EXIT_SIGINT)
+        elif exit_reason == LoopExitReason.INTERRUPTED_SIGTERM:
+            _warning("Loop terminated by kill signal, state saved")
+            raise typer.Exit(code=EXIT_SIGTERM)
+        elif exit_reason == LoopExitReason.GUARDIAN_HALT:
+            _warning("Loop halted by guardian for user intervention")
+            # Guardian halt is not an error - exit with 0
+            raise typer.Exit(code=EXIT_SUCCESS)
+
+        # COMPLETED exit reason - show success message
+        # Final success message always shown (AC11 - quiet mode shows final result)
+        _success("Completed successfully")
+
+    except ConfigError as e:
+        _error(str(e))
+        raise typer.Exit(code=EXIT_CONFIG_ERROR) from None
+    except typer.Exit:
+        # Re-raise typer exits (already handled)
+        raise
+    except Exception as e:
+        _error(f"Unexpected error: {e}")
+        if verbose:
+            console.print_exception()
+        raise typer.Exit(code=EXIT_ERROR) from None
+
+
+# ============================================================================
+# Register commands from commands/ modules
+# ============================================================================
+
+from bmad_assist.commands.compile import compile_command
+from bmad_assist.commands.init import init_command
+from bmad_assist.commands.serve import serve_command
+
+# Register standalone commands
+app.command(name="compile")(compile_command)
+app.command(name="serve")(serve_command)
+app.command(name="init")(init_command)
+
+# Register sub-apps (command groups)
+from bmad_assist.commands.benchmark import benchmark_app
+from bmad_assist.commands.experiment import experiment_app
+from bmad_assist.commands.patch import patch_app
+from bmad_assist.commands.qa import qa_app
+from bmad_assist.commands.sprint import sprint_app
+
+app.add_typer(patch_app, name="patch")
+app.add_typer(benchmark_app, name="benchmark")
+app.add_typer(sprint_app, name="sprint")
+app.add_typer(experiment_app, name="experiment")
+app.add_typer(qa_app, name="qa")
+
+
+if __name__ == "__main__":
+    app()

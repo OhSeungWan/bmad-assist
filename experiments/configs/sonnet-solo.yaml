@@ -1,0 +1,8 @@
+name: sonnet-solo
+description: "Sonnet-only configuration for balanced quality and speed"
+
+providers:
+  master:
+    provider: claude-subprocess
+    model: sonnet
+  multi: []

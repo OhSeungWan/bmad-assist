@@ -1,0 +1,11 @@
+name: baseline
+description: "Current production patches from project .bmad-assist/patches/"
+
+patches:
+  create-story: ${project}/.bmad-assist/patches/create-story.patch.yaml
+  validate-story: ${project}/.bmad-assist/patches/validate-story.patch.yaml
+  dev-story: ${project}/.bmad-assist/patches/dev-story.patch.yaml
+  code-review: ${project}/.bmad-assist/patches/code-review.patch.yaml
+  retrospective: ${project}/.bmad-assist/patches/retrospective.patch.yaml
+  qa-plan-generate: ${project}/.bmad-assist/patches/qa-plan-generate.patch.yaml
+  qa-plan-execute: ${project}/.bmad-assist/patches/qa-plan-execute.patch.yaml

@@ -1,0 +1,260 @@
+"""Phase handler stub functions and WORKFLOW_HANDLERS mapping.
+
+Story 6.1: Stub implementation of handler functions.
+
+"""
+
+from bmad_assist.core.loop.types import PhaseHandler, PhaseResult
+from bmad_assist.core.state import Phase, State
+
+__all__ = [
+    "create_story_handler",
+    "validate_story_handler",
+    "validate_story_synthesis_handler",
+    "atdd_handler",
+    "dev_story_handler",
+    "code_review_handler",
+    "code_review_synthesis_handler",
+    "test_review_handler",
+    "retrospective_handler",
+    "WORKFLOW_HANDLERS",
+]
+
+
+# =============================================================================
+# Handler Stub Functions - Story 6.1
+# =============================================================================
+
+
+def create_story_handler(state: State) -> PhaseResult:
+    """Handle the CREATE_STORY phase.
+
+    Creates story context from the current epic. Invokes the Master LLM
+    to generate a new story file based on epic requirements.
+
+    Args:
+        state: Current loop state with epic/story position.
+
+    Returns:
+        PhaseResult with success status and story file path in outputs.
+
+    Note:
+        Stub implementation - returns failure until Story 6.2.
+
+    """
+    return PhaseResult.fail(f"Handler for {Phase.CREATE_STORY.value} not yet implemented")
+
+
+def validate_story_handler(state: State) -> PhaseResult:
+    """Handle the VALIDATE_STORY phase.
+
+    Performs parallel Multi-LLM validation of the created story.
+    Each validator LLM reviews the story for completeness and quality.
+
+    Args:
+        state: Current loop state with story to validate.
+
+    Returns:
+        PhaseResult with validation reports in outputs.
+
+    Note:
+        Stub implementation - returns failure until Story 6.3.
+
+    """
+    return PhaseResult.fail(f"Handler for {Phase.VALIDATE_STORY.value} not yet implemented")
+
+
+def validate_story_synthesis_handler(state: State) -> PhaseResult:
+    """Handle the VALIDATE_STORY_SYNTHESIS phase.
+
+    Master LLM synthesizes Multi-LLM validation reports into
+    a final validation decision and consolidated feedback.
+
+    Args:
+        state: Current loop state with validation reports.
+
+    Returns:
+        PhaseResult with synthesis report in outputs.
+
+    Note:
+        Stub implementation - returns failure until Story 6.3.
+
+    """
+    return PhaseResult.fail(
+        f"Handler for {Phase.VALIDATE_STORY_SYNTHESIS.value} not yet implemented"
+    )
+
+
+def atdd_handler(state: State) -> PhaseResult:
+    """Handle the ATDD phase.
+
+    Runs Acceptance Test Driven Development workflow for eligible stories.
+    Generates failing acceptance tests before implementation in DEV_STORY.
+
+    Args:
+        state: Current loop state with story to analyze.
+
+    Returns:
+        PhaseResult with test generation status in outputs.
+
+    Note:
+        Stub implementation - real handler is ATDDHandler from testarch.
+
+    """
+    return PhaseResult.fail(f"Handler for {Phase.ATDD.value} not yet implemented")
+
+
+def dev_story_handler(state: State) -> PhaseResult:
+    """Handle the DEV_STORY phase.
+
+    Master LLM implements the story following TDD principles.
+    Writes code, tests, and updates the story file with progress.
+
+    Args:
+        state: Current loop state with story to implement.
+
+    Returns:
+        PhaseResult with implementation artifacts in outputs.
+
+    Note:
+        Stub implementation - returns failure until Story 6.4.
+
+    """
+    return PhaseResult.fail(f"Handler for {Phase.DEV_STORY.value} not yet implemented")
+
+
+def code_review_handler(state: State) -> PhaseResult:
+    """Handle the CODE_REVIEW phase.
+
+    Performs parallel Multi-LLM code review of the implementation.
+    Each reviewer LLM analyzes code quality, correctness, and style.
+
+    Args:
+        state: Current loop state with implementation to review.
+
+    Returns:
+        PhaseResult with code review reports in outputs.
+
+    Note:
+        Stub implementation - returns failure until Story 6.5.
+
+    """
+    return PhaseResult.fail(f"Handler for {Phase.CODE_REVIEW.value} not yet implemented")
+
+
+def code_review_synthesis_handler(state: State) -> PhaseResult:
+    """Handle the CODE_REVIEW_SYNTHESIS phase.
+
+    Master LLM synthesizes Multi-LLM code reviews into
+    a final review decision and consolidated feedback.
+
+    Args:
+        state: Current loop state with code review reports.
+
+    Returns:
+        PhaseResult with synthesis report in outputs.
+
+    Note:
+        Stub implementation - returns failure until Story 6.5.
+
+    """
+    return PhaseResult.fail(f"Handler for {Phase.CODE_REVIEW_SYNTHESIS.value} not yet implemented")
+
+
+def test_review_handler(state: State) -> PhaseResult:
+    """Handle the TEST_REVIEW phase.
+
+    Reviews test quality after code review synthesis. Runs when ATDD
+    was used for the story to validate test coverage and quality.
+
+    Args:
+        state: Current loop state with implemented story.
+
+    Returns:
+        PhaseResult with test review report in outputs.
+
+    Note:
+        Stub implementation - real handler is TestReviewHandler from testarch.
+
+    """
+    return PhaseResult.fail(f"Handler for {Phase.TEST_REVIEW.value} not yet implemented")
+
+
+def retrospective_handler(state: State) -> PhaseResult:
+    """Handle the RETROSPECTIVE phase.
+
+    Runs epic retrospective after the last story in an epic completes.
+    Analyzes what went well, what could improve, and lessons learned.
+
+    Args:
+        state: Current loop state after epic completion.
+
+    Returns:
+        PhaseResult with retrospective report in outputs.
+
+    Note:
+        Stub implementation - returns failure until Story 6.6.
+
+    """
+    return PhaseResult.fail(f"Handler for {Phase.RETROSPECTIVE.value} not yet implemented")
+
+
+def qa_plan_generate_handler(state: State) -> PhaseResult:
+    """Handle the QA_PLAN_GENERATE phase (experimental).
+
+    Generates QA test plan for epic after retrospective completes.
+    Only runs when --qa flag is enabled.
+
+    Args:
+        state: Current loop state after retrospective.
+
+    Returns:
+        PhaseResult with QA plan in outputs.
+
+    Note:
+        Experimental feature - not yet implemented.
+
+    """
+    return PhaseResult.fail(
+        f"Handler for {Phase.QA_PLAN_GENERATE.value} not yet implemented (experimental)"
+    )
+
+
+def qa_plan_execute_handler(state: State) -> PhaseResult:
+    """Handle the QA_PLAN_EXECUTE phase (experimental).
+
+    Executes QA test plan generated in QA_PLAN_GENERATE phase.
+    Only runs when --qa flag is enabled.
+
+    Args:
+        state: Current loop state after QA plan generation.
+
+    Returns:
+        PhaseResult with QA test results in outputs.
+
+    Note:
+        Experimental feature - not yet implemented.
+
+    """
+    return PhaseResult.fail(
+        f"Handler for {Phase.QA_PLAN_EXECUTE.value} not yet implemented (experimental)"
+    )
+
+
+# =============================================================================
+# WORKFLOW_HANDLERS Mapping - Story 6.1
+# =============================================================================
+
+WORKFLOW_HANDLERS: dict[Phase, PhaseHandler] = {
+    Phase.CREATE_STORY: create_story_handler,
+    Phase.VALIDATE_STORY: validate_story_handler,
+    Phase.VALIDATE_STORY_SYNTHESIS: validate_story_synthesis_handler,
+    Phase.ATDD: atdd_handler,
+    Phase.DEV_STORY: dev_story_handler,
+    Phase.CODE_REVIEW: code_review_handler,
+    Phase.CODE_REVIEW_SYNTHESIS: code_review_synthesis_handler,
+    Phase.TEST_REVIEW: test_review_handler,
+    Phase.RETROSPECTIVE: retrospective_handler,
+    Phase.QA_PLAN_GENERATE: qa_plan_generate_handler,
+    Phase.QA_PLAN_EXECUTE: qa_plan_execute_handler,
+}

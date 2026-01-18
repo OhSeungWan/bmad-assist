@@ -1,0 +1,21 @@
+name: glm-gemini-fast
+description: "Fast multi-LLM validation with Claude GLM 4.7 master and multi validators (GLM 4.7, Gemini 3 Flash)"
+
+providers:
+  master:
+    provider: claude-subprocess
+    model: opus
+    model_name: glm-4-7
+    settings: ~/.claude/glm.json
+
+  multi:
+    - provider: claude-subprocess
+      model: sonnet
+      model_name: glm-4-7
+      settings: ~/.claude/glm.json
+
+    - provider: gemini
+      model: gemini-3-flash-preview
+
+    - provider: gemini
+      model: gemini-3-flash-preview

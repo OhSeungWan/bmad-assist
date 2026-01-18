@@ -1,0 +1,860 @@
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Experiments Panel (Story 19.1) -->
+            <div x-show="experimentsView.open"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 @keydown.escape.window="if (experimentsView.open && !settingsView.open && !contextMenu.show) closeExperiments()"
+                 class="flex-1 flex flex-col bg-background overflow-hidden"
+                 data-testid="experiments-panel">
+
+                <!-- Experiments Header -->
+                <div class="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+                    <div class="flex items-center gap-4">
+                        <h2 class="text-lg font-semibold flex items-center gap-2">
+                            <i data-lucide="flask-conical" class="w-5 h-5"></i>
+                            Experiments
+                        </h2>
+                        <!-- Tabs (Story 19.3) -->
+                        <div class="flex items-center gap-1 ml-2">
+                            <button @click="switchExperimentsTab('runs')"
+                                    :class="experimentsView.activeTab === 'runs' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'"
+                                    class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors"
+                                    data-testid="tab-runs">
+                                <i data-lucide="play-circle" class="w-4 h-4 inline-block mr-1"></i>
+                                Runs
+                                <span x-show="experimentsView.pagination.total > 0"
+                                      class="ml-1 text-xs opacity-60"
+                                      x-text="`(${experimentsView.pagination.total})`"></span>
+                            </button>
+                            <button @click="switchExperimentsTab('fixtures')"
+                                    :class="experimentsView.activeTab === 'fixtures' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'"
+                                    class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors"
+                                    data-testid="tab-fixtures">
+                                <i data-lucide="box" class="w-4 h-4 inline-block mr-1"></i>
+                                Fixtures
+                                <span x-show="fixturesView.total > 0"
+                                      class="ml-1 text-xs opacity-60"
+                                      x-text="`(${fixturesView.total})`"></span>
+                            </button>
+                            <button @click="switchExperimentsTab('templates')"
+                                    :class="experimentsView.activeTab === 'templates' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'"
+                                    class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors"
+                                    data-testid="tab-templates">
+                                <i data-lucide="settings-2" class="w-4 h-4 inline-block mr-1"></i>
+                                Templates
+                                <span x-show="getTemplatesTotal() > 0"
+                                      class="ml-1 text-xs opacity-60"
+                                      x-text="`(${getTemplatesTotal()})`"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <!-- Selection count and Compare button (runs tab only) -->
+                        <template x-if="experimentsView.activeTab === 'runs' && experimentsView.selected.length > 0">
+                            <div class="flex items-center gap-2 mr-2">
+                                <span class="text-sm text-muted-foreground"
+                                      x-text="`${experimentsView.selected.length} selected`"></span>
+                                <button class="btn-outline text-sm"
+                                        :disabled="experimentsView.selected.length < 2 || experimentsView.selected.length > 10"
+                                        @click="compareSelectedRuns()"
+                                        :title="experimentsView.selected.length > 10 ? 'Maximum 10 runs allowed' : ''"
+                                        data-testid="compare-button">
+                                    <i data-lucide="diff" class="w-4 h-4"></i>
+                                    Compare
+                                </button>
+                            </div>
+                        </template>
+
+                        <!-- New Run button (Story 19.6) -->
+                        <button @click="openRunTriggerModal()"
+                                :disabled="hasActiveExperiment()"
+                                class="btn text-sm"
+                                :title="hasActiveExperiment() ? 'An experiment is already running' : 'Start a new experiment run'"
+                                data-testid="new-run-button">
+                            <i data-lucide="play" class="w-4 h-4"></i>
+                            New Run
+                        </button>
+
+                        <!-- Refresh button -->
+                        <button @click="experimentsView.activeTab === 'runs' ? fetchExperimentRuns() : (experimentsView.activeTab === 'fixtures' ? fetchFixtures() : fetchTemplates())"
+                                :disabled="experimentsView.loading || fixturesView.loading || templatesView.loading"
+                                class="btn-outline"
+                                data-testid="refresh-experiments">
+                            <i data-lucide="refresh-cw" class="w-4 h-4" :class="{'animate-spin': experimentsView.loading || fixturesView.loading}"></i>
+                        </button>
+
+                        <!-- Close button -->
+                        <button @click="closeExperiments()" class="btn-ghost" data-testid="close-experiments">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Runs Tab Content -->
+                <div x-show="experimentsView.activeTab === 'runs'" class="flex-1 flex flex-col overflow-hidden">
+                <!-- Filters Row -->
+                <div class="px-4 py-2 border-b border-border bg-card/50 flex flex-wrap items-center gap-2">
+                    <!-- Status filter -->
+                    <select x-model="experimentsView.filters.status"
+                            @change="applyExperimentFilters()"
+                            class="input h-8 text-sm w-32"
+                            data-testid="filter-status">
+                        <option value="">All Status</option>
+                        <option value="completed">Completed</option>
+                        <option value="running">Running</option>
+                        <option value="failed">Failed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+
+                    <!-- Fixture filter -->
+                    <input type="text"
+                           x-model="experimentsView.filters.fixture"
+                           @keydown.enter="applyExperimentFilters()"
+                           placeholder="Fixture"
+                           class="input h-8 text-sm w-28"
+                           data-testid="filter-fixture">
+
+                    <!-- Config filter -->
+                    <input type="text"
+                           x-model="experimentsView.filters.config"
+                           @keydown.enter="applyExperimentFilters()"
+                           placeholder="Config"
+                           class="input h-8 text-sm w-28"
+                           data-testid="filter-config">
+
+                    <!-- Date range -->
+                    <input type="date"
+                           x-model="experimentsView.filters.start_date"
+                           @change="applyExperimentFilters()"
+                           class="input h-8 text-sm"
+                           data-testid="filter-start-date">
+                    <span class="text-muted-foreground">to</span>
+                    <input type="date"
+                           x-model="experimentsView.filters.end_date"
+                           @change="applyExperimentFilters()"
+                           class="input h-8 text-sm"
+                           data-testid="filter-end-date">
+
+                    <!-- Apply/Clear buttons -->
+                    <button @click="applyExperimentFilters()"
+                            class="btn-outline h-8 text-sm"
+                            data-testid="apply-filters">
+                        <i data-lucide="search" class="w-3 h-3"></i> Apply
+                    </button>
+                    <button @click="clearExperimentFilters()"
+                            class="btn-ghost h-8 text-sm text-muted-foreground"
+                            data-testid="clear-filters">
+                        Clear
+                    </button>
+                </div>
+
+                <!-- Experiments Table -->
+                <div class="flex-1 overflow-auto">
+                    <!-- Loading State -->
+                    <div x-show="experimentsView.loading" class="flex items-center justify-center h-32">
+                        <i data-lucide="loader-2" class="w-6 h-6 animate-spin text-primary"></i>
+                    </div>
+
+                    <!-- Error State -->
+                    <div x-show="experimentsView.error && !experimentsView.loading"
+                         class="text-destructive text-sm p-4 flex items-center gap-2">
+                        <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                        <span x-text="experimentsView.error"></span>
+                    </div>
+
+                    <!-- Empty State -->
+                    <div x-show="!experimentsView.loading && !experimentsView.error && experimentsView.runs.length === 0"
+                         class="text-muted-foreground text-sm p-8 text-center">
+                        <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2 opacity-50"></i>
+                        <p>No experiment runs found</p>
+                        <p class="text-xs mt-1">Try adjusting your filters or run an experiment</p>
+                    </div>
+
+                    <!-- Table -->
+                    <table x-show="!experimentsView.loading && !experimentsView.error && experimentsView.runs.length > 0"
+                           class="w-full text-sm">
+                        <thead class="bg-muted/50 sticky top-0">
+                            <tr>
+                                <th class="px-3 py-2 text-left w-8">
+                                    <input type="checkbox" class="checkbox" disabled title="Select all">
+                                </th>
+                                <th class="px-3 py-2 text-left cursor-pointer hover:bg-muted/80"
+                                    @click="sortExperimentsBy('started')">
+                                    <div class="flex items-center gap-1">
+                                        Started
+                                        <i :data-lucide="getSortIcon('started')" class="w-3 h-3"></i>
+                                    </div>
+                                </th>
+                                <th class="px-3 py-2 text-left cursor-pointer hover:bg-muted/80"
+                                    @click="sortExperimentsBy('status')">
+                                    <div class="flex items-center gap-1">
+                                        Status
+                                        <i :data-lucide="getSortIcon('status')" class="w-3 h-3"></i>
+                                    </div>
+                                </th>
+                                <th class="px-3 py-2 text-left cursor-pointer hover:bg-muted/80"
+                                    @click="sortExperimentsBy('duration')">
+                                    <div class="flex items-center gap-1">
+                                        Duration
+                                        <i :data-lucide="getSortIcon('duration')" class="w-3 h-3"></i>
+                                    </div>
+                                </th>
+                                <th class="px-3 py-2 text-left">Fixture</th>
+                                <th class="px-3 py-2 text-left">Config</th>
+                                <th class="px-3 py-2 text-left">Results</th>
+                                <th class="px-3 py-2 text-left w-20">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="run in experimentsView.runs" :key="run.run_id">
+                                <tr class="border-b border-border hover:bg-muted/30 transition-colors"
+                                    :class="{'bg-primary/10': isRunSelected(run.run_id)}">
+                                    <td class="px-3 py-2">
+                                        <input type="checkbox"
+                                               class="checkbox"
+                                               :checked="isRunSelected(run.run_id)"
+                                               @change="toggleRunSelection(run.run_id)">
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <div class="font-mono text-xs" x-text="run.run_id"></div>
+                                        <div class="text-muted-foreground text-xs" x-text="formatDateTime(run.started)"></div>
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <span class="badge" :class="getExperimentStatusClass(run.status)" x-text="run.status"></span>
+                                    </td>
+                                    <td class="px-3 py-2 tabular-nums" x-text="formatDuration(run.duration_seconds)"></td>
+                                    <td class="px-3 py-2" x-text="run.input.fixture"></td>
+                                    <td class="px-3 py-2" x-text="run.input.config"></td>
+                                    <td class="px-3 py-2">
+                                        <template x-if="run.results">
+                                            <div class="text-xs">
+                                                <span class="text-accent" x-text="run.results.stories_completed"></span>/<span x-text="run.results.stories_attempted"></span>
+                                                <span x-show="run.results.stories_failed > 0" class="text-destructive ml-1" x-text="`(${run.results.stories_failed} failed)`"></span>
+                                            </div>
+                                        </template>
+                                        <template x-if="!run.results">
+                                            <span class="text-muted-foreground">-</span>
+                                        </template>
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <button class="btn-ghost p-1" title="View details"
+                                                @click="openExperimentDetails(run.run_id)"
+                                                data-testid="view-run-details">
+                                            <i data-lucide="eye" class="w-4 h-4"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination Footer -->
+                <div x-show="experimentsView.pagination.total > 0"
+                     class="px-4 py-2 border-t border-border bg-card flex items-center justify-between">
+                    <div class="text-sm text-muted-foreground">
+                        Showing <span x-text="experimentsView.pagination.offset + 1"></span>-<span x-text="Math.min(experimentsView.pagination.offset + experimentsView.runs.length, experimentsView.pagination.total)"></span>
+                        of <span x-text="experimentsView.pagination.total"></span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button @click="goToExperimentPage(Math.max(0, experimentsView.pagination.offset - experimentsView.pagination.limit))"
+                                :disabled="experimentsView.pagination.offset === 0"
+                                class="btn-ghost p-1"
+                                data-testid="prev-page">
+                            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                        </button>
+                        <span class="text-sm text-muted-foreground">
+                            Page <span x-text="Math.floor(experimentsView.pagination.offset / experimentsView.pagination.limit) + 1"></span>
+                            of <span x-text="Math.ceil(experimentsView.pagination.total / experimentsView.pagination.limit)"></span>
+                        </span>
+                        <button @click="goToExperimentPage(experimentsView.pagination.offset + experimentsView.pagination.limit)"
+                                :disabled="!experimentsView.pagination.has_more"
+                                class="btn-ghost p-1"
+                                data-testid="next-page">
+                            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fixtures Tab Content (Story 19.3) -->
+            <div x-show="experimentsView.activeTab === 'fixtures'" class="flex-1 flex flex-col overflow-hidden">
+                <!-- Fixtures Filters Row -->
+                <div class="px-4 py-2 border-b border-border bg-card/50 flex flex-wrap items-center gap-2">
+                    <!-- Difficulty filter -->
+                    <select x-model="fixturesView.filters.difficulty"
+                            @change="applyFixtureFilters()"
+                            class="input h-8 text-sm w-32"
+                            data-testid="filter-difficulty">
+                        <option value="">All Difficulties</option>
+                        <option value="trivial">Trivial</option>
+                        <option value="simple">Simple</option>
+                        <option value="medium">Medium</option>
+                        <option value="complex">Complex</option>
+                        <option value="expert">Expert</option>
+                    </select>
+
+                    <!-- Tags filter -->
+                    <input type="text"
+                           x-model="fixturesView.filters.tags"
+                           @keydown.enter="applyFixtureFilters()"
+                           placeholder="Tags (comma-separated)"
+                           class="input h-8 text-sm w-48"
+                           data-testid="filter-tags">
+
+                    <!-- Apply/Clear buttons -->
+                    <button @click="applyFixtureFilters()"
+                            class="btn-outline h-8 text-sm"
+                            data-testid="apply-fixture-filters">
+                        <i data-lucide="search" class="w-3 h-3"></i> Apply
+                    </button>
+                    <button @click="clearFixtureFilters()"
+                            class="btn-ghost h-8 text-sm text-muted-foreground"
+                            data-testid="clear-fixture-filters">
+                        Clear
+                    </button>
+
+                    <!-- Sort controls -->
+                    <div class="ml-auto flex items-center gap-2">
+                        <span class="text-sm text-muted-foreground">Sort by:</span>
+                        <select x-model="fixturesView.sort.by"
+                                @change="sortFixturesBy(fixturesView.sort.by)"
+                                class="input h-8 text-sm w-32"
+                                data-testid="sort-fixtures-by">
+                            <option value="name">Name</option>
+                            <option value="difficulty">Difficulty</option>
+                            <option value="run_count">Run Count</option>
+                            <option value="last_run">Last Run</option>
+                            <option value="estimated_cost">Est. Cost</option>
+                        </select>
+                        <button @click="fixturesView.sort.order = fixturesView.sort.order === 'asc' ? 'desc' : 'asc'; applyFixtureFilters()"
+                                class="btn-ghost p-1"
+                                :title="fixturesView.sort.order === 'asc' ? 'Ascending' : 'Descending'"
+                                data-testid="sort-order-toggle">
+                            <i x-show="fixturesView.sort.order === 'asc'" data-lucide="arrow-up" class="w-4 h-4"></i>
+                            <i x-show="fixturesView.sort.order === 'desc'" data-lucide="arrow-down" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Fixtures Content -->
+                <div class="flex-1 overflow-auto p-4">
+                    <!-- Loading State -->
+                    <div x-show="fixturesView.loading" class="flex items-center justify-center h-32">
+                        <i data-lucide="loader-2" class="w-6 h-6 animate-spin text-primary"></i>
+                    </div>
+
+                    <!-- Error State -->
+                    <div x-show="fixturesView.error && !fixturesView.loading"
+                         class="text-destructive text-sm p-4 flex items-center gap-2">
+                        <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                        <span x-text="fixturesView.error"></span>
+                    </div>
+
+                    <!-- Empty State -->
+                    <div x-show="!fixturesView.loading && !fixturesView.error && fixturesView.fixtures.length === 0"
+                         class="flex flex-col items-center justify-center h-32 text-muted-foreground">
+                        <i data-lucide="package" class="w-8 h-8 mb-2"></i>
+                        <p>No fixtures found</p>
+                    </div>
+
+                    <!-- Fixtures Grid -->
+                    <div x-show="!fixturesView.loading && fixturesView.fixtures.length > 0"
+                         class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <template x-for="fixture in fixturesView.fixtures" :key="fixture.id">
+                            <div class="bg-card border border-border rounded-lg p-4 hover:border-primary/50 cursor-pointer transition-colors"
+                                 @click="openFixtureDetails(fixture.id)"
+                                 data-testid="fixture-card">
+                                <!-- Fixture Header -->
+                                <div class="flex items-start justify-between mb-2">
+                                    <div class="flex-1 min-w-0">
+                                        <h3 class="font-semibold text-sm truncate" x-text="fixture.name"></h3>
+                                        <p class="text-xs text-muted-foreground font-mono truncate" x-text="fixture.id"></p>
+                                    </div>
+                                    <span class="badge ml-2 text-xs"
+                                          :class="getDifficultyClass(fixture.difficulty)"
+                                          x-text="fixture.difficulty"></span>
+                                </div>
+
+                                <!-- Description -->
+                                <p x-show="fixture.description"
+                                   class="text-sm text-muted-foreground mb-3 line-clamp-2"
+                                   x-text="fixture.description"></p>
+
+                                <!-- Tags -->
+                                <div x-show="fixture.tags && fixture.tags.length > 0" class="flex flex-wrap gap-1 mb-3">
+                                    <template x-for="tag in fixture.tags.slice(0, 4)" :key="tag">
+                                        <span class="badge badge-secondary text-xs" x-text="tag"></span>
+                                    </template>
+                                    <span x-show="fixture.tags.length > 4"
+                                          class="badge badge-secondary text-xs"
+                                          x-text="`+${fixture.tags.length - 4}`"></span>
+                                </div>
+
+                                <!-- Stats -->
+                                <div class="flex items-center justify-between text-xs text-muted-foreground border-t border-border pt-2 mt-2">
+                                    <div class="flex items-center gap-1">
+                                        <i data-lucide="play" class="w-3 h-3"></i>
+                                        <span x-text="`${fixture.run_count} runs`"></span>
+                                    </div>
+                                    <div class="flex items-center gap-1">
+                                        <i data-lucide="dollar-sign" class="w-3 h-3"></i>
+                                        <span x-text="fixture.estimated_cost"></span>
+                                    </div>
+                                    <div x-show="fixture.last_run" class="flex items-center gap-1">
+                                        <i data-lucide="clock" class="w-3 h-3"></i>
+                                        <span x-text="formatFixtureDate(fixture.last_run)"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Fixtures Summary Footer -->
+                <div x-show="fixturesView.total > 0"
+                     class="px-4 py-2 border-t border-border bg-card flex items-center justify-between">
+                    <div class="text-sm text-muted-foreground">
+                        Showing <span x-text="fixturesView.fixtures.length"></span>
+                        of <span x-text="fixturesView.total"></span> fixtures
+                    </div>
+                </div>
+            </div>
+
+            <!-- Templates Tab Content (Story 19.5) -->
+            <div x-show="experimentsView.activeTab === 'templates'" class="flex-1 flex flex-col overflow-hidden">
+                <!-- Sub-tabs Row -->
+                <div class="px-4 py-2 border-b border-border bg-card/50 flex flex-wrap items-center gap-2">
+                    <div class="flex items-center gap-1 mr-4">
+                        <button @click="switchTemplatesSubTab('configs')"
+                                :class="templatesView.activeSubTab === 'configs' ? 'bg-primary/10 text-primary border-primary' : 'text-muted-foreground hover:text-foreground border-transparent'"
+                                class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors border"
+                                data-testid="subtab-configs">
+                            Configs
+                            <span x-show="templatesView.configsTotal > 0"
+                                  class="ml-1 text-xs opacity-60"
+                                  x-text="`(${templatesView.configsTotal})`"></span>
+                        </button>
+                        <button @click="switchTemplatesSubTab('loops')"
+                                :class="templatesView.activeSubTab === 'loops' ? 'bg-primary/10 text-primary border-primary' : 'text-muted-foreground hover:text-foreground border-transparent'"
+                                class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors border"
+                                data-testid="subtab-loops">
+                            Loops
+                            <span x-show="templatesView.loopsTotal > 0"
+                                  class="ml-1 text-xs opacity-60"
+                                  x-text="`(${templatesView.loopsTotal})`"></span>
+                        </button>
+                        <button @click="switchTemplatesSubTab('patch-sets')"
+                                :class="templatesView.activeSubTab === 'patch-sets' ? 'bg-primary/10 text-primary border-primary' : 'text-muted-foreground hover:text-foreground border-transparent'"
+                                class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors border"
+                                data-testid="subtab-patchsets">
+                            Patch-Sets
+                            <span x-show="templatesView.patchSetsTotal > 0"
+                                  class="ml-1 text-xs opacity-60"
+                                  x-text="`(${templatesView.patchSetsTotal})`"></span>
+                        </button>
+                    </div>
+
+                    <!-- Sort controls -->
+                    <div class="flex items-center gap-2 ml-auto">
+                        <span class="text-sm text-muted-foreground">Sort by:</span>
+                        <select x-model="templatesView.sort.by"
+                                @change="sortTemplatesBy(templatesView.sort.by)"
+                                class="input h-8 text-sm w-32"
+                                data-testid="sort-templates-by">
+                            <option value="name">Name</option>
+                            <option value="run_count">Run Count</option>
+                            <option value="last_run">Last Run</option>
+                        </select>
+                        <button @click="templatesView.sort.order = templatesView.sort.order === 'asc' ? 'desc' : 'asc'; fetchTemplates()"
+                                class="btn-outline h-8 px-2"
+                                :title="templatesView.sort.order === 'asc' ? 'Ascending' : 'Descending'">
+                            <i :data-lucide="templatesView.sort.order === 'asc' ? 'sort-asc' : 'sort-desc'" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Templates Content -->
+                <div class="flex-1 overflow-auto p-4">
+                    <!-- Loading State -->
+                    <div x-show="templatesView.loading" class="flex items-center justify-center py-12">
+                        <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-primary"></i>
+                    </div>
+
+                    <!-- Error State -->
+                    <div x-show="!templatesView.loading && templatesView.error"
+                         class="text-center py-12">
+                        <i data-lucide="alert-circle" class="w-12 h-12 mx-auto text-destructive mb-4"></i>
+                        <div class="text-destructive" x-text="templatesView.error"></div>
+                        <button @click="fetchTemplates()" class="btn-outline mt-4">Retry</button>
+                    </div>
+
+                    <!-- Configs Table -->
+                    <div x-show="!templatesView.loading && !templatesView.error && templatesView.activeSubTab === 'configs'">
+                        <!-- Empty State -->
+                        <div x-show="templatesView.configs.length === 0" class="text-center py-12 text-muted-foreground">
+                            <i data-lucide="settings" class="w-12 h-12 mx-auto mb-4 opacity-40"></i>
+                            <p>No config templates found in experiments/configs/</p>
+                        </div>
+
+                        <!-- Configs Grid -->
+                        <div x-show="templatesView.configs.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <template x-for="config in templatesView.configs" :key="config.name">
+                                <div @click="openConfigDetails(config.name)"
+                                     class="bg-card border border-border rounded-lg p-4 hover:border-primary/50 cursor-pointer transition-colors">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <h3 class="font-mono font-medium" x-text="config.name"></h3>
+                                        <span class="badge badge-secondary text-xs" x-text="`${config.run_count} runs`"></span>
+                                    </div>
+                                    <p class="text-sm text-muted-foreground line-clamp-2 mb-2"
+                                       x-text="config.description || 'No description'"></p>
+                                    <div class="flex items-center justify-between text-xs text-muted-foreground">
+                                        <span>Last run: <span x-text="formatTemplateDate(config.last_run)"></span></span>
+                                        <span x-show="config.providers?.master" x-text="config.providers.master?.model || ''"></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Loops Table -->
+                    <div x-show="!templatesView.loading && !templatesView.error && templatesView.activeSubTab === 'loops'">
+                        <!-- Empty State -->
+                        <div x-show="templatesView.loops.length === 0" class="text-center py-12 text-muted-foreground">
+                            <i data-lucide="repeat" class="w-12 h-12 mx-auto mb-4 opacity-40"></i>
+                            <p>No loop templates found in experiments/loops/</p>
+                        </div>
+
+                        <!-- Loops Grid -->
+                        <div x-show="templatesView.loops.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <template x-for="loop in templatesView.loops" :key="loop.name">
+                                <div @click="openLoopDetails(loop.name)"
+                                     class="bg-card border border-border rounded-lg p-4 hover:border-primary/50 cursor-pointer transition-colors">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <h3 class="font-mono font-medium" x-text="loop.name"></h3>
+                                        <span class="badge badge-secondary text-xs" x-text="`${loop.run_count} runs`"></span>
+                                    </div>
+                                    <p class="text-sm text-muted-foreground line-clamp-2 mb-2"
+                                       x-text="loop.description || 'No description'"></p>
+                                    <div class="flex items-center justify-between text-xs text-muted-foreground">
+                                        <span><span x-text="loop.step_count"></span> steps</span>
+                                        <span>Last run: <span x-text="formatTemplateDate(loop.last_run)"></span></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Patch-Sets Table -->
+                    <div x-show="!templatesView.loading && !templatesView.error && templatesView.activeSubTab === 'patch-sets'">
+                        <!-- Empty State -->
+                        <div x-show="templatesView.patchSets.length === 0" class="text-center py-12 text-muted-foreground">
+                            <i data-lucide="file-diff" class="w-12 h-12 mx-auto mb-4 opacity-40"></i>
+                            <p>No patch-set manifests found in experiments/patch-sets/</p>
+                        </div>
+
+                        <!-- Patch-Sets Grid -->
+                        <div x-show="templatesView.patchSets.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <template x-for="patchSet in templatesView.patchSets" :key="patchSet.name">
+                                <div @click="openPatchSetDetails(patchSet.name)"
+                                     class="bg-card border border-border rounded-lg p-4 hover:border-primary/50 cursor-pointer transition-colors">
+                                    <div class="flex items-start justify-between mb-2">
+                                        <h3 class="font-mono font-medium" x-text="patchSet.name"></h3>
+                                        <span class="badge badge-secondary text-xs" x-text="`${patchSet.run_count} runs`"></span>
+                                    </div>
+                                    <p class="text-sm text-muted-foreground line-clamp-2 mb-2"
+                                       x-text="patchSet.description || 'No description'"></p>
+                                    <div class="flex items-center justify-between text-xs text-muted-foreground">
+                                        <span><span x-text="patchSet.patch_count"></span> patches, <span x-text="patchSet.override_count"></span> overrides</span>
+                                        <span>Last run: <span x-text="formatTemplateDate(patchSet.last_run)"></span></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Templates Summary Footer -->
+                <div x-show="getTemplatesTotal() > 0"
+                     class="px-4 py-2 border-t border-border bg-card flex items-center justify-between">
+                    <div class="text-sm text-muted-foreground">
+                        <span x-show="templatesView.activeSubTab === 'configs'">
+                            Showing <span x-text="templatesView.configs.length"></span>
+                            of <span x-text="templatesView.configsTotal"></span> configs
+                        </span>
+                        <span x-show="templatesView.activeSubTab === 'loops'">
+                            Showing <span x-text="templatesView.loops.length"></span>
+                            of <span x-text="templatesView.loopsTotal"></span> loops
+                        </span>
+                        <span x-show="templatesView.activeSubTab === 'patch-sets'">
+                            Showing <span x-text="templatesView.patchSets.length"></span>
+                            of <span x-text="templatesView.patchSetsTotal"></span> patch-sets
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Template Details Modal (Story 19.5) -->
+            <div x-show="templatesView.selectedTemplate"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 @keydown.escape.window="if (templatesView.selectedTemplate && !contextMenu.show) closeTemplateDetails()"
+                 class="absolute inset-0 bg-background/80 z-40 flex items-center justify-center p-4"
+                 data-testid="template-details-modal">
+                <div class="bg-card border border-border rounded-lg shadow-lg w-full max-w-3xl max-h-[80vh] overflow-hidden flex flex-col"
+                     @click.stop>
+                    <!-- Modal Header -->
+                    <header class="flex items-center justify-between p-4 border-b border-border">
+                        <div class="flex items-center gap-3">
+                            <i :data-lucide="templatesView.selectedTemplate?.type === 'config' ? 'settings' : (templatesView.selectedTemplate?.type === 'loop' ? 'repeat' : 'file-diff')"
+                               class="w-5 h-5 text-primary"></i>
+                            <h2 class="text-lg font-semibold" x-text="templatesView.selectedTemplate?.name"></h2>
+                            <span class="badge badge-secondary text-xs capitalize" x-text="templatesView.selectedTemplate?.type"></span>
+                        </div>
+                        <button @click="closeTemplateDetails()" class="btn-ghost p-1" data-testid="close-template-details">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </header>
+
+                    <!-- Modal Content -->
+                    <div class="flex-1 overflow-auto p-4 space-y-4">
+                        <!-- Description -->
+                        <div x-show="templatesView.selectedTemplate?.description">
+                            <div class="text-sm text-muted-foreground mb-1">Description</div>
+                            <p x-text="templatesView.selectedTemplate?.description"></p>
+                        </div>
+
+                        <!-- Config-specific: Providers -->
+                        <div x-show="templatesView.selectedTemplate?.type === 'config' && templatesView.selectedTemplate?.providers">
+                            <div class="text-sm text-muted-foreground mb-1">Providers</div>
+                            <div class="bg-muted rounded p-3 text-sm">
+                                <div x-show="templatesView.selectedTemplate?.providers?.master">
+                                    <strong>Master:</strong>
+                                    <span x-text="templatesView.selectedTemplate?.providers?.master?.provider || 'N/A'"></span>
+                                    (<span x-text="templatesView.selectedTemplate?.providers?.master?.model || 'N/A'"></span>)
+                                </div>
+                                <div x-show="templatesView.selectedTemplate?.providers?.multi?.length > 0">
+                                    <strong>Multi:</strong>
+                                    <span x-text="templatesView.selectedTemplate?.providers?.multi?.length || 0"></span> validator(s)
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Loop-specific: Sequence -->
+                        <div x-show="templatesView.selectedTemplate?.type === 'loop' && templatesView.selectedTemplate?.sequence">
+                            <div class="text-sm text-muted-foreground mb-1">
+                                Sequence (<span x-text="templatesView.selectedTemplate?.step_count || 0"></span> steps)
+                            </div>
+                            <div class="bg-muted rounded p-3 space-y-1">
+                                <template x-for="(step, idx) in templatesView.selectedTemplate?.sequence || []" :key="idx">
+                                    <div class="flex items-center gap-2 text-sm">
+                                        <span class="text-muted-foreground" x-text="`${idx + 1}.`"></span>
+                                        <span class="font-mono" x-text="step.workflow"></span>
+                                        <span x-show="step.required" class="badge badge-success text-xs">required</span>
+                                        <span x-show="!step.required" class="badge badge-secondary text-xs">optional</span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- Patch-Set-specific: Patches & Overrides -->
+                        <div x-show="templatesView.selectedTemplate?.type === 'patch-set'">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <div class="text-sm text-muted-foreground mb-1">
+                                        Patches (<span x-text="templatesView.selectedTemplate?.patch_count || 0"></span>)
+                                    </div>
+                                    <div class="bg-muted rounded p-3 text-sm font-mono">
+                                        <template x-for="(value, key) in templatesView.selectedTemplate?.patches || {}" :key="key">
+                                            <div x-show="value" class="truncate" :title="value">
+                                                <span class="text-muted-foreground" x-text="key"></span>:
+                                                <span x-text="value || 'none'"></span>
+                                            </div>
+                                        </template>
+                                        <div x-show="templatesView.selectedTemplate?.patch_count === 0" class="text-muted-foreground">
+                                            No patches configured
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="text-sm text-muted-foreground mb-1">
+                                        Overrides (<span x-text="templatesView.selectedTemplate?.override_count || 0"></span>)
+                                    </div>
+                                    <div class="bg-muted rounded p-3 text-sm font-mono">
+                                        <template x-for="(value, key) in templatesView.selectedTemplate?.workflow_overrides || {}" :key="key">
+                                            <div class="truncate" :title="value">
+                                                <span class="text-muted-foreground" x-text="key"></span>:
+                                                <span x-text="value"></span>
+                                            </div>
+                                        </template>
+                                        <div x-show="templatesView.selectedTemplate?.override_count === 0" class="text-muted-foreground">
+                                            No overrides configured
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- YAML Content -->
+                        <div x-show="templatesView.selectedTemplate?.yaml_content">
+                            <div class="text-sm text-muted-foreground mb-1">Configuration (YAML)</div>
+                            <pre class="bg-muted p-4 rounded overflow-auto max-h-64 text-sm font-mono"><code x-text="templatesView.selectedTemplate?.yaml_content || 'Content not available'"></code></pre>
+                        </div>
+
+                        <!-- Run Statistics -->
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <div class="text-sm text-muted-foreground">Run Count</div>
+                                <div class="font-semibold" x-text="templatesView.selectedTemplate?.run_count || 0"></div>
+                            </div>
+                            <div>
+                                <div class="text-sm text-muted-foreground">Last Run</div>
+                                <div class="font-semibold" x-text="formatTemplateDate(templatesView.selectedTemplate?.last_run)"></div>
+                            </div>
+                        </div>
+
+                        <!-- Recent Runs -->
+                        <div x-show="templatesView.selectedTemplate?.recent_runs?.length > 0">
+                            <div class="text-sm text-muted-foreground mb-2">Recent Runs</div>
+                            <div class="space-y-2">
+                                <template x-for="run in templatesView.selectedTemplate?.recent_runs || []" :key="run.run_id">
+                                    <div class="flex items-center justify-between p-2 bg-muted rounded">
+                                        <div class="flex items-center gap-2">
+                                            <span :class="{
+                                                'badge-success': run.status === 'completed',
+                                                'badge-warning': run.status === 'running',
+                                                'badge-destructive': run.status === 'failed' || run.status === 'cancelled'
+                                            }" class="badge text-xs" x-text="run.status"></span>
+                                            <span class="font-mono text-sm cursor-pointer hover:text-primary"
+                                                  @click="closeTemplateDetails(); openExperimentDetails(run.run_id)"
+                                                  x-text="run.run_id"></span>
+                                        </div>
+                                        <div class="flex items-center gap-3 text-muted-foreground text-xs">
+                                            <span x-text="run.fixture || run.config"></span>
+                                            <span x-text="formatTemplateDate(run.started)"></span>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Modal Footer -->
+                    <footer class="flex items-center justify-end gap-2 p-4 border-t border-border">
+                        <button @click="closeTemplateDetails()" class="btn-outline">
+                            Close
+                        </button>
+                    </footer>
+                </div>
+            </div>
+
+            <!-- Fixture Details Modal (Story 19.3) -->
+            <div x-show="fixturesView.selectedFixture"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 @keydown.escape.window="if (fixturesView.selectedFixture && !contextMenu.show) closeFixtureDetails()"
+                 class="absolute inset-0 bg-background/80 z-40 flex items-center justify-center p-4"
+                 data-testid="fixture-details-modal">
+                <div class="bg-card border border-border rounded-lg shadow-lg w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
+                     @click.stop>
+                    <!-- Modal Header -->
+                    <header class="flex items-center justify-between p-4 border-b border-border">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="package" class="w-5 h-5 text-primary"></i>
+                            <h2 class="text-lg font-semibold" x-text="fixturesView.selectedFixture?.name"></h2>
+                        </div>
+                        <button @click="closeFixtureDetails()" class="btn-ghost p-1" data-testid="close-fixture-details">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </header>
+
+                    <!-- Modal Content -->
+                    <div class="flex-1 overflow-auto p-4 space-y-4">
+                        <!-- Basic Info -->
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <div class="text-sm text-muted-foreground">ID</div>
+                                <div class="font-mono text-sm" x-text="fixturesView.selectedFixture?.id"></div>
+                            </div>
+                            <div>
+                                <div class="text-sm text-muted-foreground">Difficulty</div>
+                                <span class="badge"
+                                      :class="getDifficultyClass(fixturesView.selectedFixture?.difficulty)"
+                                      x-text="fixturesView.selectedFixture?.difficulty"></span>
+                            </div>
+                            <div>
+                                <div class="text-sm text-muted-foreground">Estimated Cost</div>
+                                <div class="font-mono text-sm" x-text="fixturesView.selectedFixture?.estimated_cost"></div>
+                            </div>
+                            <div>
+                                <div class="text-sm text-muted-foreground">Run Count</div>
+                                <div class="font-mono text-sm" x-text="fixturesView.selectedFixture?.run_count"></div>
+                            </div>
+                        </div>
+
+                        <!-- Description -->
+                        <div x-show="fixturesView.selectedFixture?.description">
+                            <div class="text-sm text-muted-foreground mb-1">Description</div>
+                            <p class="text-sm" x-text="fixturesView.selectedFixture?.description"></p>
+                        </div>
+
+                        <!-- Path -->
+                        <div>
+                            <div class="text-sm text-muted-foreground mb-1">Path</div>
+                            <code class="text-xs bg-muted px-2 py-1 rounded block overflow-x-auto"
+                                  x-text="fixturesView.selectedFixture?.resolved_path || fixturesView.selectedFixture?.path"></code>
+                        </div>
+
+                        <!-- Tags -->
+                        <div x-show="fixturesView.selectedFixture?.tags?.length > 0">
+                            <div class="text-sm text-muted-foreground mb-1">Tags</div>
+                            <div class="flex flex-wrap gap-1">
+                                <template x-for="tag in fixturesView.selectedFixture?.tags || []" :key="tag">
+                                    <span class="badge badge-secondary text-xs" x-text="tag"></span>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- Recent Runs -->
+                        <div x-show="fixturesView.selectedFixture?.recent_runs?.length > 0">
+                            <div class="text-sm text-muted-foreground mb-2">Recent Runs</div>
+                            <div class="space-y-2">
+                                <template x-for="run in fixturesView.selectedFixture?.recent_runs || []" :key="run.run_id">
+                                    <div class="flex items-center justify-between p-2 bg-muted/50 rounded text-sm">
+                                        <div class="flex items-center gap-2">
+                                            <span class="badge text-xs"
+                                                  :class="getExperimentStatusClass(run.status)"
+                                                  x-text="run.status"></span>
+                                            <span class="font-mono text-xs" x-text="run.run_id"></span>
+                                        </div>
+                                        <div class="flex items-center gap-3 text-muted-foreground text-xs">
+                                            <span x-text="run.config"></span>
+                                            <span x-text="formatFixtureDate(run.started)"></span>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Modal Footer -->
+                    <footer class="flex items-center justify-end gap-2 p-4 border-t border-border">
+                        <button @click="closeFixtureDetails()" class="btn-outline">

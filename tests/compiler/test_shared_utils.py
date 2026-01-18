@@ -1,0 +1,586 @@
+"""Tests for shared_utils module.
+
+Tests cover:
+- context_snapshot() context manager for state preservation
+- apply_post_process() helper for patch application
+- Enhanced load_workflow_template() with embedded template support
+"""
+
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Generator
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from bmad_assist.compiler.types import CompilerContext, WorkflowIR
+from bmad_assist.core.exceptions import CompilerError
+
+
+class TestContextSnapshotAC3:
+    """Test AC3: Context manager for state preservation."""
+
+    def test_context_snapshot_preserves_state_on_success(self, tmp_path: Path) -> None:
+        """State modifications are kept on successful execution."""
+        from bmad_assist.compiler.shared_utils import context_snapshot
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+            resolved_variables={"key": "original"},
+            discovered_files={"file1": Path("/a")},
+            file_contents={"file1": "content1"},
+        )
+
+        with context_snapshot(context):
+            context.resolved_variables["key"] = "modified"
+            context.resolved_variables["new_key"] = "new_value"
+            context.discovered_files["file2"] = Path("/b")
+            context.file_contents["file2"] = "content2"
+
+        # Changes should persist
+        assert context.resolved_variables["key"] == "modified"
+        assert context.resolved_variables["new_key"] == "new_value"
+        assert "file2" in context.discovered_files
+        assert "file2" in context.file_contents
+
+    def test_context_snapshot_restores_state_on_exception(self, tmp_path: Path) -> None:
+        """State is restored to original on exception."""
+        from bmad_assist.compiler.shared_utils import context_snapshot
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+            resolved_variables={"key": "original"},
+            discovered_files={"file1": Path("/a")},
+            file_contents={"file1": "content1"},
+        )
+
+        with pytest.raises(ValueError, match="test error"):
+            with context_snapshot(context):
+                context.resolved_variables["key"] = "modified"
+                context.resolved_variables["new_key"] = "new_value"
+                context.discovered_files["file2"] = Path("/b")
+                context.file_contents["file2"] = "content2"
+                raise ValueError("test error")
+
+        # Changes should be rolled back
+        assert context.resolved_variables["key"] == "original"
+        assert "new_key" not in context.resolved_variables
+        assert "file2" not in context.discovered_files
+        assert "file2" not in context.file_contents
+
+    def test_context_snapshot_preserves_resolved_variables(self, tmp_path: Path) -> None:
+        """Specifically tests resolved_variables preservation."""
+        from bmad_assist.compiler.shared_utils import context_snapshot
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+            resolved_variables={"epic_num": 10, "story_num": 5},
+        )
+
+        with pytest.raises(RuntimeError):
+            with context_snapshot(context):
+                context.resolved_variables["epic_num"] = 99
+                context.resolved_variables["extra"] = "data"
+                raise RuntimeError("rollback trigger")
+
+        assert context.resolved_variables["epic_num"] == 10
+        assert context.resolved_variables["story_num"] == 5
+        assert "extra" not in context.resolved_variables
+
+    def test_context_snapshot_preserves_discovered_files(self, tmp_path: Path) -> None:
+        """Specifically tests discovered_files preservation."""
+        from bmad_assist.compiler.shared_utils import context_snapshot
+
+        original_path = Path("/original/path")
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+            discovered_files={"existing": original_path},
+        )
+
+        with pytest.raises(RuntimeError):
+            with context_snapshot(context):
+                context.discovered_files["existing"] = Path("/modified")
+                context.discovered_files["new"] = Path("/new")
+                raise RuntimeError("rollback trigger")
+
+        assert context.discovered_files["existing"] == original_path
+        assert "new" not in context.discovered_files
+
+    def test_context_snapshot_preserves_file_contents(self, tmp_path: Path) -> None:
+        """Specifically tests file_contents preservation."""
+        from bmad_assist.compiler.shared_utils import context_snapshot
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+            file_contents={"file.py": "# original code"},
+        )
+
+        with pytest.raises(RuntimeError):
+            with context_snapshot(context):
+                context.file_contents["file.py"] = "# modified code"
+                context.file_contents["new_file.py"] = "# new code"
+                raise RuntimeError("rollback trigger")
+
+        assert context.file_contents["file.py"] == "# original code"
+        assert "new_file.py" not in context.file_contents
+
+    def test_context_snapshot_yields_context(self, tmp_path: Path) -> None:
+        """Context manager yields the context object."""
+        from bmad_assist.compiler.shared_utils import context_snapshot
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+        )
+
+        with context_snapshot(context) as ctx:
+            assert ctx is context
+
+    def test_context_snapshot_handles_empty_context(self, tmp_path: Path) -> None:
+        """Works with empty/default context values."""
+        from bmad_assist.compiler.shared_utils import context_snapshot
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+        )
+        # Ensure empty dicts by default
+        assert context.resolved_variables == {}
+        assert context.discovered_files == {}
+        assert context.file_contents == {}
+
+        with pytest.raises(RuntimeError):
+            with context_snapshot(context):
+                context.resolved_variables["new"] = "value"
+                raise RuntimeError("trigger")
+
+        assert context.resolved_variables == {}
+
+    def test_context_snapshot_nested_exceptions(self, tmp_path: Path) -> None:
+        """Exception type is preserved through context manager."""
+        from bmad_assist.compiler.shared_utils import context_snapshot
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+            resolved_variables={"key": "value"},
+        )
+
+        # Test with CompilerError
+        with pytest.raises(CompilerError, match="compiler error"):
+            with context_snapshot(context):
+                context.resolved_variables["key"] = "modified"
+                raise CompilerError("compiler error")
+
+        # State should be restored
+        assert context.resolved_variables["key"] == "value"
+
+
+class TestApplyPostProcessAC2:
+    """Test AC2: apply_post_process() helper for patch application."""
+
+    def test_apply_post_process_with_patch(self, tmp_path: Path) -> None:
+        """Applies post_process rules from patch file."""
+        from bmad_assist.compiler.shared_utils import apply_post_process
+
+        # Create a valid patch file with all required fields
+        patch_path = tmp_path / "test.patch.yaml"
+        patch_path.write_text("""
+patch:
+  name: test-patch
+  version: "1.0.0"
+compatibility:
+  bmad_version: "6.0.0"
+  workflow: "test-workflow"
+transforms:
+  - "No-op transform"
+post_process:
+  - pattern: "PLACEHOLDER"
+    replacement: "REPLACED"
+""")
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+            patch_path=patch_path,
+        )
+
+        xml_content = "<compiled-workflow>PLACEHOLDER content</compiled-workflow>"
+        result = apply_post_process(xml_content, context)
+
+        assert "REPLACED content" in result
+        assert "PLACEHOLDER" not in result
+
+    def test_apply_post_process_no_patch(self, tmp_path: Path) -> None:
+        """Returns original XML when no patch_path is set."""
+        from bmad_assist.compiler.shared_utils import apply_post_process
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+            patch_path=None,
+        )
+
+        xml_content = "<compiled-workflow>Original content</compiled-workflow>"
+        result = apply_post_process(xml_content, context)
+
+        assert result == xml_content
+
+    def test_apply_post_process_patch_not_found(self, tmp_path: Path) -> None:
+        """Returns original XML when patch file doesn't exist."""
+        from bmad_assist.compiler.shared_utils import apply_post_process
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+            patch_path=tmp_path / "nonexistent.patch.yaml",
+        )
+
+        xml_content = "<compiled-workflow>Original content</compiled-workflow>"
+        result = apply_post_process(xml_content, context)
+
+        assert result == xml_content
+
+    def test_apply_post_process_empty_rules(self, tmp_path: Path) -> None:
+        """Returns original XML when patch has no post_process rules."""
+        from bmad_assist.compiler.shared_utils import apply_post_process
+
+        patch_path = tmp_path / "empty.patch.yaml"
+        patch_path.write_text("""
+# No post_process section
+template_transforms: []
+""")
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+            patch_path=patch_path,
+        )
+
+        xml_content = "<compiled-workflow>Content</compiled-workflow>"
+        result = apply_post_process(xml_content, context)
+
+        assert result == xml_content
+
+
+class TestLoadWorkflowTemplateEnhancedAC2:
+    """Test AC2: Enhanced load_workflow_template() with embedded template support."""
+
+    def test_load_workflow_template_embedded_template(self, tmp_path: Path) -> None:
+        """Uses embedded output_template when available."""
+        from bmad_assist.compiler.shared_utils import load_workflow_template
+
+        workflow_ir = WorkflowIR(
+            name="test-workflow",
+            config_path=tmp_path / "workflow.yaml",
+            instructions_path=tmp_path / "instructions.xml",
+            template_path=str(tmp_path / "template.md"),  # Should be ignored
+            validation_path=None,
+            raw_config={},
+            raw_instructions="",
+            output_template="# Embedded Template\n\nContent from cache",  # Has embedded
+        )
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+        )
+
+        # Even though template_path is set, embedded should take priority
+        result = load_workflow_template(workflow_ir, context)
+
+        assert result == "# Embedded Template\n\nContent from cache"
+
+    def test_load_workflow_template_file_fallback(self, tmp_path: Path) -> None:
+        """Falls back to file when no embedded template."""
+        from bmad_assist.compiler.shared_utils import load_workflow_template
+
+        # Create template file
+        template_path = tmp_path / "template.md"
+        template_path.write_text("# File Template\n\n{{placeholder}}")
+
+        workflow_ir = WorkflowIR(
+            name="test-workflow",
+            config_path=tmp_path / "workflow.yaml",
+            instructions_path=tmp_path / "instructions.xml",
+            template_path=str(template_path),
+            validation_path=None,
+            raw_config={},
+            raw_instructions="",
+            output_template=None,  # No embedded
+        )
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+        )
+
+        result = load_workflow_template(workflow_ir, context)
+
+        assert "# File Template" in result
+        assert "{{placeholder}}" in result
+
+    def test_load_workflow_template_no_template(self, tmp_path: Path) -> None:
+        """Returns empty string when no template defined."""
+        from bmad_assist.compiler.shared_utils import load_workflow_template
+
+        workflow_ir = WorkflowIR(
+            name="test-workflow",
+            config_path=tmp_path / "workflow.yaml",
+            instructions_path=tmp_path / "instructions.xml",
+            template_path=None,
+            validation_path=None,
+            raw_config={},
+            raw_instructions="",
+            output_template=None,
+        )
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+        )
+
+        result = load_workflow_template(workflow_ir, context)
+
+        assert result == ""
+
+    def test_load_workflow_template_path_resolution(self, tmp_path: Path) -> None:
+        """Resolves {installed_path} and {project-root} placeholders."""
+        from bmad_assist.compiler.shared_utils import load_workflow_template
+
+        # Create workflow directory structure
+        workflow_dir = tmp_path / "workflows" / "test"
+        workflow_dir.mkdir(parents=True)
+        template_file = workflow_dir / "template.md"
+        template_file.write_text("# Template with path resolution")
+
+        workflow_ir = WorkflowIR(
+            name="test-workflow",
+            config_path=workflow_dir / "workflow.yaml",
+            instructions_path=workflow_dir / "instructions.xml",
+            template_path="{installed_path}/template.md",
+            validation_path=None,
+            raw_config={},
+            raw_instructions="",
+            output_template=None,
+        )
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+        )
+
+        result = load_workflow_template(workflow_ir, context)
+
+        assert "# Template with path resolution" in result
+
+
+class TestFindEpicFileAC2:
+    """Test AC2: Enhanced find_epic_file() with fallback logic.
+
+    Tests cover three search paths:
+    1. output_folder/epics/epic-{epic_num}*.md (sharded epics)
+    2. output_folder/epics.md (single file)
+    3. output_folder/*epic*.md (glob fallback)
+    """
+
+    def test_find_epic_file_sharded_epics_directory(self, tmp_path: Path) -> None:
+        """Search 1: Finds epic in sharded epics directory."""
+        from bmad_assist.compiler.shared_utils import find_epic_file
+
+        # Create sharded epics directory structure
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        epic_file = epics_dir / "epic-12-compiler-consolidation.md"
+        epic_file.write_text("# Epic 12: Compiler Consolidation")
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+        )
+
+        result = find_epic_file(context, 12)
+
+        assert result is not None
+        assert result.name == "epic-12-compiler-consolidation.md"
+
+    def test_find_epic_file_single_epics_file(self, tmp_path: Path) -> None:
+        """Search 2: Falls back to single epics.md file."""
+        from bmad_assist.compiler.shared_utils import find_epic_file
+
+        # No sharded directory, but single epics.md exists
+        epics_file = tmp_path / "epics.md"
+        epics_file.write_text("# All Epics\n\n## Epic 5: Test")
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+        )
+
+        result = find_epic_file(context, 5)
+
+        assert result is not None
+        assert result.name == "epics.md"
+
+    def test_find_epic_file_glob_fallback(self, tmp_path: Path) -> None:
+        """Search 3: Falls back to glob pattern *epic*.md."""
+        from bmad_assist.compiler.shared_utils import find_epic_file
+
+        # No sharded directory, no epics.md, but file with 'epic' in name
+        epic_file = tmp_path / "project-epic-definitions.md"
+        epic_file.write_text("# Project Epics")
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+        )
+
+        result = find_epic_file(context, 3)
+
+        assert result is not None
+        assert "epic" in result.name.lower()
+
+    def test_find_epic_file_priority_sharded_over_single(self, tmp_path: Path) -> None:
+        """Sharded epics have priority over single epics.md."""
+        from bmad_assist.compiler.shared_utils import find_epic_file
+
+        # Create both sharded and single epics
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        sharded_epic = epics_dir / "epic-7-dashboard.md"
+        sharded_epic.write_text("# Epic 7: Dashboard")
+
+        single_epics = tmp_path / "epics.md"
+        single_epics.write_text("# All Epics")
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+        )
+
+        result = find_epic_file(context, 7)
+
+        # Should find sharded epic, not single file
+        assert result is not None
+        assert result.name == "epic-7-dashboard.md"
+
+    def test_find_epic_file_priority_single_over_glob(self, tmp_path: Path) -> None:
+        """Single epics.md has priority over glob fallback."""
+        from bmad_assist.compiler.shared_utils import find_epic_file
+
+        # Create single epics.md and another epic-like file
+        single_epics = tmp_path / "epics.md"
+        single_epics.write_text("# All Epics")
+
+        other_epic = tmp_path / "my-epic-file.md"
+        other_epic.write_text("# Other Epic File")
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+        )
+
+        result = find_epic_file(context, 1)
+
+        # Should find epics.md, not my-epic-file.md
+        assert result is not None
+        assert result.name == "epics.md"
+
+    def test_find_epic_file_no_match(self, tmp_path: Path) -> None:
+        """Returns None when no epic file found."""
+        from bmad_assist.compiler.shared_utils import find_epic_file
+
+        # Empty output folder
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+        )
+
+        result = find_epic_file(context, 99)
+
+        assert result is None
+
+    def test_find_epic_file_string_epic_num(self, tmp_path: Path) -> None:
+        """Works with string epic identifiers like 'testarch'."""
+        from bmad_assist.compiler.shared_utils import find_epic_file
+
+        # Create sharded epic with string identifier
+        epics_dir = tmp_path / "epics"
+        epics_dir.mkdir()
+        epic_file = epics_dir / "epic-testarch-test-architect.md"
+        epic_file.write_text("# Module: testarch")
+
+        context = CompilerContext(
+            project_root=tmp_path,
+            output_folder=tmp_path,
+        )
+
+        result = find_epic_file(context, "testarch")
+
+        assert result is not None
+        assert "testarch" in result.name
+
+
+class TestEstimateTokensAC2:
+    """Test AC2: estimate_tokens() for token estimation.
+
+    This function provides a simple heuristic (~4 chars/token) for estimating
+    token counts, moved from dev_story.py and code_review.py to shared_utils.
+    """
+
+    def test_estimate_tokens_simple_content(self) -> None:
+        """Estimates tokens for simple content."""
+        from bmad_assist.compiler.shared_utils import estimate_tokens
+
+        # 40 characters / 4 = 10 tokens
+        content = "a" * 40
+        result = estimate_tokens(content)
+        assert result == 10
+
+    def test_estimate_tokens_empty_string(self) -> None:
+        """Returns 0 for empty content."""
+        from bmad_assist.compiler.shared_utils import estimate_tokens
+
+        result = estimate_tokens("")
+        assert result == 0
+
+    def test_estimate_tokens_short_content(self) -> None:
+        """Handles content shorter than 4 characters."""
+        from bmad_assist.compiler.shared_utils import estimate_tokens
+
+        # 3 chars / 4 = 0 tokens (integer division)
+        result = estimate_tokens("abc")
+        assert result == 0
+
+        # 4 chars / 4 = 1 token
+        result = estimate_tokens("abcd")
+        assert result == 1
+
+    def test_estimate_tokens_realistic_code(self) -> None:
+        """Estimates tokens for realistic code content."""
+        from bmad_assist.compiler.shared_utils import estimate_tokens
+
+        code = '''def hello_world():
+    """Say hello to the world."""
+    print("Hello, World!")
+    return True
+'''
+        result = estimate_tokens(code)
+        # ~100 chars / 4 = ~25 tokens
+        assert result > 20
+        assert result < 40
+
+    def test_estimate_tokens_multiline(self) -> None:
+        """Counts all characters including newlines."""
+        from bmad_assist.compiler.shared_utils import estimate_tokens
+
+        # Each line is 10 chars + newline = 11 chars
+        # 5 lines = 55 chars / 4 = 13 tokens
+        content = "0123456789\n" * 5
+        result = estimate_tokens(content)
+        assert result == 13  # 55 / 4 = 13 (integer division)

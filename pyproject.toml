@@ -1,0 +1,88 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bmad-assist"
+version = "0.4.0"
+description = "CLI tool for automating BMAD methodology development loop"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "Pawel", email = "pawel@wizjonarium.pl"}
+]
+dependencies = [
+    "typer[all]>=0.9.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "python-frontmatter>=1.0.0",
+    "jinja2>=3.1.0",
+    "python-dotenv>=1.0.0",
+    "claude-agent-sdk>=0.1.0",
+    "prompt_toolkit>=3.0.0",
+    "textstat>=0.7.3",
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+comments = [
+    "ruamel.yaml>=0.18.0,<1.0.0",  # YAML comment preservation for Story 20.8
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-httpx>=0.30.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+    "types-PyYAML>=6.0.0",
+    "ruamel.yaml>=0.18.0,<1.0.0",  # Include for testing comment preservation
+]
+
+[project.scripts]
+bmad-assist = "bmad_assist.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "D", "UP", "B", "C4", "SIM"]
+ignore = ["D100", "D104", "D203", "D213"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+# Default: verbose for local dev
+addopts = "-v --tb=short --ignore=tests/fixtures"
+# LLM-optimized (token-saving): pytest -q --tb=line --no-header
+markers = [
+    "real_debug_logger: mark test to use real DebugJsonLogger instead of mock",
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio>=1.3.0",
+    "pytest-httpx>=0.36.0",
+]

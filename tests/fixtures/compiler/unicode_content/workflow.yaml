@@ -1,0 +1,7 @@
+name: unicode-workflow
+description: "Workflow with Unicode characters"
+user_name: "Paweł"
+greeting: "日本語テスト"
+german: "Schöne Grüße"
+emoji: "Test emoji support"
+instructions: "{installed_path}/instructions.xml"

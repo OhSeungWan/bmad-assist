@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workflow>
+  <step n="1" goal="Schöne Grüße senden">
+    <action>Process Unicode: 日本語</action>
+    <action>Handle Polish: ąęćłńóśźż ĄĘĆŁŃÓŚŹŻ</action>
+  </step>
+  <step n="2" goal="Emoji test">
+    <action>Verify special chars preserved</action>
+  </step>
+</workflow>

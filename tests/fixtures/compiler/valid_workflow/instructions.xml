@@ -1,0 +1,13 @@
+<workflow>
+  <critical>This is a test workflow</critical>
+  <step n="1" goal="Test step one">
+    <action>Perform first action</action>
+    <check if="condition is met">
+      <action>Perform conditional action</action>
+    </check>
+  </step>
+  <step n="2" goal="Test step two">
+    <action>Perform second action</action>
+    <template-output file="{default_output_file}">section_name</template-output>
+  </step>
+</workflow>

@@ -1,0 +1,202 @@
+                 @keydown.escape.window="if (comparisonView.open && !contextMenu.show) closeComparison()"
+                 class="absolute inset-0 bg-card z-30 flex flex-col overflow-hidden"
+                 data-testid="comparison-view-modal">
+                <!-- Header -->
+                <header class="flex items-center justify-between p-4 border-b border-border bg-card">
+                    <div class="flex items-center gap-3">
+                        <button @click="closeComparison()" class="btn-ghost p-1" title="Back to list">
+                            <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                        </button>
+                        <h2 class="text-xl font-semibold">Run Comparison</h2>
+                        <span class="text-sm text-muted-foreground"
+                              x-text="`Comparing ${comparisonView.runIds.length} runs`"></span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <!-- Export button -->
+                        <button class="btn-outline"
+                                @click="exportComparison()"
+                                :disabled="comparisonView.exporting || !comparisonView.report"
+                                data-testid="export-comparison">
+                            <i data-lucide="download" class="w-4 h-4" :class="{'animate-spin': comparisonView.exporting}"></i>
+                            Export MD
+                        </button>
+                        <button @click="closeComparison()" class="btn-ghost p-2" data-testid="close-comparison">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </header>
+
+                <!-- Content -->
+                <div class="flex-1 overflow-auto p-4">
+                    <!-- Loading State -->
+                    <div x-show="comparisonView.loading" class="flex items-center justify-center h-32">
+                        <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-muted-foreground"></i>
+                    </div>
+
+                    <!-- Error State -->
+                    <div x-show="comparisonView.error && !comparisonView.loading"
+                         class="bg-destructive/10 text-destructive p-4 rounded-lg flex items-center gap-2">
+                        <i data-lucide="alert-circle" class="w-5 h-5"></i>
+                        <span x-text="comparisonView.error"></span>
+                    </div>
+
+                    <!-- Comparison Content -->
+                    <template x-if="comparisonView.report && !comparisonView.loading">
+                        <div class="space-y-6">
+                            <!-- Summary -->
+                            <div class="bg-card border border-border rounded-lg p-4">
+                                <h3 class="text-lg font-semibold mb-3">Summary</h3>
+                                <p class="text-muted-foreground" x-text="comparisonView.report.summary"></p>
+                            </div>
+
+                            <!-- Configuration Diff Table (AC4) -->
+                            <div class="bg-card border border-border rounded-lg p-4">
+                                <h3 class="text-lg font-semibold mb-3">Configuration Differences</h3>
+                                <template x-if="comparisonView.report.config_diff">
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full text-sm">
+                                            <thead>
+                                                <tr class="border-b border-border">
+                                                    <th class="px-3 py-2 text-left sticky left-0 bg-card z-10">Axis</th>
+                                                    <template x-for="runId in comparisonView.report.run_ids" :key="runId">
+                                                        <th class="px-3 py-2 text-left font-mono text-xs" x-text="runId"></th>
+                                                    </template>
+                                                    <th class="px-3 py-2 text-left">Same?</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <template x-for="axis in ['fixture', 'config', 'patch_set', 'loop']" :key="axis">
+                                                    <tr class="border-b border-border hover:bg-muted/30">
+                                                        <td class="px-3 py-2 font-medium sticky left-0 bg-card z-10" x-text="getAxisDisplayName(axis)"></td>
+                                                        <template x-for="runId in comparisonView.report.run_ids" :key="runId">
+                                                            <td class="px-3 py-2 font-mono text-xs"
+                                                                :class="{'font-bold text-accent': !comparisonView.report.config_diff[axis]?.is_same}"
+                                                                x-text="comparisonView.report.config_diff[axis]?.values[runId] || '-'"></td>
+                                                        </template>
+                                                        <td class="px-3 py-2">
+                                                            <span x-show="comparisonView.report.config_diff[axis]?.is_same" class="text-green-600">✓</span>
+                                                            <span x-show="!comparisonView.report.config_diff[axis]?.is_same" class="font-bold text-amber-600">DIFFERENT</span>
+                                                        </td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </template>
+                                <template x-if="!comparisonView.report.config_diff">
+                                    <p class="text-muted-foreground text-center py-4">All configurations are identical</p>
+                                </template>
+                            </div>
+
+                            <!-- Results Comparison Table (AC5) -->
+                            <div class="bg-card border border-border rounded-lg p-4">
+                                <h3 class="text-lg font-semibold mb-3">Results Comparison</h3>
+                                <template x-if="comparisonView.report.runs && comparisonView.report.runs.length > 0">
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full text-sm">
+                                            <thead>
+                                                <tr class="border-b border-border">
+                                                    <th class="px-3 py-2 text-left">Run ID</th>
+                                                    <th class="px-3 py-2 text-left">Status</th>
+                                                    <th class="px-3 py-2 text-right">Duration</th>
+                                                    <th class="px-3 py-2 text-right">Stories</th>
+                                                    <th class="px-3 py-2 text-right">Completed</th>
+                                                    <th class="px-3 py-2 text-right">Failed</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <template x-for="run in comparisonView.report.runs" :key="run.run_id">
+                                                    <tr class="border-b border-border hover:bg-muted/30">
+                                                        <td class="px-3 py-2 font-mono text-xs" x-text="run.run_id"></td>
+                                                        <td class="px-3 py-2">
+                                                            <span class="badge" :class="getExperimentStatusClass(run.status)" x-text="run.status"></span>
+                                                        </td>
+                                                        <td class="px-3 py-2 text-right font-mono" x-text="run.duration_formatted || '-'"></td>
+                                                        <td class="px-3 py-2 text-right" x-text="run.stories_attempted || '-'"></td>
+                                                        <td class="px-3 py-2 text-right text-accent" x-text="run.stories_completed || '-'"></td>
+                                                        <td class="px-3 py-2 text-right" :class="run.stories_failed > 0 ? 'text-destructive' : ''"
+                                                            x-text="run.stories_failed ?? '-'"></td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- Metrics Comparison Table (AC5) -->
+                            <div class="bg-card border border-border rounded-lg p-4">
+                                <h3 class="text-lg font-semibold mb-3">Metrics Comparison</h3>
+                                <template x-if="comparisonView.report.metrics && comparisonView.report.metrics.length > 0">
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full text-sm">
+                                            <thead>
+                                                <tr class="border-b border-border">
+                                                    <th class="px-3 py-2 text-left sticky left-0 bg-card z-10">Metric</th>
+                                                    <template x-for="runId in comparisonView.report.run_ids" :key="runId">
+                                                        <th class="px-3 py-2 text-right font-mono text-xs" x-text="runId"></th>
+                                                    </template>
+                                                    <th class="px-3 py-2 text-right">Delta</th>
+                                                    <th class="px-3 py-2 text-center">Winner</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <template x-for="metric in comparisonView.report.metrics" :key="metric.metric_name">
+                                                    <tr class="border-b border-border hover:bg-muted/30">
+                                                        <td class="px-3 py-2 font-medium sticky left-0 bg-card z-10" x-text="getMetricDisplayName(metric.metric_name)"></td>
+                                                        <template x-for="runId in comparisonView.report.run_ids" :key="runId">
+                                                            <td class="px-3 py-2 text-right font-mono" x-text="formatMetricValue(metric.metric_name, metric.values[runId])"></td>
+                                                        </template>
+                                                        <td class="px-3 py-2 text-right font-mono"
+                                                            :class="getDeltaClass(metric)"
+                                                            x-text="formatDelta(metric.deltas[comparisonView.report.run_ids[1]])"></td>
+                                                        <td class="px-3 py-2 text-center">
+                                                            <span x-show="metric.winner" x-text="'🏆 ' + metric.winner" class="text-xs font-mono"></span>
+                                                            <span x-show="!metric.winner && Object.values(metric.values).some(v => v !== null)" class="text-muted-foreground">TIE</span>
+                                                            <span x-show="!metric.winner && Object.values(metric.values).every(v => v === null)" class="text-muted-foreground">N/A</span>
+                                                        </td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </template>
+                                <template x-if="!comparisonView.report.metrics || comparisonView.report.metrics.length === 0">
+                                    <p class="text-muted-foreground text-center py-4">No metrics data available</p>
+                                </template>
+                            </div>
+
+                            <!-- Cost Visualization Bar Chart (AC6) -->
+                            <div class="bg-card border border-border rounded-lg p-4">
+                                <h3 class="text-lg font-semibold mb-3">Cost Comparison</h3>
+                                <template x-if="!hasNoCostData()">
+                                    <div class="space-y-3">
+                                        <template x-for="runId in comparisonView.report.run_ids" :key="runId">
+                                            <div class="flex items-center gap-3">
+                                                <span class="font-mono text-xs w-40 truncate" x-text="runId"></span>
+                                                <div class="flex-1 bg-muted rounded h-6 overflow-hidden">
+                                                    <div class="bg-primary h-full transition-all duration-300"
+                                                         :style="`width: ${getCostBarWidth(runId)}%`"></div>
+                                                </div>
+                                                <span class="font-mono text-sm w-20 text-right" x-text="formatCost(getCostValue(runId))"></span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                                <template x-if="hasNoCostData()">
+                                    <p class="text-muted-foreground text-center py-4">No cost data available for comparison</p>
+                                </template>
+                            </div>
+
+                            <!-- Conclusion (AC7) -->
+                            <template x-if="comparisonView.report.conclusion">
+                                <div class="bg-card border border-border rounded-lg p-4">
+                                    <h3 class="text-lg font-semibold mb-3">Conclusion</h3>
+                                    <p class="text-muted-foreground" x-text="comparisonView.report.conclusion"></p>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </div>
+

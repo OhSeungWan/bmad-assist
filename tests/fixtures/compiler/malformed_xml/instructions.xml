@@ -1,0 +1,6 @@
+<workflow>
+  <step n="1">
+    <action>This tag is not closed properly
+    <unclosed>Missing closing tag
+  </step>
+</workflow>

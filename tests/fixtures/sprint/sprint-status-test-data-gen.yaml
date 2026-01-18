@@ -1,0 +1,28 @@
+# Sprint status - Test Data Generator Library
+epics: [1, 2, 3, 4, 5]
+current_epic: 5
+current_story: 3
+phase: implementation
+
+# Story development status
+development_status:
+  1-1-create-schema-definition-dsl: review
+  1-2-implement-base-generator-class: review
+  1-3-add-seedable-random-state: review
+  1-4-create-record-builder: review
+  1-5-add-batch-generation: review
+  2-1-implement-string-providers: review
+  2-2-implement-number-providers: review
+  2-3-implement-date-time-providers: review
+  2-4-implement-choice-provider: review
+  2-5-implement-address-provider: review
+  3-1-add-yaml-schema-parser: review
+  3-2-implement-field-constraints: review
+  3-3-add-nullable-field-support: review
+  3-4-implement-unique-value-generation: review
+  4-1-add-foreign-key-reference-support: review
+  4-2-implement-one-to-many-generation: review
+  4-3-add-circular-reference-handling: review
+  5-1-implement-json-output: review
+  5-2-implement-csv-output: review
+  5-3-implement-sql-insert-output: review

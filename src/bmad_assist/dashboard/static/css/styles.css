@@ -1,0 +1,92 @@
+/* bmad-dashboard custom styles */
+
+/* Scrollbar styling - uses CSS variables */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--card);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--muted);
+}
+
+/* Terminal output styling */
+#terminal-output {
+    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+}
+
+#terminal-output a {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+#terminal-output a:hover {
+    color: var(--ring);
+}
+
+/* Clickable file paths */
+.file-link {
+    color: var(--primary);
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.file-link:hover {
+    color: var(--ring);
+}
+
+/* Provider colors - semantic names for LLM providers */
+.provider-opus { color: oklch(0.6959 0.1491 300); }
+.provider-gemini { color: var(--accent); }
+.provider-glm { color: var(--chart-4); }
+.provider-claude { color: var(--bp-warning); }
+.provider-bmad { color: var(--muted-foreground); }
+
+/* Context menu animations */
+[x-cloak] { display: none !important; }
+
+/* Dropdown menu hover - darker bg, white text */
+.dropdown-menu [role="menuitem"]:hover {
+    background-color: var(--primary) !important;
+    color: #fff !important;
+}
+/* Lucide replaces <i> with <svg>, so target svg + use stroke for icon color */
+.dropdown-menu [role="menuitem"]:hover svg {
+    color: #fff !important;
+    stroke: #fff !important;
+}
+/* Keep destructive items red on hover */
+.dropdown-menu [role="menuitem"].text-destructive:hover {
+    background-color: var(--destructive) !important;
+    color: #fff !important;
+}
+.dropdown-menu [role="menuitem"].text-destructive:hover svg {
+    color: #fff !important;
+    stroke: #fff !important;
+}
+
+/* Focus states */
+button:focus,
+input:focus {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+/* Busy modal overlay */
+.modal-overlay {
+    backdrop-filter: blur(4px);
+}
+
+/* Transition utilities */
+.transition-height {
+    transition: height 0.2s ease-in-out;
+}

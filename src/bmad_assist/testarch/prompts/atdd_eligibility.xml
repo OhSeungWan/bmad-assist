@@ -1,0 +1,80 @@
+<workflow>
+  <mission>Assess story ATDD eligibility by analyzing story content for UI involvement, API involvement, and skip indicators. Return raw scores for hybrid detection.</mission>
+
+  <context>
+    <input name="story_content">{story_content}</input>
+    <purpose>Enable hybrid eligibility detector to combine LLM scoring with keyword scoring for accurate ATDD decisions</purpose>
+  </context>
+
+  <instructions>
+    <step n="1" goal="Assess UI involvement">
+      <action>Analyze the story content for UI-related elements</action>
+      <action>Look for keywords indicating UI work:
+        - component, view, button, form, modal, dialog
+        - page, screen, layout, CSS, style, render
+        - display, UI, user interface, frontend
+        - click, hover, focus, input, select
+      </action>
+      <action>Assign ui_score between 0.0 and 1.0:
+        - 0.0: No UI involvement detected
+        - 0.3-0.5: Minor UI references or generic display logic
+        - 0.6-0.8: Clear UI components or user-facing changes
+        - 0.9-1.0: Primary focus is UI implementation
+      </action>
+    </step>
+
+    <step n="2" goal="Assess API involvement">
+      <action>Analyze the story content for API-related elements</action>
+      <action>Look for keywords indicating API work:
+        - endpoint, REST, request, response, HTTP
+        - payload, JSON, validation, contract, API
+        - GET, POST, PUT, DELETE, PATCH
+        - authentication, authorization, header
+      </action>
+      <action>Assign api_score between 0.0 and 1.0:
+        - 0.0: No API involvement detected
+        - 0.3-0.5: Minor API references or data handling
+        - 0.6-0.8: Clear API endpoints or contract changes
+        - 0.9-1.0: Primary focus is API implementation
+      </action>
+    </step>
+
+    <step n="3" goal="Assess skip indicators">
+      <action>Analyze the story content for indicators that ATDD should be skipped</action>
+      <action>Look for keywords suggesting skip:
+        - config, configuration, documentation, doc
+        - refactor, rename, cleanup, internal
+        - schema only, no tests, technical debt
+        - infrastructure, devops, deployment
+      </action>
+      <action>Assign skip_score between 0.0 and 1.0:
+        - 0.0: No skip indicators, story is testable
+        - 0.3-0.5: Minor internal/config work mixed with features
+        - 0.6-0.8: Primarily config/refactor/doc work
+        - 0.9-1.0: Pure config/doc/internal with no testable behavior
+      </action>
+    </step>
+
+    <step n="4" goal="Generate reasoning">
+      <action>Summarize your assessment in 1-2 sentences</action>
+      <action>Explain why ATDD is or is not recommended based on the scores</action>
+      <action>Consider: High UI or API scores suggest ATDD is beneficial; high skip scores suggest ATDD may not add value</action>
+      <action>Do NOT calculate final eligibility - the hybrid detector will apply weights and thresholds</action>
+    </step>
+  </instructions>
+
+  <output format="json">
+    <critical>Output ONLY valid JSON matching the schema below</critical>
+    <critical>Do NOT include markdown code blocks, explanations, or thinking. Output ONLY the JSON object.</critical>
+    <critical>All scores must be between 0.0 and 1.0 inclusive</critical>
+    <critical>Do NOT include an eligibility field - that is calculated by the hybrid detector</critical>
+    <schema>
+{{
+  "ui_score": 0.0,
+  "api_score": 0.0,
+  "skip_score": 0.0,
+  "reasoning": "string"
+}}
+    </schema>
+  </output>
+</workflow>

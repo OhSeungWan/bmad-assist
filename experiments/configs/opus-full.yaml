@@ -1,0 +1,36 @@
+name: opus-full
+description: "Full multi-LLM validation with Claude opus master and multi validators (Opus, GLM 4.7, GPT 5.2, Gemini 3 Pro, Gemini 3 Flash)"
+
+providers:
+  master:
+    provider: claude-subprocess
+    model: opus
+
+  multi:
+    - provider: claude-subprocess
+      model: sonnet
+      model_name: glm-4-7
+      settings: ~/.claude/glm.json
+
+    - provider: claude-subprocess
+      model: sonnet
+      model_name: glm-4-7
+      settings: ~/.claude/glm.json
+
+    - provider: codex
+      model: gpt-5.2
+
+    - provider: codex
+      model: gpt-5.2
+
+    - provider: gemini
+      model: gemini-3-pro-preview
+
+    - provider: gemini
+      model: gemini-3-pro-preview
+
+    - provider: gemini
+      model: gemini-3-flash-preview
+
+    - provider: gemini
+      model: gemini-3-flash-preview

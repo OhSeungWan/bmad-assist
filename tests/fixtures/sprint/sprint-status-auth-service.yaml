@@ -1,0 +1,5 @@
+# Sprint status - will be populated after epics are generated
+epics: []
+current_epic: 1
+current_story: 1
+phase: documentation

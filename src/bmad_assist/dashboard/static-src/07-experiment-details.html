@@ -1,0 +1,254 @@
+                            Close
+                        </button>
+                    </footer>
+                </div>
+            </div>
+            <!-- End of Fixture Details Modal -->
+
+            </div>
+            <!-- End of Experiments Panel (opened in 06-experiments-panel.html) -->
+
+            <!-- Experiment Details Panel (Story 19.2) -->
+            <div x-show="experimentDetails.open"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 @keydown.escape.window="if (experimentDetails.open && !contextMenu.show) closeExperimentDetails()"
+                 class="absolute inset-0 bg-card z-30 flex flex-col overflow-hidden"
+                 data-testid="experiment-details-panel">
+                <!-- Header -->
+                <header class="flex items-center justify-between p-4 border-b border-border bg-card">
+                    <div class="flex items-center gap-3">
+                        <button @click="closeExperimentDetails()" class="btn-ghost p-1" title="Back to list">
+                            <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                        </button>
+                        <h2 class="text-xl font-semibold">Run Details</h2>
+                        <span class="font-mono text-sm text-muted-foreground" x-text="experimentDetails.runId"></span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button class="btn-outline text-sm"
+                                @click="closeExperimentDetails(); fetchComparison([experimentDetails.runId])"
+                                title="Compare this run with others"
+                                data-testid="compare-run-btn">
+                            <i data-lucide="diff" class="w-4 h-4 mr-1"></i>
+                            Compare
+                        </button>
+                        <button class="btn-ghost p-2"
+                                @click="refreshExperimentDetails()"
+                                :disabled="experimentDetails.loading"
+                                title="Refresh"
+                                data-testid="refresh-details">
+                            <i data-lucide="refresh-cw" class="w-4 h-4" :class="{'animate-spin': experimentDetails.loading}"></i>
+                        </button>
+                        <button @click="closeExperimentDetails()" class="btn-ghost p-2" data-testid="close-details">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </header>
+
+                <!-- Content -->
+                <div class="flex-1 overflow-auto p-4">
+                    <!-- Loading State -->
+                    <div x-show="experimentDetails.loading" class="flex items-center justify-center h-32">
+                        <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-muted-foreground"></i>
+                    </div>
+
+                    <!-- Error State -->
+                    <div x-show="experimentDetails.error && !experimentDetails.loading"
+                         class="bg-destructive/10 text-destructive p-4 rounded-lg">
+                        <span x-text="experimentDetails.error"></span>
+                    </div>
+
+                    <!-- Details Content -->
+                    <template x-if="experimentDetails.data && !experimentDetails.loading">
+                        <div class="space-y-6">
+                            <!-- Status & Timing Card -->
+                            <div class="bg-card border border-border rounded-lg p-4">
+                                <h3 class="text-lg font-semibold mb-3">Overview</h3>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div>
+                                        <div class="text-sm text-muted-foreground">Status</div>
+                                        <span class="badge" :class="getExperimentStatusClass(experimentDetails.data.status)"
+                                              x-text="experimentDetails.data.status"></span>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm text-muted-foreground">Duration</div>
+                                        <div class="font-mono" x-text="experimentDetails.data.duration_formatted || '-'"></div>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm text-muted-foreground">Started</div>
+                                        <div class="text-sm" x-text="formatDateTime(experimentDetails.data.started)"></div>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm text-muted-foreground">Completed</div>
+                                        <div class="text-sm" x-text="experimentDetails.data.completed ? formatDateTime(experimentDetails.data.completed) : '-'"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Input Configuration Card -->
+                            <div class="bg-card border border-border rounded-lg p-4">
+                                <h3 class="text-lg font-semibold mb-3">Input Configuration</h3>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div>
+                                        <div class="text-sm text-muted-foreground">Fixture</div>
+                                        <div class="font-mono text-sm" x-text="experimentDetails.data.input.fixture"></div>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm text-muted-foreground">Config</div>
+                                        <div class="font-mono text-sm" x-text="experimentDetails.data.input.config"></div>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm text-muted-foreground">Patch Set</div>
+                                        <div class="font-mono text-sm" x-text="experimentDetails.data.input.patch_set || 'baseline'"></div>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm text-muted-foreground">Loop</div>
+                                        <div class="font-mono text-sm" x-text="experimentDetails.data.input.loop || 'standard'"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Results Card (if available) -->
+                            <template x-if="experimentDetails.data.results">
+                                <div class="bg-card border border-border rounded-lg p-4">
+                                    <h3 class="text-lg font-semibold mb-3">Results</h3>
+                                    <div class="grid grid-cols-3 md:grid-cols-5 gap-4">
+                                        <div>
+                                            <div class="text-sm text-muted-foreground">Stories Attempted</div>
+                                            <div class="text-2xl font-bold" x-text="experimentDetails.data.results.stories_attempted"></div>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm text-muted-foreground">Completed</div>
+                                            <div class="text-2xl font-bold text-accent" x-text="experimentDetails.data.results.stories_completed"></div>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm text-muted-foreground">Failed</div>
+                                            <div class="text-2xl font-bold" :class="experimentDetails.data.results.stories_failed > 0 ? 'text-destructive' : 'text-muted-foreground'"
+                                                 x-text="experimentDetails.data.results.stories_failed"></div>
+                                        </div>
+                                        <template x-if="experimentDetails.data.results.validation_passed !== undefined">
+                                            <div>
+                                                <div class="text-sm text-muted-foreground">Validation Passed</div>
+                                                <div class="text-2xl font-bold text-accent" x-text="experimentDetails.data.results.validation_passed"></div>
+                                            </div>
+                                        </template>
+                                        <template x-if="experimentDetails.data.results.code_review_passed !== undefined">
+                                            <div>
+                                                <div class="text-sm text-muted-foreground">Code Review Passed</div>
+                                                <div class="text-2xl font-bold text-accent" x-text="experimentDetails.data.results.code_review_passed"></div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Metrics Card (if available) -->
+                            <template x-if="experimentDetails.data.metrics">
+                                <div class="bg-card border border-border rounded-lg p-4">
+                                    <h3 class="text-lg font-semibold mb-3">Metrics</h3>
+                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <template x-if="experimentDetails.data.metrics.total_tokens !== undefined">
+                                            <div>
+                                                <div class="text-sm text-muted-foreground">Total Tokens</div>
+                                                <div class="font-mono" x-text="experimentDetails.data.metrics.total_tokens?.toLocaleString() || '-'"></div>
+                                            </div>
+                                        </template>
+                                        <template x-if="experimentDetails.data.metrics.total_cost !== undefined">
+                                            <div>
+                                                <div class="text-sm text-muted-foreground">Total Cost</div>
+                                                <div class="font-mono" x-text="experimentDetails.data.metrics.total_cost !== null ? '$' + experimentDetails.data.metrics.total_cost.toFixed(4) : '-'"></div>
+                                            </div>
+                                        </template>
+                                        <template x-if="experimentDetails.data.metrics.avg_phase_duration !== undefined">
+                                            <div>
+                                                <div class="text-sm text-muted-foreground">Avg Phase Duration</div>
+                                                <div class="font-mono" x-text="formatDuration(experimentDetails.data.metrics.avg_phase_duration)"></div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Phases Table -->
+                            <div class="bg-card border border-border rounded-lg p-4">
+                                <h3 class="text-lg font-semibold mb-3">Phases</h3>
+                                <template x-if="experimentDetails.data.phases && experimentDetails.data.phases.length > 0">
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full text-sm">
+                                            <thead>
+                                                <tr class="border-b border-border">
+                                                    <th class="px-3 py-2 text-left">Phase</th>
+                                                    <th class="px-3 py-2 text-left">Story</th>
+                                                    <th class="px-3 py-2 text-left">Status</th>
+                                                    <th class="px-3 py-2 text-left">Duration</th>
+                                                    <th class="px-3 py-2 text-left">Tokens</th>
+                                                    <th class="px-3 py-2 text-left">Cost</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <template x-for="phase in experimentDetails.data.phases" :key="phase.phase + (phase.story || '')">
+                                                    <tr class="border-b border-border hover:bg-muted/30">
+                                                        <td class="px-3 py-2 font-mono" x-text="phase.phase"></td>
+                                                        <td class="px-3 py-2" x-text="phase.story || '-'"></td>
+                                                        <td class="px-3 py-2">
+                                                            <span class="badge" :class="getPhaseStatusClass(phase.status)" x-text="phase.status"></span>
+                                                        </td>
+                                                        <td class="px-3 py-2 font-mono" x-text="phase.duration_formatted"></td>
+                                                        <td class="px-3 py-2 font-mono" x-text="phase.tokens?.toLocaleString() || '-'"></td>
+                                                        <td class="px-3 py-2 font-mono" x-text="phase.cost !== null && phase.cost !== undefined ? '$' + phase.cost.toFixed(4) : '-'"></td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </template>
+                                <template x-if="!experimentDetails.data.phases || experimentDetails.data.phases.length === 0">
+                                    <div class="text-muted-foreground text-center py-4">No phase data available</div>
+                                </template>
+                            </div>
+
+                            <!-- Resolved Configuration (Collapsible) -->
+                            <details class="bg-card border border-border rounded-lg">
+                                <summary class="p-4 cursor-pointer hover:bg-muted/30 font-semibold">
+                                    Resolved Configuration
+                                </summary>
+                                <div class="p-4 pt-0 space-y-4">
+                                    <template x-if="experimentDetails.data.resolved">
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <h4 class="text-sm font-semibold text-muted-foreground mb-2">Fixture</h4>
+                                                <pre class="text-xs bg-muted p-2 rounded overflow-x-auto" x-text="JSON.stringify(experimentDetails.data.resolved.fixture, null, 2)"></pre>
+                                            </div>
+                                            <div>
+                                                <h4 class="text-sm font-semibold text-muted-foreground mb-2">Config</h4>
+                                                <pre class="text-xs bg-muted p-2 rounded overflow-x-auto" x-text="JSON.stringify(experimentDetails.data.resolved.config, null, 2)"></pre>
+                                            </div>
+                                            <div>
+                                                <h4 class="text-sm font-semibold text-muted-foreground mb-2">Patch Set</h4>
+                                                <pre class="text-xs bg-muted p-2 rounded overflow-x-auto" x-text="JSON.stringify(experimentDetails.data.resolved.patch_set, null, 2)"></pre>
+                                            </div>
+                                            <div>
+                                                <h4 class="text-sm font-semibold text-muted-foreground mb-2">Loop</h4>
+                                                <pre class="text-xs bg-muted p-2 rounded overflow-x-auto" x-text="JSON.stringify(experimentDetails.data.resolved.loop, null, 2)"></pre>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </details>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Comparison View Modal (Story 19.4) -->
+            <div x-show="comparisonView.open"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"

@@ -1,0 +1,5 @@
+<workflow>
+  <step n="1" goal="Minimal step">
+    <action>Do something</action>
+  </step>
+</workflow>

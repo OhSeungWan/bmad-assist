@@ -1,0 +1,16 @@
+name: glm-gpt
+description: "Fast multi-LLM validation with Claude GLM 4.7 master and multi validators (GLM 4.7, GPT 5.2)"
+
+providers:
+  master:
+    provider: claude-subprocess
+    model: opus
+    model_name: glm-4-7
+    settings: ~/.claude/glm.json
+
+  multi:
+    - provider: codex
+      model: gpt-5.2
+
+    - provider: codex
+      model: gpt-5.2

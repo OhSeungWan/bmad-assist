@@ -1,0 +1,32 @@
+# Sample sprint-status.yaml for testing story title extraction
+
+sprint:
+  name: "Sprint 1"
+  start_date: "2025-12-01"
+  end_date: "2025-12-15"
+
+development_status:
+  # Epic 10 stories
+  10-1-compiler-core-architecture: done
+  10-2-workflow-file-parsing: done
+  10-3-variable-resolution-engine: in-progress
+  10-4-file-discovery-engine: backlog
+  10-5-instruction-filtering: backlog
+
+  # Epic 11 stories
+  11-1-guardian-setup: backlog
+  11-2-anomaly-detection: backlog
+
+  # Epic entries (should be skipped in story lookup)
+  epic-10: in-progress
+  epic-11: backlog
+  epic-10-retrospective: backlog
+
+# Status definitions
+status_definitions:
+  backlog: "Not started"
+  drafted: "Story file created"
+  ready-for-dev: "Ready for implementation"
+  in-progress: "Being implemented"
+  review: "Ready for code review"
+  done: "Completed"

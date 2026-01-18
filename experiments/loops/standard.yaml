@@ -1,0 +1,23 @@
+# NOTE: This template defines STORY-LEVEL phases only.
+# Epic-level phases (retrospective, QA) are controlled by:
+#   - PHASE_ORDER in core/state.py (defines full sequence)
+#   - get_next_phase() in core/loop/guardian.py (skips disabled phases)
+# Retrospective: ALWAYS runs after last story completes
+# QA phases: ONLY when --qa flag is set (BMAD_QA_ENABLED=1)
+
+name: standard
+description: "Full development loop with validation and synthesis"
+
+sequence:
+  - workflow: create-story
+    required: true
+  - workflow: validate-story
+    required: true
+  - workflow: validate-story-synthesis
+    required: true
+  - workflow: dev-story
+    required: true
+  - workflow: code-review
+    required: true
+  - workflow: code-review-synthesis
+    required: true

@@ -1,0 +1,8 @@
+name: opus-solo
+description: "Opus-only baseline for quality benchmarks"
+
+providers:
+  master:
+    provider: claude-subprocess
+    model: opus
+  multi: []

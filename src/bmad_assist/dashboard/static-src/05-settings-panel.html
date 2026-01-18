@@ -1,0 +1,1018 @@
+
+            <!-- Settings Panel (Story 17.4) -->
+            <div x-show="settingsView.open"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 @keydown.escape.window="handleSettingsEscape($event)"
+                 class="flex-1 flex flex-col bg-background overflow-hidden"
+                 data-testid="settings-panel">
+
+                <!-- Settings Header -->
+                <div class="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+                    <div class="flex items-center gap-4">
+                        <h2 class="text-lg font-semibold flex items-center gap-2">
+                            <i data-lucide="settings" class="w-5 h-5"></i>
+                            Settings
+                        </h2>
+
+                        <!-- Scope Toggle (AC2) -->
+                        <div class="flex items-center gap-1 bg-muted rounded-lg p-1" data-testid="scope-toggle">
+                            <button @click="toggleScope('project')"
+                                    :class="settingsView.scope === 'project' ? 'bg-background shadow-sm' : 'hover:bg-background/50'"
+                                    class="px-3 py-1 rounded text-sm font-medium transition-colors"
+                                    data-testid="scope-project">
+                                Project
+                            </button>
+                            <button @click="toggleScope('global')"
+                                    :class="settingsView.scope === 'global' ? 'bg-background shadow-sm' : 'hover:bg-background/50'"
+                                    class="px-3 py-1 rounded text-sm font-medium transition-colors"
+                                    data-testid="scope-global">
+                                Global
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <!-- Export Button with Dropdown (Story 17.12 AC2) -->
+                        <div class="relative" @click.away="exportView.dropdownOpen = false">
+                            <button @click="exportView.dropdownOpen = !exportView.dropdownOpen"
+                                    :disabled="exportView.loading"
+                                    class="btn-outline flex items-center gap-1"
+                                    data-testid="export-button">
+                                <template x-if="exportView.loading">
+                                    <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+                                </template>
+                                <template x-if="!exportView.loading">
+                                    <i data-lucide="download" class="w-4 h-4"></i>
+                                </template>
+                                Export
+                                <i data-lucide="chevron-down" class="w-3 h-3"></i>
+                            </button>
+                            <!-- Export Dropdown Menu -->
+                            <div x-show="exportView.dropdownOpen"
+                                 x-transition:enter="transition ease-out duration-100"
+                                 x-transition:enter-start="opacity-0 scale-95"
+                                 x-transition:enter-end="opacity-100 scale-100"
+                                 class="absolute right-0 mt-1 w-48 bg-card border border-border rounded shadow-lg z-50"
+                                 data-testid="export-dropdown">
+                                <button @click="exportConfig('merged')"
+                                        class="w-full px-4 py-2 text-left text-sm hover:bg-muted/50 flex items-center gap-2"
+                                        data-testid="export-merged">
+                                    <i data-lucide="layers" class="w-4 h-4"></i>
+                                    Merged (All Settings)
+                                </button>
+                                <button @click="exportConfig('global')"
+                                        class="w-full px-4 py-2 text-left text-sm hover:bg-muted/50 flex items-center gap-2"
+                                        data-testid="export-global">
+                                    <i data-lucide="globe" class="w-4 h-4"></i>
+                                    Global Only
+                                </button>
+                                <button @click="exportConfig('project')"
+                                        class="w-full px-4 py-2 text-left text-sm hover:bg-muted/50 flex items-center gap-2"
+                                        data-testid="export-project">
+                                    <i data-lucide="folder" class="w-4 h-4"></i>
+                                    Project Only
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Import Button (Story 17.12 AC5) -->
+                        <button @click="openImportFilePicker()"
+                                :disabled="importView.loading"
+                                class="btn-outline flex items-center gap-1"
+                                data-testid="import-button">
+                            <template x-if="importView.loading">
+                                <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+                            </template>
+                            <template x-if="!importView.loading">
+                                <i data-lucide="upload" class="w-4 h-4"></i>
+                            </template>
+                            Import
+                        </button>
+
+                        <!-- Apply Button (AC4) - Story 17.5: also check validation errors -->
+                        <button @click="applyConfig()"
+                                :disabled="!settingsView.hasChanges || settingsView.applying || hasValidationErrors()"
+                                :class="(settingsView.hasChanges && !hasValidationErrors()) ? 'btn' : 'btn-outline opacity-50 cursor-not-allowed'"
+                                class="flex items-center gap-2"
+                                data-testid="apply-button">
+                            <template x-if="settingsView.applying">
+                                <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+                            </template>
+                            <template x-if="!settingsView.applying">
+                                <i data-lucide="check" class="w-4 h-4"></i>
+                            </template>
+                            Apply
+                        </button>
+
+                        <!-- Close Button -->
+                        <button @click="closeSettings()"
+                                x-ref="settingsCloseBtn"
+                                class="btn-outline p-2"
+                                title="Close settings (Esc)"
+                                data-testid="settings-close-button">
+                            <i data-lucide="x" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stale Data Warning (AC8) -->
+                <div x-show="settingsView.staleData"
+                     class="px-4 py-2 bg-bp-warning/20 border-b border-bp-warning/50 flex items-center justify-between"
+                     data-testid="stale-data-warning">
+                    <div class="flex items-center gap-2 text-sm">
+                        <i data-lucide="alert-triangle" class="w-4 h-4 text-bp-warning"></i>
+                        <span>Configuration was reloaded elsewhere. Your view may be stale.</span>
+                    </div>
+                    <button @click="reloadConfigData()"
+                            class="btn-sm text-xs"
+                            data-testid="reload-config-button">
+                        <i data-lucide="refresh-cw" class="w-3 h-3"></i> Reload
+                    </button>
+                </div>
+
+                <!-- Settings Tabs (AC3, AC7 responsive) -->
+                <div class="tabs w-full px-4 py-2 border-b border-border">
+                    <nav role="tablist" aria-orientation="horizontal" class="flex flex-col sm:flex-row gap-1" data-testid="settings-tabs">
+                        <template x-for="tab in ['testing', 'benchmarking', 'providers']" :key="tab">
+                            <button type="button"
+                                    role="tab"
+                                    :aria-selected="settingsView.activeTab === tab"
+                                    :tabindex="settingsView.activeTab === tab ? 0 : -1"
+                                    @click="setSettingsTab(tab)"
+                                    @keydown.arrow-left="setSettingsTab(tab === 'testing' ? 'providers' : tab === 'benchmarking' ? 'testing' : 'benchmarking')"
+                                    @keydown.arrow-right="setSettingsTab(tab === 'testing' ? 'benchmarking' : tab === 'benchmarking' ? 'providers' : 'testing')"
+                                    :data-testid="'tab-' + tab">
+                                <span x-text="tab.charAt(0).toUpperCase() + tab.slice(1)"></span>
+                            </button>
+                        </template>
+                    </nav>
+                </div>
+
+                <!-- Settings Content -->
+                <div class="flex-1 overflow-y-auto p-4">
+                    <!-- Loading State (AC5) -->
+                    <div x-show="settingsView.loading" class="flex items-center justify-center h-full" data-testid="settings-loading">
+                        <div class="flex flex-col items-center gap-3">
+                            <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-primary"></i>
+                            <span class="text-muted-foreground">Loading configuration...</span>
+                        </div>
+                    </div>
+
+                    <!-- Error State (AC5) -->
+                    <div x-show="settingsView.error && !settingsView.loading"
+                         class="flex items-center justify-center h-full"
+                         data-testid="settings-error">
+                        <div class="flex flex-col items-center gap-3 text-center">
+                            <i data-lucide="alert-circle" class="w-8 h-8 text-destructive"></i>
+                            <span class="text-destructive" x-text="settingsView.error"></span>
+                            <button @click="retryFetchConfig()" class="btn-outline" data-testid="retry-button">
+                                <i data-lucide="refresh-cw" class="w-4 h-4"></i> Retry
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Tab Content (AC3) -->
+                    <div x-show="!settingsView.loading && !settingsView.error">
+                        <!-- Testing Tab Content (Story 17.5) -->
+                        <div x-show="settingsView.activeTab === 'testing'"
+                             data-testid="tab-content-testing">
+
+                            <!-- Playwright Section Card (AC1) (Story 17.11: Status integration) -->
+                            <div class="card p-6">
+                                <!-- Story 17.11 AC2: Playwright header with status badge and refresh button -->
+                                <h3 class="text-lg font-medium mb-4 flex items-center gap-2 flex-wrap">
+                                    <i data-lucide="flask-conical" class="w-5 h-5"></i>
+                                    Playwright
+
+                                    <!-- Story 17.11 AC2: Status Badge -->
+                                    <span :class="getPlaywrightStatusBadge().class"
+                                          class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ml-auto"
+                                          data-testid="playwright-status-badge">
+                                        <i :data-lucide="getPlaywrightStatusBadge().icon"
+                                           :class="getPlaywrightStatusBadge().icon === 'loader-2' ? 'w-3 h-3 animate-spin' : 'w-3 h-3'"></i>
+                                        <span x-text="getPlaywrightStatusBadge().text"></span>
+                                    </span>
+
+                                    <!-- Story 17.11 AC5: Refresh Button -->
+                                    <button @click="refreshPlaywrightStatus()"
+                                            :disabled="playwrightStatus.loading"
+                                            class="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                                            title="Refresh Playwright status"
+                                            data-testid="playwright-refresh-btn">
+                                        <i :data-lucide="playwrightStatus.loading ? 'loader-2' : 'refresh-cw'"
+                                           :class="playwrightStatus.loading ? 'w-4 h-4 animate-spin' : 'w-4 h-4'"></i>
+                                    </button>
+                                </h3>
+
+                                <!-- Story 17.11 AC3: Playwright Info (version and browsers) -->
+                                <template x-if="playwrightStatus.data && !playwrightStatus.error">
+                                    <div class="text-sm text-muted-foreground mb-4 space-y-1">
+                                        <div x-show="playwrightStatus.data.version">
+                                            Playwright v<span x-text="playwrightStatus.data.version"></span>
+                                        </div>
+                                        <div>
+                                            Browsers: <span x-text="getInstalledBrowsersList()" data-testid="playwright-browsers-list"></span>
+                                        </div>
+                                    </div>
+                                </template>
+
+                                <!-- Story 17.11 AC7: Error State -->
+                                <template x-if="playwrightStatus.error">
+                                    <div class="bg-destructive/10 border border-destructive/30 rounded p-3 mb-4 flex items-center justify-between"
+                                         data-testid="playwright-error-state">
+                                        <div class="flex items-center gap-2 text-sm text-destructive">
+                                            <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                                            <span x-text="playwrightStatus.error || 'Unable to check Playwright status'"></span>
+                                        </div>
+                                        <button @click="refreshPlaywrightStatus()"
+                                                :disabled="playwrightStatus.loading"
+                                                class="btn-sm text-xs"
+                                                data-testid="playwright-retry-btn">
+                                            Retry
+                                        </button>
+                                    </div>
+                                </template>
+
+                                <!-- Story 17.11 AC4: Install Commands Section -->
+                                <template x-if="playwrightStatus.data && !playwrightStatus.data.ready && playwrightStatus.data.install_commands?.length > 0">
+                                    <div class="mb-4 border border-border rounded" data-testid="playwright-install-commands">
+                                        <button @click="playwrightStatus.showCommands = !playwrightStatus.showCommands"
+                                                class="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
+                                                data-testid="playwright-install-toggle">
+                                            <span class="flex items-center gap-2">
+                                                <i data-lucide="terminal" class="w-4 h-4"></i>
+                                                <span x-text="playwrightStatus.showCommands ? 'Hide Install Commands' : 'Show Install Commands'"></span>
+                                            </span>
+                                            <i :data-lucide="playwrightStatus.showCommands ? 'chevron-up' : 'chevron-down'" class="w-4 h-4"></i>
+                                        </button>
+
+                                        <div x-show="playwrightStatus.showCommands" x-transition class="border-t border-border">
+                                            <div class="p-3 bg-muted/30">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <span class="text-xs text-muted-foreground">Run these commands to set up Playwright:</span>
+                                                    <button @click="copyInstallCommands()"
+                                                            class="text-xs flex items-center gap-1 px-2 py-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                                                            data-testid="playwright-copy-commands">
+                                                        <i data-lucide="copy" class="w-3 h-3"></i>
+                                                        Copy All
+                                                    </button>
+                                                </div>
+                                                <pre class="font-mono text-sm bg-background p-3 rounded border border-border overflow-x-auto"><template x-for="(cmd, idx) in playwrightStatus.data.install_commands" :key="idx"><code x-text="cmd" class="block"></code></template></pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+
+                                <!-- Missing config message (AC1) -->
+                                <template x-if="!hasPlaywrightConfig()">
+                                    <p class="text-muted-foreground">
+                                        Playwright configuration not enabled. Add <code class="bg-muted px-1 py-0.5 rounded text-sm">testarch.playwright</code> to your config to enable browser testing settings.
+                                    </p>
+                                </template>
+
+                                <!-- Playwright controls (AC2-AC5) -->
+                                <template x-if="hasPlaywrightConfig()">
+                                    <div class="space-y-6">
+
+                                        <!-- Browsers Checkbox Group (AC2) (Story 17.8: override indicator + reset buttons) -->
+                                        <div class="space-y-2"
+                                             :class="hasProjectOverride('testarch.playwright.browsers') ? 'border-l-2 border-primary pl-3 bg-primary/5 py-2 rounded-r' : ''">
+                                            <div class="flex items-center justify-between flex-wrap gap-2">
+                                                <label class="font-medium">Browsers</label>
+                                                <div class="flex items-center gap-2">
+                                                    <span class="badge-secondary text-xs">
+                                                        from: <span x-text="getFieldSource('testarch.playwright.browsers')"></span>
+                                                    </span>
+                                                    <!-- Story 17.8 AC2: Reset to default button -->
+                                                    <button x-show="canResetToDefault('testarch.playwright.browsers')"
+                                                            @click="resetToDefault('testarch.playwright.browsers', 'Browsers')"
+                                                            :disabled="settingsView.applying"
+                                                            class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                            data-testid="reset-browsers-default">
+                                                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                        Reset to default
+                                                    </button>
+                                                    <!-- Story 17.8 AC3: Reset to global button (project scope only) -->
+                                                    <button x-show="canResetToGlobal('testarch.playwright.browsers')"
+                                                            @click="resetToGlobal('testarch.playwright.browsers', 'Browsers')"
+                                                            :disabled="settingsView.applying"
+                                                            class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                            :title="'Will use: ' + formatValueForDisplay(getGlobalValue('testarch.playwright.browsers') ?? getDefaultValue('testarch.playwright.browsers'))"
+                                                            data-testid="reset-browsers-global">
+                                                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                        Reset to global
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="flex flex-wrap gap-4">
+                                                <template x-for="browser in ['chromium', 'firefox', 'webkit']" :key="browser">
+                                                    <label class="flex items-center gap-2 cursor-pointer">
+                                                        <input type="checkbox"
+                                                               class="input"
+                                                               :checked="isBrowserSelected(browser)"
+                                                               @change="toggleBrowser(browser)"
+                                                               :data-testid="'browser-' + browser">
+                                                        <span class="capitalize" x-text="browser"></span>
+                                                    </label>
+                                                </template>
+                                            </div>
+                                        </div>
+
+                                        <!-- Headless Toggle (AC3) (Story 17.8: override indicator + reset buttons) -->
+                                        <div class="space-y-2"
+                                             :class="hasProjectOverride('testarch.playwright.headless') ? 'border-l-2 border-primary pl-3 bg-primary/5 py-2 rounded-r' : ''">
+                                            <div class="flex items-center justify-between flex-wrap gap-2">
+                                                <div>
+                                                    <label class="font-medium">Headless Mode</label>
+                                                    <p class="text-sm text-muted-foreground">Run browsers without visible UI</p>
+                                                </div>
+                                                <div class="flex items-center gap-2">
+                                                    <span class="badge-secondary text-xs">
+                                                        from: <span x-text="getFieldSource('testarch.playwright.headless')"></span>
+                                                    </span>
+                                                    <!-- Story 17.8 AC2: Reset to default button -->
+                                                    <button x-show="canResetToDefault('testarch.playwright.headless')"
+                                                            @click="resetToDefault('testarch.playwright.headless', 'Headless Mode')"
+                                                            :disabled="settingsView.applying"
+                                                            class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                            data-testid="reset-headless-default">
+                                                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                        Reset to default
+                                                    </button>
+                                                    <!-- Story 17.8 AC3: Reset to global button (project scope only) -->
+                                                    <button x-show="canResetToGlobal('testarch.playwright.headless')"
+                                                            @click="resetToGlobal('testarch.playwright.headless', 'Headless Mode')"
+                                                            :disabled="settingsView.applying"
+                                                            class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                            :title="'Will use: ' + formatValueForDisplay(getGlobalValue('testarch.playwright.headless') ?? getDefaultValue('testarch.playwright.headless'))"
+                                                            data-testid="reset-headless-global">
+                                                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                        Reset to global
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <label class="flex items-center gap-3 cursor-pointer">
+                                                <input type="checkbox"
+                                                       role="switch"
+                                                       class="input"
+                                                       :checked="getFieldValue('testarch.playwright.headless') ?? true"
+                                                       @change="addPendingUpdate('testarch.playwright.headless', $event.target.checked)"
+                                                       data-testid="headless-toggle">
+                                                <span x-text="(getFieldValue('testarch.playwright.headless') ?? true) ? 'Enabled' : 'Disabled'"
+                                                      class="text-sm text-muted-foreground"></span>
+                                            </label>
+                                        </div>
+
+                                        <!-- Timeout and Workers Row (AC4, AC5) (Story 17.8: override indicators + reset buttons) -->
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+
+                                            <!-- Timeout Input (AC4) -->
+                                            <div class="space-y-2"
+                                                 :class="hasProjectOverride('testarch.playwright.timeout') ? 'border-l-2 border-primary pl-3 bg-primary/5 py-2 rounded-r' : ''">
+                                                <div class="flex items-center justify-between flex-wrap gap-2">
+                                                    <label class="font-medium">Timeout</label>
+                                                    <div class="flex items-center gap-2">
+                                                        <span class="badge-secondary text-xs">
+                                                            from: <span x-text="getFieldSource('testarch.playwright.timeout')"></span>
+                                                        </span>
+                                                        <!-- Story 17.8 AC2: Reset to default button -->
+                                                        <button x-show="canResetToDefault('testarch.playwright.timeout')"
+                                                                @click="resetToDefault('testarch.playwright.timeout', 'Timeout')"
+                                                                :disabled="settingsView.applying"
+                                                                class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                                data-testid="reset-timeout-default">
+                                                            <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                            Reset to default
+                                                        </button>
+                                                        <!-- Story 17.8 AC3: Reset to global button (project scope only) -->
+                                                        <button x-show="canResetToGlobal('testarch.playwright.timeout')"
+                                                                @click="resetToGlobal('testarch.playwright.timeout', 'Timeout')"
+                                                                :disabled="settingsView.applying"
+                                                                class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                                :title="'Will use: ' + formatValueForDisplay(getGlobalValue('testarch.playwright.timeout') ?? getDefaultValue('testarch.playwright.timeout'))"
+                                                                data-testid="reset-timeout-global">
+                                                            <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                            Reset to global
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="flex items-center gap-2">
+                                                    <input type="number"
+                                                           class="input w-28"
+                                                           :class="validationErrors['testarch.playwright.timeout'] ? 'border-destructive' : ''"
+                                                           :value="getFieldValue('testarch.playwright.timeout') ?? 30000"
+                                                           min="1000"
+                                                           max="300000"
+                                                           @input="validateAndUpdateNumber('testarch.playwright.timeout', $event.target.value, 1000, 300000)"
+                                                           data-testid="timeout-input">
+                                                    <span class="text-muted-foreground text-sm">ms</span>
+                                                </div>
+                                                <p x-show="validationErrors['testarch.playwright.timeout']"
+                                                   x-text="validationErrors['testarch.playwright.timeout']"
+                                                   class="text-destructive text-sm"
+                                                   data-testid="timeout-error"></p>
+                                            </div>
+
+                                            <!-- Workers Input (AC5) -->
+                                            <div class="space-y-2"
+                                                 :class="hasProjectOverride('testarch.playwright.workers') ? 'border-l-2 border-primary pl-3 bg-primary/5 py-2 rounded-r' : ''">
+                                                <div class="flex items-center justify-between flex-wrap gap-2">
+                                                    <label class="font-medium">Workers</label>
+                                                    <div class="flex items-center gap-2">
+                                                        <span class="badge-secondary text-xs">
+                                                            from: <span x-text="getFieldSource('testarch.playwright.workers')"></span>
+                                                        </span>
+                                                        <!-- Story 17.8 AC2: Reset to default button -->
+                                                        <button x-show="canResetToDefault('testarch.playwright.workers')"
+                                                                @click="resetToDefault('testarch.playwright.workers', 'Workers')"
+                                                                :disabled="settingsView.applying"
+                                                                class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                                data-testid="reset-workers-default">
+                                                            <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                            Reset to default
+                                                        </button>
+                                                        <!-- Story 17.8 AC3: Reset to global button (project scope only) -->
+                                                        <button x-show="canResetToGlobal('testarch.playwright.workers')"
+                                                                @click="resetToGlobal('testarch.playwright.workers', 'Workers')"
+                                                                :disabled="settingsView.applying"
+                                                                class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                                :title="'Will use: ' + formatValueForDisplay(getGlobalValue('testarch.playwright.workers') ?? getDefaultValue('testarch.playwright.workers'))"
+                                                                data-testid="reset-workers-global">
+                                                            <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                            Reset to global
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="flex items-center gap-2">
+                                                    <input type="number"
+                                                           class="input w-20"
+                                                           :class="validationErrors['testarch.playwright.workers'] ? 'border-destructive' : ''"
+                                                           :value="getFieldValue('testarch.playwright.workers') ?? 1"
+                                                           min="1"
+                                                           max="16"
+                                                           @input="validateAndUpdateNumber('testarch.playwright.workers', $event.target.value, 1, 16)"
+                                                           data-testid="workers-input">
+                                                    <span class="text-muted-foreground text-sm">parallel</span>
+                                                </div>
+                                                <p x-show="validationErrors['testarch.playwright.workers']"
+                                                   x-text="validationErrors['testarch.playwright.workers']"
+                                                   class="text-destructive text-sm"
+                                                   data-testid="workers-error"></p>
+                                            </div>
+
+                                        </div>
+
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- Benchmarking Tab Content (Story 17.6) -->
+                        <div x-show="settingsView.activeTab === 'benchmarking'"
+                             x-init="$nextTick(() => refreshIcons())"
+                             data-testid="tab-content-benchmarking">
+                            <div class="card p-6">
+                                <h3 class="text-lg font-medium mb-4 flex items-center gap-2">
+                                    <i data-lucide="bar-chart-2" class="w-5 h-5"></i>
+                                    Benchmarking
+                                </h3>
+
+                                <!-- Missing config message (AC1) -->
+                                <template x-if="!hasBenchmarkingConfig()">
+                                    <p class="text-muted-foreground">
+                                        Benchmarking configuration not found. Add <code class="bg-muted px-1 py-0.5 rounded text-sm">benchmarking</code> section to your config to enable metrics collection settings.
+                                    </p>
+                                </template>
+
+                                <!-- Benchmarking controls (AC2-AC4) (Story 17.8: override indicators + reset buttons) -->
+                                <template x-if="hasBenchmarkingConfig()">
+                                    <div class="space-y-6">
+
+                                        <!-- Enabled Toggle (AC2) -->
+                                        <div class="space-y-2"
+                                             :class="hasProjectOverride('benchmarking.enabled') ? 'border-l-2 border-primary pl-3 bg-primary/5 py-2 rounded-r' : ''">
+                                            <div class="flex items-center justify-between flex-wrap gap-2">
+                                                <div>
+                                                    <label class="font-medium">Enabled</label>
+                                                    <p class="text-sm text-muted-foreground">Collect metrics during validation and code review phases</p>
+                                                </div>
+                                                <div class="flex items-center gap-2">
+                                                    <span class="badge-secondary text-xs">
+                                                        from: <span x-text="getFieldSource('benchmarking.enabled')"></span>
+                                                    </span>
+                                                    <!-- Story 17.8 AC2: Reset to default button -->
+                                                    <button x-show="canResetToDefault('benchmarking.enabled')"
+                                                            @click="resetToDefault('benchmarking.enabled', 'Benchmarking')"
+                                                            :disabled="settingsView.applying"
+                                                            class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                            data-testid="reset-benchmarking-enabled-default">
+                                                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                        Reset to default
+                                                    </button>
+                                                    <!-- Story 17.8 AC3: Reset to global button (project scope only) -->
+                                                    <button x-show="canResetToGlobal('benchmarking.enabled')"
+                                                            @click="resetToGlobal('benchmarking.enabled', 'Benchmarking')"
+                                                            :disabled="settingsView.applying"
+                                                            class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                            :title="'Will use: ' + formatValueForDisplay(getGlobalValue('benchmarking.enabled') ?? getDefaultValue('benchmarking.enabled'))"
+                                                            data-testid="reset-benchmarking-enabled-global">
+                                                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                        Reset to global
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <label class="flex items-center gap-3 cursor-pointer">
+                                                <input type="checkbox"
+                                                       role="switch"
+                                                       class="input"
+                                                       :checked="getFieldValue('benchmarking.enabled') ?? true"
+                                                       @change="addPendingUpdate('benchmarking.enabled', $event.target.checked)"
+                                                       data-testid="benchmarking-enabled-toggle">
+                                                <span x-text="(getFieldValue('benchmarking.enabled') ?? true) ? 'Enabled' : 'Disabled'"
+                                                      class="text-sm text-muted-foreground"></span>
+                                            </label>
+                                        </div>
+
+                                        <!-- Extraction Provider Dropdown (AC3) (Story 17.8: override indicator + reset buttons) -->
+                                        <div class="space-y-2"
+                                             :class="hasProjectOverride('benchmarking.extraction_provider') ? 'border-l-2 border-primary pl-3 bg-primary/5 py-2 rounded-r' : ''">
+                                            <div class="flex items-center justify-between flex-wrap gap-2">
+                                                <div class="flex items-center gap-2">
+                                                    <label class="font-medium">Extraction Provider</label>
+                                                    <span class="badge-outline text-xs text-bp-warning border-bp-warning">⚠ risky</span>
+                                                </div>
+                                                <div class="flex items-center gap-2">
+                                                    <span class="badge-secondary text-xs">
+                                                        from: <span x-text="getFieldSource('benchmarking.extraction_provider')"></span>
+                                                    </span>
+                                                    <!-- Story 17.8 AC2: Reset to default button -->
+                                                    <button x-show="canResetToDefault('benchmarking.extraction_provider')"
+                                                            @click="resetToDefault('benchmarking.extraction_provider', 'Extraction Provider')"
+                                                            :disabled="settingsView.applying"
+                                                            class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                            data-testid="reset-extraction-provider-default">
+                                                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                        Reset to default
+                                                    </button>
+                                                    <!-- Story 17.8 AC3: Reset to global button (project scope only) -->
+                                                    <button x-show="canResetToGlobal('benchmarking.extraction_provider')"
+                                                            @click="resetToGlobal('benchmarking.extraction_provider', 'Extraction Provider')"
+                                                            :disabled="settingsView.applying"
+                                                            class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                            :title="'Will use: ' + formatValueForDisplay(getGlobalValue('benchmarking.extraction_provider') ?? getDefaultValue('benchmarking.extraction_provider'))"
+                                                            data-testid="reset-extraction-provider-global">
+                                                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                        Reset to global
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <p class="text-sm text-muted-foreground">LLM provider used for metrics extraction</p>
+                                            <div class="flex items-center gap-2">
+                                                <input type="text"
+                                                       class="input w-48"
+                                                       :class="validationErrors['benchmarking.extraction_provider'] ? 'border-destructive' : ''"
+                                                       list="benchmarking-provider-options"
+                                                       :value="getFieldValue('benchmarking.extraction_provider') ?? 'claude'"
+                                                       @input="validateDropdownField('benchmarking.extraction_provider', $event.target.value); if ($event.target.value.trim()) addPendingUpdate('benchmarking.extraction_provider', $event.target.value.trim())"
+                                                       @blur="validateDropdownField('benchmarking.extraction_provider', $event.target.value)"
+                                                       data-testid="extraction-provider-input">
+                                                <datalist id="benchmarking-provider-options">
+                                                    <option value="claude"></option>
+                                                    <option value="claude-subprocess"></option>
+                                                    <option value="gemini"></option>
+                                                    <option value="codex"></option>
+                                                </datalist>
+                                            </div>
+                                            <p x-show="validationErrors['benchmarking.extraction_provider']"
+                                               x-text="validationErrors['benchmarking.extraction_provider']"
+                                               class="text-destructive text-sm"
+                                               data-testid="extraction-provider-error"></p>
+                                        </div>
+
+                                        <!-- Extraction Model Dropdown (AC4) (Story 17.8: override indicator + reset buttons) -->
+                                        <div class="space-y-2"
+                                             :class="hasProjectOverride('benchmarking.extraction_model') ? 'border-l-2 border-primary pl-3 bg-primary/5 py-2 rounded-r' : ''">
+                                            <div class="flex items-center justify-between flex-wrap gap-2">
+                                                <div class="flex items-center gap-2">
+                                                    <label class="font-medium">Extraction Model</label>
+                                                    <span class="badge-outline text-xs text-bp-warning border-bp-warning">⚠ risky</span>
+                                                </div>
+                                                <div class="flex items-center gap-2">
+                                                    <span class="badge-secondary text-xs">
+                                                        from: <span x-text="getFieldSource('benchmarking.extraction_model')"></span>
+                                                    </span>
+                                                    <!-- Story 17.8 AC2: Reset to default button -->
+                                                    <button x-show="canResetToDefault('benchmarking.extraction_model')"
+                                                            @click="resetToDefault('benchmarking.extraction_model', 'Extraction Model')"
+                                                            :disabled="settingsView.applying"
+                                                            class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                            data-testid="reset-extraction-model-default">
+                                                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                        Reset to default
+                                                    </button>
+                                                    <!-- Story 17.8 AC3: Reset to global button (project scope only) -->
+                                                    <button x-show="canResetToGlobal('benchmarking.extraction_model')"
+                                                            @click="resetToGlobal('benchmarking.extraction_model', 'Extraction Model')"
+                                                            :disabled="settingsView.applying"
+                                                            class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                            :title="'Will use: ' + formatValueForDisplay(getGlobalValue('benchmarking.extraction_model') ?? getDefaultValue('benchmarking.extraction_model'))"
+                                                            data-testid="reset-extraction-model-global">
+                                                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                        Reset to global
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <p class="text-sm text-muted-foreground">Model used for metrics extraction (prefer fast/cheap)</p>
+                                            <div class="flex items-center gap-2">
+                                                <input type="text"
+                                                       class="input w-48"
+                                                       :class="validationErrors['benchmarking.extraction_model'] ? 'border-destructive' : ''"
+                                                       list="benchmarking-model-options"
+                                                       :value="getFieldValue('benchmarking.extraction_model') ?? 'haiku'"
+                                                       @input="validateDropdownField('benchmarking.extraction_model', $event.target.value); if ($event.target.value.trim()) addPendingUpdate('benchmarking.extraction_model', $event.target.value.trim())"
+                                                       @blur="validateDropdownField('benchmarking.extraction_model', $event.target.value)"
+                                                       data-testid="extraction-model-input">
+                                                <datalist id="benchmarking-model-options">
+                                                    <option value="haiku"></option>
+                                                    <option value="sonnet"></option>
+                                                    <option value="opus"></option>
+                                                    <option value="claude-3-5-haiku-latest"></option>
+                                                    <option value="gemini-2.5-flash"></option>
+                                                </datalist>
+                                            </div>
+                                            <p x-show="validationErrors['benchmarking.extraction_model']"
+                                               x-text="validationErrors['benchmarking.extraction_model']"
+                                               class="text-destructive text-sm"
+                                               data-testid="extraction-model-error"></p>
+                                        </div>
+
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- Providers Tab Content (Story 17.7) -->
+                        <div x-show="settingsView.activeTab === 'providers'" data-testid="tab-content-providers">
+                            <div class="card p-6">
+                                <h3 class="text-lg font-medium mb-4 flex items-center gap-2">
+                                    <i data-lucide="server" class="w-5 h-5"></i>
+                                    Providers
+                                </h3>
+
+                                <!-- Missing config message (AC1) -->
+                                <template x-if="!hasProvidersConfig()">
+                                    <p class="text-muted-foreground">
+                                        Provider configuration not found. The <code class="bg-muted px-1 py-0.5 rounded text-sm">providers</code> section is required in your config.
+                                    </p>
+                                </template>
+
+                                <!-- Providers controls (AC2-AC4) -->
+                                <template x-if="hasProvidersConfig()">
+                                    <div class="space-y-8">
+
+                                        <!-- Master Provider Section (AC2, AC3) -->
+                                        <div class="space-y-4">
+                                            <div class="flex items-center gap-3">
+                                                <h4 class="text-base font-medium">Master Provider</h4>
+                                                <span class="badge bg-primary/20 text-primary text-xs font-medium">MASTER</span>
+                                            </div>
+
+                                            <div class="p-4 border border-border rounded-lg bg-muted/30 space-y-5"
+                                                 :class="(hasProjectOverride('providers.master.provider') || hasProjectOverride('providers.master.model') || hasProjectOverride('providers.master.model_name')) ? 'border-l-4 border-l-primary' : ''">
+                                                <!-- Warning message about workflow impact -->
+                                                <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                                                    <i data-lucide="alert-triangle" class="w-4 h-4 text-bp-warning"></i>
+                                                    <span>Changes affect all workflow executions</span>
+                                                </div>
+
+                                                <!-- Provider Input (AC2, AC3) (Story 17.8: override indicator + reset buttons) -->
+                                                <div class="space-y-2"
+                                                     :class="hasProjectOverride('providers.master.provider') ? 'border-l-2 border-primary pl-3 bg-primary/5 py-2 rounded-r' : ''">
+                                                    <div class="flex items-center justify-between flex-wrap gap-2">
+                                                        <div class="flex items-center gap-2">
+                                                            <label class="font-medium">Provider</label>
+                                                            <span class="badge-outline text-xs text-bp-warning border-bp-warning">⚠ risky</span>
+                                                        </div>
+                                                        <div class="flex items-center gap-2">
+                                                            <span class="badge-secondary text-xs">
+                                                                from: <span x-text="getMasterFieldSource('provider')"></span>
+                                                            </span>
+                                                            <!-- Story 17.8 AC2: Reset to default button -->
+                                                            <button x-show="canResetToDefault('providers.master.provider')"
+                                                                    @click="resetToDefault('providers.master.provider', 'Provider')"
+                                                                    :disabled="settingsView.applying"
+                                                                    class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                                    data-testid="reset-master-provider-default">
+                                                                <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                                Reset to default
+                                                            </button>
+                                                            <!-- Story 17.8 AC3: Reset to global button (project scope only) -->
+                                                            <button x-show="canResetToGlobal('providers.master.provider')"
+                                                                    @click="resetToGlobal('providers.master.provider', 'Provider')"
+                                                                    :disabled="settingsView.applying"
+                                                                    class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                                    :title="'Will use: ' + formatValueForDisplay(getGlobalValue('providers.master.provider') ?? getDefaultValue('providers.master.provider'))"
+                                                                    data-testid="reset-master-provider-global">
+                                                                <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                                Reset to global
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="text"
+                                                               class="input w-48"
+                                                               :class="validationErrors['providers.master.provider'] ? 'border-destructive' : ''"
+                                                               list="master-provider-options"
+                                                               :value="getMasterField('provider') ?? ''"
+                                                               @input="validateDropdownField('providers.master.provider', $event.target.value); addPendingUpdate('providers.master.provider', $event.target.value.trim() || null)"
+                                                               @blur="validateDropdownField('providers.master.provider', $event.target.value)"
+                                                               data-testid="master-provider-input">
+                                                        <datalist id="master-provider-options">
+                                                            <option value="claude"></option>
+                                                            <option value="claude-subprocess"></option>
+                                                            <option value="gemini"></option>
+                                                            <option value="codex"></option>
+                                                        </datalist>
+                                                    </div>
+                                                    <p x-show="validationErrors['providers.master.provider']"
+                                                       x-text="validationErrors['providers.master.provider']"
+                                                       class="text-destructive text-sm"
+                                                       data-testid="master-provider-error"></p>
+                                                </div>
+
+                                                <!-- Model Input (AC2, AC3) (Story 17.8: override indicator + reset buttons) -->
+                                                <div class="space-y-2"
+                                                     :class="hasProjectOverride('providers.master.model') ? 'border-l-2 border-primary pl-3 bg-primary/5 py-2 rounded-r' : ''">
+                                                    <div class="flex items-center justify-between flex-wrap gap-2">
+                                                        <div class="flex items-center gap-2">
+                                                            <label class="font-medium">Model</label>
+                                                            <span class="badge-outline text-xs text-bp-warning border-bp-warning">⚠ risky</span>
+                                                        </div>
+                                                        <div class="flex items-center gap-2">
+                                                            <span class="badge-secondary text-xs">
+                                                                from: <span x-text="getMasterFieldSource('model')"></span>
+                                                            </span>
+                                                            <!-- Story 17.8 AC2: Reset to default button -->
+                                                            <button x-show="canResetToDefault('providers.master.model')"
+                                                                    @click="resetToDefault('providers.master.model', 'Model')"
+                                                                    :disabled="settingsView.applying"
+                                                                    class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                                    data-testid="reset-master-model-default">
+                                                                <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                                Reset to default
+                                                            </button>
+                                                            <!-- Story 17.8 AC3: Reset to global button (project scope only) -->
+                                                            <button x-show="canResetToGlobal('providers.master.model')"
+                                                                    @click="resetToGlobal('providers.master.model', 'Model')"
+                                                                    :disabled="settingsView.applying"
+                                                                    class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                                    :title="'Will use: ' + formatValueForDisplay(getGlobalValue('providers.master.model') ?? getDefaultValue('providers.master.model'))"
+                                                                    data-testid="reset-master-model-global">
+                                                                <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                                Reset to global
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="text"
+                                                               class="input w-48"
+                                                               :class="validationErrors['providers.master.model'] ? 'border-destructive' : ''"
+                                                               list="master-model-options"
+                                                               :value="getMasterField('model') ?? ''"
+                                                               @input="validateDropdownField('providers.master.model', $event.target.value); addPendingUpdate('providers.master.model', $event.target.value.trim() || null)"
+                                                               @blur="validateDropdownField('providers.master.model', $event.target.value)"
+                                                               data-testid="master-model-input">
+                                                        <datalist id="master-model-options">
+                                                            <option value="opus"></option>
+                                                            <option value="sonnet"></option>
+                                                            <option value="haiku"></option>
+                                                            <option value="gemini-2.5-flash"></option>
+                                                            <option value="gpt-4o"></option>
+                                                        </datalist>
+                                                    </div>
+                                                    <p x-show="validationErrors['providers.master.model']"
+                                                       x-text="validationErrors['providers.master.model']"
+                                                       class="text-destructive text-sm"
+                                                       data-testid="master-model-error"></p>
+                                                </div>
+
+                                                <!-- Display Name Input (AC2, AC3 - SAFE field) (Story 17.8: override indicator + reset buttons) -->
+                                                <div class="space-y-2"
+                                                     :class="hasProjectOverride('providers.master.model_name') ? 'border-l-2 border-primary pl-3 bg-primary/5 py-2 rounded-r' : ''">
+                                                    <div class="flex items-center justify-between flex-wrap gap-2">
+                                                        <label class="font-medium">Display Name</label>
+                                                        <div class="flex items-center gap-2">
+                                                            <span class="badge-secondary text-xs">
+                                                                from: <span x-text="getMasterFieldSource('model_name')"></span>
+                                                            </span>
+                                                            <!-- Story 17.8 AC2: Reset to default button -->
+                                                            <button x-show="canResetToDefault('providers.master.model_name')"
+                                                                    @click="resetToDefault('providers.master.model_name', 'Display Name')"
+                                                                    :disabled="settingsView.applying"
+                                                                    class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                                    data-testid="reset-master-model-name-default">
+                                                                <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                                Reset to default
+                                                            </button>
+                                                            <!-- Story 17.8 AC3: Reset to global button (project scope only) -->
+                                                            <button x-show="canResetToGlobal('providers.master.model_name')"
+                                                                    @click="resetToGlobal('providers.master.model_name', 'Display Name')"
+                                                                    :disabled="settingsView.applying"
+                                                                    class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-muted"
+                                                                    :title="'Will use: ' + formatValueForDisplay(getGlobalValue('providers.master.model_name') ?? getDefaultValue('providers.master.model_name'))"
+                                                                    data-testid="reset-master-model-name-global">
+                                                                <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                                Reset to global
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <p class="text-sm text-muted-foreground">Optional name shown in logs/reports instead of model</p>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="text"
+                                                               class="input w-48"
+                                                               :value="getMasterField('model_name') ?? ''"
+                                                               @input="addPendingUpdate('providers.master.model_name', $event.target.value.trim() || null)"
+                                                               placeholder="e.g., glm-4.7"
+                                                               data-testid="master-model-name-input">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Multi Validators Section (AC4) -->
+                                        <div class="space-y-4">
+                                            <div class="flex items-center gap-3">
+                                                <h4 class="text-base font-medium">Multi Validators</h4>
+                                                <span class="badge-secondary text-xs">
+                                                    (<span x-text="getMultiValidators().length"></span>)
+                                                </span>
+                                            </div>
+
+                                            <!-- Empty state -->
+                                            <div x-show="getMultiValidators().length === 0"
+                                                 class="text-muted-foreground text-sm py-4"
+                                                 data-testid="multi-validators-empty">
+                                                No multi validators configured
+                                            </div>
+
+                                            <!-- Validators list (read-only display) -->
+                                            <div x-show="getMultiValidators().length > 0" class="space-y-2">
+                                                <template x-for="(validator, index) in getMultiValidators()" :key="index">
+                                                    <div class="flex items-center gap-4 p-3 bg-muted/50 rounded-lg border border-border"
+                                                         data-testid="multi-validator-row">
+                                                        <span class="badge bg-accent/20 text-accent text-xs font-medium flex-shrink-0">MULTI</span>
+                                                        <div class="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+                                                            <div>
+                                                                <span class="text-muted-foreground">Provider:</span>
+                                                                <span class="ml-1" x-text="validator.provider || 'Unknown'"></span>
+                                                            </div>
+                                                            <div>
+                                                                <span class="text-muted-foreground">Model:</span>
+                                                                <span class="ml-1" x-text="validator.model || 'Unknown'"></span>
+                                                            </div>
+                                                            <div>
+                                                                <span class="text-muted-foreground">Display:</span>
+                                                                <span class="ml-1" x-text="getMultiDisplayName(validator)"></span>
+                                                            </div>
+                                                        </div>
+                                                        <span class="badge-secondary text-xs flex-shrink-0">
+                                                            from: <span x-text="getMultiValidatorsSource()"></span>
+                                                        </span>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- Backups Section (Story 17.10 AC4-AC7) -->
+                        <div class="mt-6 card" data-testid="backups-section">
+                            <!-- Collapsible header (AC7) -->
+                            <button @click="toggleBackupsSection()"
+                                    class="w-full flex items-center justify-between p-4 hover:bg-muted/50 rounded-lg transition-colors"
+                                    data-testid="backups-toggle">
+                                <div class="flex items-center gap-2">
+                                    <i data-lucide="archive" class="w-5 h-5"></i>
+                                    <h3 class="text-lg font-medium">Configuration Backups</h3>
+                                </div>
+                                <i :data-lucide="backupsView.expanded ? 'chevron-up' : 'chevron-down'" class="w-5 h-5 text-muted-foreground"></i>
+                            </button>
+
+                            <!-- Collapsible content -->
+                            <div x-show="backupsView.expanded"
+                                 x-transition:enter="transition ease-out duration-200"
+                                 x-transition:enter-start="opacity-0 -translate-y-2"
+                                 x-transition:enter-end="opacity-100 translate-y-0"
+                                 x-transition:leave="transition ease-in duration-150"
+                                 x-transition:leave-start="opacity-100 translate-y-0"
+                                 x-transition:leave-end="opacity-0 -translate-y-2"
+                                 class="px-4 pb-4"
+                                 data-testid="backups-content">
+
+                                <!-- Loading state -->
+                                <div x-show="backupsView.loading" class="flex items-center justify-center py-8">
+                                    <i data-lucide="loader-2" class="w-6 h-6 animate-spin text-primary"></i>
+                                </div>
+
+                                <!-- Backup lists -->
+                                <div x-show="!backupsView.loading" class="space-y-6">
+
+                                    <!-- Global Backups (AC4) -->
+                                    <div class="space-y-3">
+                                        <h4 class="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                                            <i data-lucide="globe" class="w-4 h-4"></i>
+                                            Global Backups
+                                        </h4>
+
+                                        <div x-show="backupsView.globalBackups.length === 0"
+                                             class="text-sm text-muted-foreground py-2">
+                                            No global backups available
+                                        </div>
+
+                                        <template x-for="backup in backupsView.globalBackups" :key="backup.version">
+                                            <div class="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border"
+                                                 data-testid="global-backup-row">
+                                                <div class="flex items-center gap-3">
+                                                    <span class="badge-secondary text-xs">v<span x-text="backup.version"></span></span>
+                                                    <span class="text-sm text-muted-foreground" x-text="formatBackupTime(backup.modified)"></span>
+                                                </div>
+                                                <div class="flex items-center gap-2">
+                                                    <!-- View button (AC6) -->
+                                                    <button @click="viewBackup('global', backup)"
+                                                            class="btn-sm-icon-ghost"
+                                                            title="View backup content"
+                                                            data-testid="view-global-backup">
+                                                        <i data-lucide="eye" class="w-4 h-4"></i>
+                                                    </button>
+                                                    <!-- Restore button (AC5) -->
+                                                    <button @click="restoreBackup('global', backup.version)"
+                                                            :disabled="backupsView.restoring"
+                                                            class="btn-sm text-xs"
+                                                            data-testid="restore-global-backup">
+                                                        <template x-if="backupsView.restoring">
+                                                            <i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i>
+                                                        </template>
+                                                        <template x-if="!backupsView.restoring">
+                                                            <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                        </template>
+                                                        Restore
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+
+                                    <!-- Project Backups (AC4) -->
+                                    <div class="space-y-3">
+                                        <h4 class="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                                            <i data-lucide="folder" class="w-4 h-4"></i>
+                                            Project Backups
+                                        </h4>
+
+                                        <div x-show="backupsView.projectBackups.length === 0"
+                                             class="text-sm text-muted-foreground py-2">
+                                            No project backups available
+                                        </div>
+
+                                        <template x-for="backup in backupsView.projectBackups" :key="backup.version">
+                                            <div class="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border"
+                                                 data-testid="project-backup-row">
+                                                <div class="flex items-center gap-3">
+                                                    <span class="badge-secondary text-xs">v<span x-text="backup.version"></span></span>
+                                                    <span class="text-sm text-muted-foreground" x-text="formatBackupTime(backup.modified)"></span>
+                                                </div>
+                                                <div class="flex items-center gap-2">
+                                                    <!-- View button (AC6) -->
+                                                    <button @click="viewBackup('project', backup)"
+                                                            class="btn-sm-icon-ghost"
+                                                            title="View backup content"
+                                                            data-testid="view-project-backup">
+                                                        <i data-lucide="eye" class="w-4 h-4"></i>
+                                                    </button>
+                                                    <!-- Restore button (AC5) -->
+                                                    <button @click="restoreBackup('project', backup.version)"
+                                                            :disabled="backupsView.restoring"
+                                                            class="btn-sm text-xs"
+                                                            data-testid="restore-project-backup">
+                                                        <template x-if="backupsView.restoring">
+                                                            <i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i>
+                                                        </template>
+                                                        <template x-if="!backupsView.restoring">
+                                                            <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                                        </template>
+                                                        Restore
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+
+                                </div>

@@ -1,0 +1,2 @@
+This is not a markdown file.
+Should be ignored by glob("*.md").

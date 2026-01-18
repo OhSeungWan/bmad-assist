@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none">
+  <!-- Top-left: Create/Plan - Blue -->
+  <rect width="7" height="9" x="3" y="3" rx="1.5" fill="#58a6ff" opacity="0.9"/>
+
+  <!-- Top-right: Validate - Yellow/Orange -->
+  <rect width="7" height="5" x="14" y="3" rx="1.5" fill="#d29922" opacity="0.9"/>
+
+  <!-- Bottom-right: Develop - Green (success) -->
+  <rect width="7" height="9" x="14" y="12" rx="1.5" fill="#3fb950" opacity="0.9"/>
+
+  <!-- Bottom-left: Review - Red (critical eye) -->
+  <rect width="7" height="5" x="3" y="16" rx="1.5" fill="#f85149" opacity="0.9"/>
+
+  <!-- Subtle border overlay for depth -->
+  <rect width="7" height="9" x="3" y="3" rx="1.5" stroke="#ffffff" stroke-width="0.5" stroke-opacity="0.3" fill="none"/>
+  <rect width="7" height="5" x="14" y="3" rx="1.5" stroke="#ffffff" stroke-width="0.5" stroke-opacity="0.3" fill="none"/>
+  <rect width="7" height="9" x="14" y="12" rx="1.5" stroke="#ffffff" stroke-width="0.5" stroke-opacity="0.3" fill="none"/>
+  <rect width="7" height="5" x="3" y="16" rx="1.5" stroke="#ffffff" stroke-width="0.5" stroke-opacity="0.3" fill="none"/>
+</svg>

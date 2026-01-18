@@ -1,0 +1,498 @@
+"""Compiler for the validate-story-synthesis workflow.
+
+This module implements the WorkflowCompiler protocol for the synthesis workflow,
+producing standalone prompts for Master LLM to synthesize validator findings.
+
+The synthesis context is focused but includes ground truth:
+- project_context.md (ground truth for evaluating validator claims)
+- architecture.md (technical constraints for story refinement)
+- Story file being validated (primary target)
+- Anonymized validation outputs (Validator A, B, C, D)
+- NO PRD or epic files (validators already incorporated these)
+
+This focused context allows Master to evaluate validator findings with
+access to project rules and architecture but without the noise of
+verbose requirements documents that validators already incorporated.
+
+Public API:
+    ValidateStorySynthesisCompiler: Workflow compiler implementing WorkflowCompiler protocol
+"""
+
+import logging
+from datetime import date
+from pathlib import Path
+from typing import Any
+
+from bmad_assist.compiler.filtering import filter_instructions
+from bmad_assist.compiler.output import generate_output
+from bmad_assist.compiler.patching import (
+    load_patch,
+    validate_output,
+)
+from bmad_assist.compiler.shared_utils import (
+    apply_post_process,
+    context_snapshot,
+    find_file_in_planning_dir,
+    find_sprint_status_file,
+    get_stories_dir,
+    load_workflow_template,
+    resolve_story_file,
+    safe_read_file,
+)
+from bmad_assist.compiler.types import CompiledWorkflow, CompilerContext
+from bmad_assist.compiler.variable_utils import (
+    filter_garbage_variables,
+    substitute_variables,
+)
+from bmad_assist.compiler.variables import resolve_variables
+from bmad_assist.core.exceptions import CompilerError
+from bmad_assist.validation.anonymizer import AnonymizedValidation
+
+logger = logging.getLogger(__name__)
+
+# Workflow path relative to project root
+_WORKFLOW_RELATIVE_PATH = "_bmad/bmm/workflows/4-implementation/validate-story-synthesis"
+
+# Minimum validators required for meaningful synthesis
+_MIN_VALIDATORS = 2
+
+
+class ValidateStorySynthesisCompiler:
+    """Compiler for the validate-story-synthesis workflow.
+
+    Implements the WorkflowCompiler protocol to compile the synthesis
+    workflow into a standalone prompt. This is an action-workflow (template: false)
+    focused on Master LLM synthesizing validator findings.
+
+    The compilation pipeline:
+    1. Use pre-loaded workflow_ir from context (set by core.compile_workflow)
+    2. Validate inputs (epic_num, story_num, minimum 2 validations)
+    3. Resolve variables (story_id, validator_count, date)
+    4. Build minimal context (story file + anonymized validations ONLY)
+    5. Build synthesis mission description
+    6. Filter instructions via filter_instructions()
+    7. Generate XML output via generate_output()
+    8. Apply patch post_process rules if context.patch_path exists
+    9. Return CompiledWorkflow with empty output_template
+
+    """
+
+    @property
+    def workflow_name(self) -> str:
+        """Unique workflow identifier."""
+        return "validate-story-synthesis"
+
+    def get_required_files(self) -> list[str]:
+        """Return list of required file glob patterns.
+
+        Returns minimal patterns - synthesis only needs story file.
+        PRD and project_context are intentionally excluded (architecture is optional).
+
+        Returns:
+            Glob patterns for files needed by synthesis workflow.
+
+        """
+        return [
+            "**/sprint-artifacts/*.md",  # Story files only
+        ]
+
+    def get_variables(self) -> dict[str, Any]:
+        """Return workflow-specific variables to resolve.
+
+        Returns:
+            Variables needed for synthesis compilation.
+
+        """
+        return {
+            # Required (from invocation)
+            "epic_num": None,
+            "story_num": None,
+            "session_id": None,  # Anonymization session for mapping
+            "anonymized_validations": None,  # list[AnonymizedValidation]
+            # Computed
+            "story_id": None,  # "{epic_num}.{story_num}"
+            "story_key": None,  # "{epic_num}-{story_num}-{slug}"
+            "story_file": None,  # Resolved path to story file
+            "validator_count": None,  # len(anonymized_validations)
+            "date": None,  # System-generated
+        }
+
+    def get_workflow_dir(self, context: CompilerContext) -> Path:
+        """Return the workflow directory for this compiler.
+
+        Args:
+            context: The compilation context with project paths.
+
+        Returns:
+            Path to the workflow directory containing workflow.yaml.
+
+        """
+        return context.project_root / _WORKFLOW_RELATIVE_PATH
+
+    def validate_context(self, context: CompilerContext) -> None:
+        """Validate context before compilation.
+
+        Args:
+            context: The compilation context to validate.
+
+        Raises:
+            CompilerError: If required context is missing.
+
+        """
+        if context.project_root is None:
+            raise CompilerError("project_root is required in context")
+        if context.output_folder is None:
+            raise CompilerError("output_folder is required in context")
+
+        epic_num = context.resolved_variables.get("epic_num")
+        story_num = context.resolved_variables.get("story_num")
+
+        if epic_num is None:
+            raise CompilerError(
+                "epic_num is required for synthesis compilation.\n"
+                "  Suggestion: Provide epic_num via invocation params"
+            )
+        if story_num is None:
+            raise CompilerError(
+                "story_num is required for synthesis compilation.\n"
+                "  Suggestion: Provide story_num via invocation params"
+            )
+
+        # Validate minimum validations
+        validations = context.resolved_variables.get("anonymized_validations", [])
+        if not validations:
+            raise CompilerError(
+                "No anonymized validations provided for synthesis.\n"
+                "  Why it's needed: Synthesis requires validator outputs to synthesize.\n"
+                "  Suggestion: Run validate-story workflow first with multiple LLMs"
+            )
+
+        if len(validations) < _MIN_VALIDATORS:
+            raise CompilerError(
+                f"Synthesis requires at least {_MIN_VALIDATORS} validations, "
+                f"but only {len(validations)} provided.\n"
+                "  Why: Single validation doesn't need synthesis - use it directly.\n"
+                "  Suggestion: Run validation with additional LLM providers"
+            )
+
+        workflow_dir = context.project_root / _WORKFLOW_RELATIVE_PATH
+        if not workflow_dir.exists():
+            raise CompilerError(
+                f"Workflow directory not found: {workflow_dir}\n"
+                f"  Why it's needed: Contains workflow.yaml and instructions.xml for compilation\n"
+                f"  How to fix: Ensure BMAD is properly installed and Story 11.6 is complete"
+            )
+
+    def _build_synthesis_context(
+        self,
+        context: CompilerContext,
+        resolved: dict[str, Any],
+        validations: list[AnonymizedValidation],
+    ) -> dict[str, str]:
+        """Build focused context files dict for synthesis.
+
+        Includes:
+        1. project_context.md (ground truth for evaluating validator claims)
+        2. architecture.md (technical constraints for story refinement)
+        3. Story file being validated
+        4. Anonymized validations (as special XML block)
+
+        Does NOT include: PRD, epic files (validators already had these).
+
+        Args:
+            context: Compilation context with paths.
+            resolved: Resolved variables.
+            validations: List of anonymized validations.
+
+        Returns:
+            Dictionary mapping file paths/keys to content.
+
+        Raises:
+            CompilerError: If story file not found or empty.
+
+        """
+        files: dict[str, str] = {}
+        project_root = context.project_root
+        epic_num = resolved.get("epic_num")
+        story_num = resolved.get("story_num")
+
+        # 1. project_context.md (ground truth for evaluating validator claims - OPTIONAL)
+        # Check both naming conventions: project-context.md (new) and project_context.md (legacy)
+        project_context_paths = [
+            context.output_folder / "project-context.md",  # New naming convention
+            context.output_folder / "project_context.md",  # Legacy naming convention
+        ]
+        for pc_path in project_context_paths:
+            if pc_path.exists():
+                content = safe_read_file(pc_path, project_root)
+                if content:
+                    files[str(pc_path)] = content
+                    logger.debug("Added project_context to synthesis context: %s", pc_path)
+                break  # Use first found
+
+        # 2. architecture.md (technical constraints for story refinement - OPTIONAL)
+        arch_path = find_file_in_planning_dir(context, "*architecture*.md")
+        if arch_path:
+            content = safe_read_file(arch_path, project_root)
+            if content:
+                files[str(arch_path)] = content
+                logger.debug("Added architecture to synthesis context: %s", arch_path)
+
+        # 3. Story file (REQUIRED)
+        stories_dir = get_stories_dir(context)
+        pattern = f"{epic_num}-{story_num}-*.md"
+        story_matches = sorted(stories_dir.glob(pattern)) if stories_dir.exists() else []
+
+        if not story_matches:
+            raise CompilerError(
+                f"Story file not found: {stories_dir}/{pattern}\n\n"
+                f"Expected pattern: {stories_dir}/{epic_num}-{story_num}-*.md\n"
+                f"Found: 0 matching files\n\n"
+                f"Suggestion: Run 'bmad-assist compile -w create-story -e {epic_num} "
+                f"-s {story_num}' first"
+            )
+
+        story_path = story_matches[0]
+
+        # Check for empty file
+        try:
+            if story_path.stat().st_size == 0:
+                raise CompilerError(
+                    f"Story file is empty: {story_path}\n\n"
+                    f"The story file exists but contains no content (0 bytes).\n\n"
+                    f"Suggestion: Regenerate the story using create-story workflow"
+                )
+        except OSError as e:
+            raise CompilerError(
+                f"Cannot read story file: {story_path}\n\n"
+                f"Error: {e}\n\n"
+                f"Suggestion: Check file permissions"
+            ) from e
+
+        story_content = safe_read_file(story_path, project_root)
+
+        if not story_content:
+            raise CompilerError(
+                f"Story file unreadable: {story_path}\n\n"
+                f"The story file exists but could not be read.\n"
+                f"Possible causes: permission denied, encoding error, or path outside project.\n\n"
+                f"Suggestion: Check file permissions and encoding (UTF-8 required)"
+            )
+
+        files[str(story_path)] = story_content
+        logger.debug("Added story file to synthesis context: %s", story_path)
+
+        # 4. Validations (each as a separate file for clean CDATA handling)
+        # Sort by validator_id for deterministic ordering
+        sorted_validations = sorted(validations, key=lambda v: v.validator_id)
+        for v in sorted_validations:
+            # Use validator ID as virtual path (e.g., "[Validator A]")
+            validation_path = f"[{v.validator_id}]"
+            files[validation_path] = v.content
+            logger.debug("Added validation to synthesis context: %s", validation_path)
+
+        # Count files for logging (excluding virtual paths starting with [)
+        file_count = len([k for k in files if not k.startswith("[")])
+        logger.info(
+            "Built synthesis context with %d files and %d validations for story %s.%s",
+            file_count,
+            len(validations),
+            epic_num,
+            story_num,
+        )
+
+        return files
+
+    def _build_synthesis_mission(self, resolved: dict[str, Any]) -> str:
+        """Build synthesis mission description.
+
+        Args:
+            resolved: Resolved variables.
+
+        Returns:
+            Mission description for Master synthesis.
+
+        """
+        epic_num = resolved.get("epic_num", "?")
+        story_num = resolved.get("story_num", "?")
+        validator_count = resolved.get("validator_count", 0)
+
+        return f"""Master Synthesis: Story {epic_num}.{story_num}
+
+You are synthesizing {validator_count} independent validator reviews.
+
+Your mission:
+1. VERIFY each issue raised by validators
+   - Cross-reference with story content
+   - Identify false positives (issues that aren't real problems)
+   - Confirm valid issues with evidence
+
+2. PRIORITIZE real issues by severity
+   - Critical: Blocks implementation or causes major problems
+   - High: Significant gaps or ambiguities
+   - Medium: Improvements that would help
+   - Low: Nice-to-have suggestions
+
+3. SYNTHESIZE findings
+   - Merge duplicate issues from different validators
+   - Note validator consensus (if 3+ agree, high confidence)
+   - Highlight unique insights from individual validators
+
+4. APPLY changes to story file
+   - You have WRITE PERMISSION to modify the story
+   - Apply fixes for verified issues
+   - Document what you changed and why
+
+Output format:
+## Synthesis Summary
+## Issues Verified (by severity)
+## Issues Dismissed (false positives with reasoning)
+## Changes Applied"""
+
+    def compile(self, context: CompilerContext) -> CompiledWorkflow:
+        """Compile synthesis workflow with given context.
+
+        Executes the full compilation pipeline:
+        1. Parse workflow files (or load from cached patched template)
+        2. Validate context (epic_num, story_num, minimum validations)
+        3. Resolve variables
+        4. Build minimal context (story + validations ONLY)
+        5. Build synthesis mission description
+        6. Filter instructions
+        7. Generate XML output
+        8. Apply patch post_process rules if exists
+        9. Validate output against patch validation rules
+
+        Args:
+            context: The compilation context with project paths and initial variables.
+
+        Returns:
+            CompiledWorkflow ready for output.
+
+        Raises:
+            CompilerError: If compilation fails at any stage.
+
+        """
+        # Step 1: Use pre-loaded workflow_ir from context (set by core.compile_workflow)
+        workflow_ir = context.workflow_ir
+        if workflow_ir is None:
+            raise CompilerError(
+                "workflow_ir not set in context.\n"
+                f"  Workflow: {self.workflow_name}\n"
+                "  Reason: Expected core.compile_workflow() to set context.workflow_ir\n"
+                "  Suggestion: Call compile_workflow() instead of compiler.compile() directly"
+            )
+
+        # Use context_snapshot for automatic state preservation and rollback on error
+        with context_snapshot(context):
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "Using workflow_ir from context (patch: %s)",
+                    context.patch_path.name if context.patch_path else "none",
+                )
+
+            # Step 2: Validate inputs early
+            self.validate_context(context)
+
+            # Step 3: Extract invocation params
+            epic_num = context.resolved_variables.get("epic_num")
+            story_num = context.resolved_variables.get("story_num")
+            session_id = context.resolved_variables.get("session_id")
+            validations: list[AnonymizedValidation] = context.resolved_variables.get(
+                "anonymized_validations", []
+            )
+
+            # Step 3b: Resolve ALL workflow variables (communication_language, etc.)
+            invocation_params = {
+                k: v
+                for k, v in context.resolved_variables.items()
+                if k in ("epic_num", "story_num", "date")
+            }
+            sprint_status_path = find_sprint_status_file(context)
+            resolved = resolve_variables(context, invocation_params, sprint_status_path, None)
+
+            # Resolve story file path
+            story_file, story_key, story_title = resolve_story_file(context, epic_num, story_num)
+
+            # Merge synthesis-specific variables on top
+            resolved.update(
+                {
+                    "epic_num": epic_num,
+                    "story_num": story_num,
+                    "story_id": f"{epic_num}.{story_num}",
+                    "story_key": story_key or f"{epic_num}-{story_num}",
+                    "story_file": str(story_file) if story_file else None,
+                    "story_title": story_title,
+                    "session_id": session_id,
+                    "validator_count": len(validations),
+                    "date": date.today().isoformat(),
+                }
+            )
+
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Resolved %d variables", len(resolved))
+
+            # Step 4: Build minimal synthesis context
+            context_files = self._build_synthesis_context(context, resolved, validations)
+
+            # Step 5: Build synthesis mission
+            mission = self._build_synthesis_mission(resolved)
+
+            # Step 6: Load template (empty for action-workflow)
+            template_content = load_workflow_template(workflow_ir, context)
+
+            # Step 7: Filter instructions
+            filtered_instructions = filter_instructions(workflow_ir)
+            filtered_instructions = substitute_variables(filtered_instructions, resolved)
+
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Filtered instructions: %d bytes", len(filtered_instructions))
+
+            # Step 7b: Filter garbage variables
+            filtered_vars = filter_garbage_variables(resolved)
+
+            # Step 8: Generate XML output
+            compiled = CompiledWorkflow(
+                workflow_name=self.workflow_name,
+                mission=mission,
+                context="",  # Will be populated by generate_output
+                variables=filtered_vars,
+                instructions=filtered_instructions,
+                output_template=template_content,
+                token_estimate=0,
+            )
+
+            result = generate_output(
+                compiled,
+                project_root=context.project_root,
+                context_files=context_files,
+                links_only=context.links_only,
+            )
+
+            # Step 9: Apply post_process rules from patch (if exists)
+            final_xml = apply_post_process(result.xml, context)
+
+            # Step 9b: Validate output against patch validation rules
+            if context.patch_path and context.patch_path.exists():
+                try:
+                    patch = load_patch(context.patch_path)
+                    if patch.validation:
+                        errors = validate_output(final_xml, patch.validation)
+                        if errors:
+                            logger.warning(
+                                "Validation warnings for %s: %s",
+                                self.workflow_name,
+                                "; ".join(errors),
+                            )
+                except Exception as e:
+                    logger.warning("Failed to validate output: %s", e)
+
+            return CompiledWorkflow(
+                workflow_name=self.workflow_name,
+                mission=mission,
+                context=final_xml,
+                variables=resolved,
+                instructions=filtered_instructions,
+                output_template=template_content,
+                token_estimate=result.token_estimate,
+            )

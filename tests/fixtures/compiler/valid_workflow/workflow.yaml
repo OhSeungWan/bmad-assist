@@ -1,0 +1,8 @@
+name: test-workflow
+description: "A test workflow for parser validation"
+config_source: "{project-root}/_bmad/bmm/config.yaml"
+output_folder: "{config_source}:output_folder"
+user_name: "{config_source}:user_name"
+instructions: "{installed_path}/instructions.xml"
+template: "{installed_path}/template.md"
+standalone: true

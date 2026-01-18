@@ -1,0 +1,116 @@
+<workflow>
+  <mission>Extract structured metrics from validator output for benchmarking</mission>
+
+  <context>
+    <input name="validator_output">{validator_output}</input>
+    <story>Epic {story_epic}, Story {story_num}</story>
+  </context>
+
+  <instructions>
+    <step n="1" goal="Analyze findings">
+      <action>Count total distinct findings in the validation report</action>
+      <action>Classify each finding by severity:
+        - critical: Blocks implementation, security issue, data loss risk
+        - major: Significant gap, missing requirement, unclear specification
+        - minor: Minor improvement, clarification needed, nice-to-have
+        - nit: Style, formatting, trivial suggestion
+      </action>
+      <action>Classify each finding by category:
+        - security: Authentication, authorization, data protection issues
+        - performance: Speed, efficiency, resource usage concerns
+        - correctness: Logic errors, wrong behavior, missing validation
+        - completeness: Missing acceptance criteria, gaps in coverage
+        - clarity: Ambiguous wording, unclear requirements
+        - testability: Hard to test, missing test criteria
+      </action>
+      <action>For each finding, determine:
+        - has_fix: Does it suggest a specific solution or fix?
+        - has_location: Does it reference a specific file, line, or section?
+        - has_evidence: Does it cite PRD, architecture, or other source?
+      </action>
+    </step>
+
+    <step n="2" goal="Analyze complexity indicators">
+      <action>Determine if the story involves UI changes (components, views, CSS)</action>
+      <action>Determine if the story involves API changes (endpoints, contracts)</action>
+      <action>Determine if the story involves database changes (schema, migrations)</action>
+      <action>Determine if the story has security implications (auth, encryption, access)</action>
+      <action>Determine if the story requires migration (data, schema, config)</action>
+    </step>
+
+    <step n="3" goal="Assess linguistic characteristics">
+      <action>Rate formality on scale 0.0 (very informal) to 1.0 (very formal):
+        - 0.0-0.3: Casual, colloquial, uses contractions freely
+        - 0.3-0.6: Professional but approachable
+        - 0.6-0.8: Formal, technical, precise
+        - 0.8-1.0: Very formal, academic style
+      </action>
+      <action>Classify overall sentiment:
+        - positive: Constructive, encouraging, solution-focused
+        - neutral: Objective, factual, balanced
+        - negative: Critical, harsh, dismissive
+        - mixed: Contains both positive and negative elements
+      </action>
+    </step>
+
+    <step n="4" goal="Assess quality signals">
+      <action>Calculate actionable_ratio (0.0-1.0):
+        What proportion of findings include clear action items or next steps?</action>
+      <action>Calculate specificity_score (0.0-1.0):
+        How specific vs vague are the findings?
+        Consider file references, line numbers, exact requirements.</action>
+      <action>Calculate evidence_quality (0.0-1.0):
+        How well do findings cite sources (PRD, architecture, acceptance criteria)?</action>
+      <action>Calculate internal_consistency (0.0-1.0):
+        Are there contradictions or conflicting assessments in the output?</action>
+    </step>
+
+    <step n="5" goal="Detect anomalies">
+      <action>Identify duplicate findings (same issue reported multiple ways or times)</action>
+      <action>Identify contradictory findings (conflicting assessments or recommendations)</action>
+      <action>Identify hallucinations (findings about non-existent requirements or code)</action>
+      <action>List all anomalies as descriptive strings</action>
+    </step>
+  </instructions>
+
+  <output format="json">
+    <critical>Output ONLY valid JSON matching the schema below</critical>
+    <critical>Do NOT include markdown code blocks, explanations, or thinking.
+      Output ONLY the JSON object.</critical>
+    <critical>All scores must be between 0.0 and 1.0</critical>
+    <critical>Sentiment must be one of: positive, neutral, negative, mixed</critical>
+    <schema>
+{{
+  "findings": {{
+    "total_count": 0,
+    "by_severity": {{"critical": 0, "major": 0, "minor": 0, "nit": 0}},
+    "by_category": {{
+      "security": 0, "performance": 0, "correctness": 0,
+      "completeness": 0, "clarity": 0, "testability": 0
+    }},
+    "has_fix_count": 0,
+    "has_location_count": 0,
+    "has_evidence_count": 0
+  }},
+  "complexity_flags": {{
+    "has_ui_changes": false,
+    "has_api_changes": false,
+    "has_db_changes": false,
+    "has_security_impact": false,
+    "requires_migration": false
+  }},
+  "linguistic": {{
+    "formality_score": 0.0,
+    "sentiment": "neutral"
+  }},
+  "quality_signals": {{
+    "actionable_ratio": 0.0,
+    "specificity_score": 0.0,
+    "evidence_quality": 0.0,
+    "internal_consistency": 1.0
+  }},
+  "anomalies": []
+}}
+    </schema>
+  </output>
+</workflow>

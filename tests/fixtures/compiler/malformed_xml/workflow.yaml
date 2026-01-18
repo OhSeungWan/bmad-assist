@@ -1,0 +1,3 @@
+name: xml-broken-workflow
+description: "Valid YAML but XML will be broken"
+instructions: "{installed_path}/instructions.xml"

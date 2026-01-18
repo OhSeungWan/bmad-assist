@@ -1,0 +1,87 @@
+# bmad-assist configuration
+# Copy provider settings from your global config or customize here
+
+project_name: cli-dashboard
+user_name: Tester
+communication_language: English
+document_output_language: English
+user_skill_level: expert
+
+# Paths
+# output_folder: '{project-root}/docs'
+# sprint_artifacts: '{project-root}/docs/sprint-artifacts'
+
+timeout: 3600
+
+providers:
+  master:
+    provider: claude-subprocess
+    model: opus
+    # model_name: glm-4.7
+    # settings: ~/.claude/glm.json
+
+  helper:
+    provider: claude-subprocess
+    model: haiku
+    model_name: glm-4.5
+    settings: ~/.claude/glm.json
+
+  # Additional providers for multi-provider scenarios
+  multi:
+    # - provider: claude-subprocess
+    #   model: opus
+    # - provider: claude-subprocess
+    #   model: opus
+    # - provider: gemini
+    #   model: gemini-3-pro-preview
+    - provider: gemini
+      model: gemini-3-flash-preview
+    - provider: gemini
+      model: gemini-3-flash-preview
+    - provider: gemini
+      model: gemini-3-flash-preview
+    - provider: claude-subprocess
+      model: sonnet
+      model_name: glm-4.7
+      settings: ~/.claude/glm.json
+    - provider: claude-subprocess
+      model: sonnet
+      model_name: glm-4.7
+      settings: ~/.claude/glm.json
+    # - provider: claude-subprocess
+    #   model: sonnet
+    #   model_name: glm-4.7
+    #   settings: ~/.claude/glm.json
+
+benchmarking:
+  enabled: true
+  extraction_provider: gemini
+  extraction_model: gemini-3-flash-preview
+
+qa:
+  playwright:
+    base_url: "http://localhost:8765"
+    server:
+      command: "bmad-assist serve --port 8765"
+      startup_timeout: 30
+      reuse_existing: true
+    headless: true
+    timeout: 20  # per-test timeout in seconds (process timeout is calculated automatically)
+    screenshot: "only-on-failure"
+    video: "retain-on-failure"
+    trace: "retain-on-failure"
+
+notifications:
+  enabled: true
+  providers:
+    - type: telegram
+      bot_token: "${TELEGRAM_BOT_TOKEN}"
+      chat_id: "${TELEGRAM_CHAT_ID}"
+    - type: discord
+      webhook_url: "${DISCORD_WEBHOOK_URL}"
+  events:
+    - story_started
+    - story_completed
+    - phase_completed
+    - error_occurred
+    - anomaly_detected

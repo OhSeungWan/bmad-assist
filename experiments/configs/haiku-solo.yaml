@@ -1,0 +1,8 @@
+name: haiku-solo
+description: "Haiku-only configuration for fast, cost-effective experiments"
+
+providers:
+  master:
+    provider: claude-subprocess
+    model: haiku
+  multi: []

@@ -1,0 +1,4 @@
+name: no-patches
+description: "Raw workflows without any patches"
+
+patches: {}

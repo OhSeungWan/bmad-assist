@@ -1,0 +1,6 @@
+name: broken-workflow
+description: This has invalid YAML syntax
+  indentation: wrong
+    nested: also wrong
+key_without_value:
+another_key: [unclosed bracket

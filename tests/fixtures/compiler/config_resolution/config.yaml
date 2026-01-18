@@ -1,0 +1,24 @@
+# External config file for testing variable resolution
+# Simulates _bmad/bmm/config.yaml structure
+
+project_name: test-project
+user_skill_level: expert
+user_name: TestUser
+communication_language: English
+document_output_language: English
+
+# Path variables that need resolution
+output_folder: '{project-root}/docs'
+sprint_artifacts: '{project-root}/docs/sprint-artifacts'
+agent_sidecar_folder: '{project-root}/.bmad-user-memory'
+
+# Non-string values for preservation tests
+template_enabled: true
+timeout_seconds: 300
+allowed_extensions:
+  - .md
+  - .yaml
+  - .xml
+metadata:
+  version: "1.0"
+  author: "Test"

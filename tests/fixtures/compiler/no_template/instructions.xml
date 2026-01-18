@@ -1,0 +1,5 @@
+<workflow>
+  <step n="1" goal="Action only workflow">
+    <action>Perform action without template output</action>
+  </step>
+</workflow>

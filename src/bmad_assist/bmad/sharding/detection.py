@@ -1,0 +1,83 @@
+"""Detection utilities for sharded vs single-file documentation.
+
+This module provides functions to detect whether documentation exists as
+a single file or sharded directory, with proper precedence handling.
+"""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+def is_sharded_path(path: Path) -> bool:
+    """Check if path is a sharded documentation directory.
+
+    A path is considered sharded if it is an existing directory.
+
+    Args:
+        path: Path to check.
+
+    Returns:
+        True if path is a directory, False otherwise.
+
+    Examples:
+        >>> is_sharded_path(Path("docs/epics"))  # directory
+        True
+        >>> is_sharded_path(Path("docs/epics.md"))  # file
+        False
+
+    """
+    return path.is_dir()
+
+
+def resolve_doc_path(base_path: Path, doc_name: str) -> tuple[Path, bool]:
+    """Resolve documentation path, detecting sharded vs single-file.
+
+    Implements PRECEDENCE RULE: If both sharded directory AND single file exist,
+    sharded directory takes priority. This supports modern projects with
+    sharded docs while allowing single-file stubs/redirects to coexist.
+
+    Args:
+        base_path: Project docs directory.
+        doc_name: Document name without extension (e.g., "epics", "prd").
+
+    Returns:
+        Tuple of (resolved_path, is_sharded).
+        - If sharded directory exists: (path_to_dir, True)
+        - If only single file exists: (path_to_file, False)
+        - If neither exists: (path_to_file, False) as default pattern
+
+    Examples:
+        >>> resolve_doc_path(Path("docs"), "epics")
+        (PosixPath('docs/epics'), True)  # if docs/epics/ exists
+        >>> resolve_doc_path(Path("docs"), "epics")
+        (PosixPath('docs/epics.md'), False)  # if only docs/epics.md exists
+
+    """
+    single_file = base_path / f"{doc_name}.md"
+    sharded_dir = base_path / doc_name
+
+    # PRECEDENCE: Sharded directory takes priority over single file
+    # This allows stub files (redirects) to coexist with sharded directories
+    if sharded_dir.is_dir():
+        if single_file.exists():
+            logger.debug(
+                "Both %s/ and %s exist; using sharded directory (precedence rule)",
+                sharded_dir,
+                single_file,
+            )
+        return sharded_dir, True
+    elif single_file.exists():
+        logger.debug("Using single file: %s", single_file)
+        return single_file, False
+    else:
+        # Default to single-file pattern when neither exists
+        logger.debug(
+            "Neither %s/ nor %s exist; defaulting to single-file pattern",
+            sharded_dir,
+            single_file,
+        )
+        return single_file, False
