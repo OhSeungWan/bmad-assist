@@ -753,3 +753,221 @@ class TestIsolationErrorException:
 
         error = IsolationError("test")
         assert isinstance(error, BmadAssistError)
+
+
+class TestTarExtraction:
+    """Tests for tar archive extraction."""
+
+    @pytest.fixture
+    def fixture_with_tar(self, tmp_path: Path) -> tuple[Path, Path]:
+        """Create a fixture directory and corresponding tar archive."""
+        import tarfile
+
+        fixtures_dir = tmp_path / "fixtures"
+        fixtures_dir.mkdir()
+
+        # Create fixture content
+        fixture_dir = fixtures_dir / "test-fixture"
+        fixture_dir.mkdir()
+        (fixture_dir / "docs").mkdir()
+        (fixture_dir / "docs" / "prd.md").write_text("# Test PRD")
+        (fixture_dir / "config.yaml").write_text("name: test")
+
+        # Create tar archive
+        tar_path = fixtures_dir / "test-fixture.tar"
+        with tarfile.open(tar_path, "w") as tar:
+            for item in fixture_dir.rglob("*"):
+                arcname = item.relative_to(fixture_dir)
+                tar.add(item, arcname=str(arcname))
+
+        return fixture_dir, tar_path
+
+    def test_isolate_prefers_tar_over_directory(
+        self,
+        runs_dir: Path,
+        fixture_with_tar: tuple[Path, Path],
+    ) -> None:
+        """Test that tar archive is preferred over directory when both exist."""
+        fixture_dir, tar_path = fixture_with_tar
+
+        # Modify directory content (to verify tar is used, not directory)
+        (fixture_dir / "docs" / "prd.md").write_text("# Modified PRD")
+
+        isolator = FixtureIsolator(runs_dir)
+        result = isolator.isolate(fixture_dir, "run-001")
+
+        # Verify tar was used (original content, not modified)
+        prd_content = (result.snapshot_path / "docs" / "prd.md").read_text()
+        assert prd_content == "# Test PRD"
+        assert result.source_path == tar_path
+
+    def test_isolate_from_tar_only(
+        self,
+        runs_dir: Path,
+        tmp_path: Path,
+    ) -> None:
+        """Test isolation when only tar exists (no directory)."""
+        import tarfile
+
+        fixtures_dir = tmp_path / "fixtures"
+        fixtures_dir.mkdir()
+
+        # Create tar without directory
+        tar_path = fixtures_dir / "tar-only.tar"
+        with tarfile.open(tar_path, "w") as tar:
+            # Add content directly to tar
+            import io
+
+            prd_content = b"# TAR Only PRD"
+            prd_info = tarfile.TarInfo(name="docs/prd.md")
+            prd_info.size = len(prd_content)
+            tar.addfile(prd_info, io.BytesIO(prd_content))
+
+        # Try to isolate from non-existent directory path
+        fixture_dir = fixtures_dir / "tar-only"  # Doesn't exist
+
+        isolator = FixtureIsolator(runs_dir)
+        result = isolator.isolate(fixture_dir, "run-001")
+
+        assert result.source_path == tar_path
+        assert (result.snapshot_path / "docs" / "prd.md").exists()
+        assert (result.snapshot_path / "docs" / "prd.md").read_text() == "# TAR Only PRD"
+
+    def test_isolate_from_tar_gz(
+        self,
+        runs_dir: Path,
+        tmp_path: Path,
+    ) -> None:
+        """Test isolation from gzip-compressed tar archive."""
+        import tarfile
+
+        fixtures_dir = tmp_path / "fixtures"
+        fixtures_dir.mkdir()
+
+        # Create tar.gz
+        tar_path = fixtures_dir / "compressed.tar.gz"
+        with tarfile.open(tar_path, "w:gz") as tar:
+            import io
+
+            content = b"# Compressed PRD"
+            info = tarfile.TarInfo(name="docs/prd.md")
+            info.size = len(content)
+            tar.addfile(info, io.BytesIO(content))
+
+        fixture_dir = fixtures_dir / "compressed"
+
+        isolator = FixtureIsolator(runs_dir)
+        result = isolator.isolate(fixture_dir, "run-001")
+
+        assert result.source_path == tar_path
+        assert (result.snapshot_path / "docs" / "prd.md").read_text() == "# Compressed PRD"
+
+    def test_isolate_from_tgz(
+        self,
+        runs_dir: Path,
+        tmp_path: Path,
+    ) -> None:
+        """Test isolation from .tgz archive (alias for tar.gz)."""
+        import tarfile
+
+        fixtures_dir = tmp_path / "fixtures"
+        fixtures_dir.mkdir()
+
+        # Create .tgz
+        tar_path = fixtures_dir / "alias.tgz"
+        with tarfile.open(tar_path, "w:gz") as tar:
+            import io
+
+            content = b"# TGZ PRD"
+            info = tarfile.TarInfo(name="docs/prd.md")
+            info.size = len(content)
+            tar.addfile(info, io.BytesIO(content))
+
+        fixture_dir = fixtures_dir / "alias"
+
+        isolator = FixtureIsolator(runs_dir)
+        result = isolator.isolate(fixture_dir, "run-001")
+
+        assert result.source_path == tar_path
+
+    def test_tar_format_priority(
+        self,
+        runs_dir: Path,
+        tmp_path: Path,
+    ) -> None:
+        """Test that .tar is preferred over .tar.gz when both exist."""
+        import tarfile
+
+        fixtures_dir = tmp_path / "fixtures"
+        fixtures_dir.mkdir()
+
+        # Create both .tar and .tar.gz with different content
+        tar_path = fixtures_dir / "multi.tar"
+        with tarfile.open(tar_path, "w") as tar:
+            import io
+
+            content = b"# From .tar"
+            info = tarfile.TarInfo(name="docs/prd.md")
+            info.size = len(content)
+            tar.addfile(info, io.BytesIO(content))
+
+        tar_gz_path = fixtures_dir / "multi.tar.gz"
+        with tarfile.open(tar_gz_path, "w:gz") as tar:
+            import io
+
+            content = b"# From .tar.gz"
+            info = tarfile.TarInfo(name="docs/prd.md")
+            info.size = len(content)
+            tar.addfile(info, io.BytesIO(content))
+
+        fixture_dir = fixtures_dir / "multi"
+
+        isolator = FixtureIsolator(runs_dir)
+        result = isolator.isolate(fixture_dir, "run-001")
+
+        # .tar should be preferred (faster, no decompression)
+        assert result.source_path == tar_path
+        assert (result.snapshot_path / "docs" / "prd.md").read_text() == "# From .tar"
+
+    def test_tar_path_traversal_attack_blocked(
+        self,
+        runs_dir: Path,
+        tmp_path: Path,
+    ) -> None:
+        """Test that tar archives with path traversal attacks are rejected."""
+        import tarfile
+
+        fixtures_dir = tmp_path / "fixtures"
+        fixtures_dir.mkdir()
+
+        # Create malicious tar with path traversal
+        tar_path = fixtures_dir / "malicious.tar"
+        with tarfile.open(tar_path, "w") as tar:
+            import io
+
+            content = b"malicious"
+            info = tarfile.TarInfo(name="../../../etc/passwd")
+            info.size = len(content)
+            tar.addfile(info, io.BytesIO(content))
+
+        fixture_dir = fixtures_dir / "malicious"
+
+        isolator = FixtureIsolator(runs_dir)
+
+        with pytest.raises(IsolationError) as exc_info:
+            isolator.isolate(fixture_dir, "run-001")
+
+        assert "unsafe path" in str(exc_info.value)
+
+    def test_fallback_to_directory_when_no_tar(
+        self,
+        runs_dir: Path,
+        minimal_fixture: Path,
+    ) -> None:
+        """Test fallback to directory copy when no tar archive exists."""
+        isolator = FixtureIsolator(runs_dir)
+        result = isolator.isolate(minimal_fixture, "run-001")
+
+        # Source should be the directory, not a tar file
+        assert result.source_path == minimal_fixture
+        assert result.verified is True

@@ -1,7 +1,12 @@
 """Fixture isolation engine for experiment framework.
 
 This module provides fixture isolation for experiment runs, ensuring
-reproducibility by creating deep copies of fixtures to isolated run directories.
+reproducibility by extracting fixtures from tar archives to isolated run directories.
+
+Tar archives are preferred over directories because:
+- They guarantee a clean, consistent state
+- They avoid conflicts with directories in use by other processes
+- They are faster to extract than to copy recursively
 
 Usage:
     from bmad_assist.experiments import FixtureIsolator, IsolationResult
@@ -9,7 +14,7 @@ Usage:
     # Create isolator with runs directory
     isolator = FixtureIsolator(Path("experiments/runs"))
 
-    # Isolate a fixture
+    # Isolate a fixture (extracts from tar if available, otherwise copies directory)
     result = isolator.isolate(fixture_path, "run-2026-01-08-001")
 
     print(f"Isolated to: {result.snapshot_path}")
@@ -23,6 +28,7 @@ import logging
 import os
 import shutil
 import stat
+import tarfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -110,33 +116,219 @@ class FixtureIsolator:
         run_id: str,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
     ) -> IsolationResult:
-        """Isolate a fixture by creating a deep copy.
+        """Isolate a fixture by extracting from tar archive or copying directory.
+
+        Prefers tar archive extraction over directory copy because:
+        - Tar guarantees a clean, consistent state
+        - Avoids conflicts with directories in use by other processes
+        - Faster extraction than recursive copy
 
         Args:
             fixture_path: Path to source fixture directory.
+                If {fixture_path}.tar exists, extracts from tar instead.
             run_id: Unique identifier for this experiment run.
-            timeout_seconds: Maximum time allowed for copy operation.
+            timeout_seconds: Maximum time allowed for extraction/copy operation.
 
         Returns:
-            IsolationResult with copy details.
+            IsolationResult with extraction/copy details.
 
         Raises:
             ConfigError: If source doesn't exist, target already exists,
                 or run_id contains invalid characters.
-            IsolationError: If copy fails or verification fails.
+            IsolationError: If extraction/copy fails or verification fails.
 
         """
         # Validate run_id for path traversal attempts
         if "/" in run_id or "\\" in run_id or ".." in run_id:
             raise ConfigError(f"Invalid run_id '{run_id}': must not contain '/', '\\', or '..'")
 
-        # Validate source
         source = fixture_path.resolve()
+
+        # Check for tar archive (preferred source) - try multiple formats
+        # Order: .tar (fastest), .tar.gz/.tgz (common), .tar.bz2 (best compression)
+        tar_extensions = [".tar", ".tar.gz", ".tgz", ".tar.bz2"]
+        tar_path = None
+        for ext in tar_extensions:
+            candidate = source.parent / f"{source.name}{ext}"
+            if candidate.exists() and candidate.is_file():
+                tar_path = candidate
+                break
+
+        if tar_path is not None:
+            return self._isolate_from_tar(tar_path, source, run_id, timeout_seconds)
+
+        # Fallback to directory copy
         if not source.exists():
-            raise ConfigError(f"Fixture source does not exist: {source}")
+            checked_formats = ", ".join(f"{source.name}{ext}" for ext in tar_extensions)
+            raise ConfigError(
+                f"Fixture source does not exist: {source} "
+                f"(also checked for archives: {checked_formats})"
+            )
         if not source.is_dir():
             raise ConfigError(f"Fixture source is not a directory: {source}")
 
+        logger.warning(
+            "No tar archive found for fixture %s, falling back to directory copy. "
+            "Consider creating %s.tar for faster and safer isolation.",
+            source.name,
+            source.name,
+        )
+
+        return self._isolate_from_directory(source, run_id, timeout_seconds)
+
+    def _isolate_from_tar(
+        self,
+        tar_path: Path,
+        source: Path,
+        run_id: str,
+        timeout_seconds: int,
+    ) -> IsolationResult:
+        """Extract fixture from tar archive to snapshot directory.
+
+        Args:
+            tar_path: Path to tar archive.
+            source: Original fixture directory path (for reference).
+            run_id: Unique identifier for this experiment run.
+            timeout_seconds: Maximum time allowed for extraction.
+
+        Returns:
+            IsolationResult with extraction details.
+
+        """
+        # Create target path
+        snapshot = (self._runs_dir / run_id / "fixture-snapshot").resolve()
+        if snapshot.exists():
+            raise ConfigError(f"Snapshot directory already exists: {snapshot}")
+
+        # Ensure parent exists
+        snapshot.parent.mkdir(parents=True, exist_ok=True)
+
+        start_time = time.monotonic()
+
+        try:
+            # Extract tar archive
+            logger.info("Extracting fixture from %s to %s", tar_path.name, snapshot)
+
+            with tarfile.open(tar_path, "r:*") as tar:
+                # Security: check for path traversal attacks in tar
+                for member in tar.getmembers():
+                    member_path = Path(member.name)
+                    if member_path.is_absolute() or ".." in member_path.parts:
+                        raise IsolationError(
+                            f"Tar archive contains unsafe path: {member.name}",
+                            source_path=tar_path,
+                            snapshot_path=snapshot,
+                        )
+
+                # Check timeout before extraction
+                elapsed = time.monotonic() - start_time
+                if elapsed > timeout_seconds:
+                    raise IsolationError(
+                        f"Timeout before extraction started ({elapsed:.0f}s)",
+                        source_path=tar_path,
+                        snapshot_path=snapshot,
+                    )
+
+                # Extract all files
+                tar.extractall(path=snapshot, filter="data")
+
+            duration = time.monotonic() - start_time
+
+            # Count files and calculate size
+            file_count = 0
+            total_bytes = 0
+            for f in snapshot.rglob("*"):
+                if f.is_file():
+                    file_count += 1
+                    total_bytes += f.stat().st_size
+
+            # Verify extraction
+            verified, reason = self._verify_extraction(snapshot)
+            if not verified:
+                raise IsolationError(
+                    f"Verification failed: {reason}",
+                    source_path=tar_path,
+                    snapshot_path=snapshot,
+                )
+
+            logger.info(
+                "Extracted fixture %s to %s (%d files, %.1f MB, %.1fs)",
+                tar_path.name,
+                snapshot,
+                file_count,
+                total_bytes / (1024 * 1024),
+                duration,
+            )
+
+            return IsolationResult(
+                source_path=tar_path,
+                snapshot_path=snapshot,
+                file_count=file_count,
+                total_bytes=total_bytes,
+                duration_seconds=duration,
+                verified=True,
+            )
+
+        except IsolationError:
+            self._cleanup(snapshot)
+            raise
+        except Exception as e:
+            self._cleanup(snapshot)
+            raise IsolationError(
+                f"Tar extraction failed: {e}",
+                source_path=tar_path,
+                snapshot_path=snapshot,
+            ) from e
+
+    def _verify_extraction(self, snapshot: Path) -> tuple[bool, str]:
+        """Verify tar extraction integrity.
+
+        Args:
+            snapshot: Extracted snapshot directory.
+
+        Returns:
+            Tuple of (verified, reason).
+
+        """
+        # Check for symlinks (should not exist in tar)
+        for f in snapshot.rglob("*"):
+            if f.is_symlink():
+                return (
+                    False,
+                    f"Symlink found in extracted snapshot: {f}",
+                )
+
+        # Check critical paths
+        docs_dst = snapshot / "docs"
+        if not docs_dst.exists():
+            logger.warning("Extracted snapshot has no docs/ directory: %s", snapshot)
+
+        # Check for at least one .md or .yaml file
+        has_content = any(
+            f.suffix in {".md", ".yaml", ".yml"} for f in snapshot.rglob("*") if f.is_file()
+        )
+        if not has_content:
+            return False, "No .md or .yaml files found in extracted snapshot"
+
+        return True, "OK"
+
+    def _isolate_from_directory(
+        self,
+        source: Path,
+        run_id: str,
+        timeout_seconds: int,
+    ) -> IsolationResult:
+        """Isolate a fixture by copying directory (fallback when no tar exists).
+
+        Args:
+            source: Path to source fixture directory.
+            run_id: Unique identifier for this experiment run.
+            timeout_seconds: Maximum time allowed for copy operation.
+
+        Returns:
+            IsolationResult with copy details.
+
+        """
         # Create target path
         snapshot = (self._runs_dir / run_id / "fixture-snapshot").resolve()
         if snapshot.exists():
