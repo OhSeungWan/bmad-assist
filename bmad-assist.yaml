@@ -33,14 +33,14 @@ providers:
     #   model: opus
     # - provider: claude-subprocess
     #   model: opus
-    - provider: gemini
-      model: gemini-3-pro-preview
     # - provider: gemini
-    #   model: gemini-3-flash-preview
+    #   model: gemini-3-pro-preview
     - provider: gemini
       model: gemini-3-flash-preview
     - provider: gemini
-      model: gemini-2.5-flash
+      model: gemini-3-flash-preview
+    - provider: gemini
+      model: gemini-3-flash-preview
     - provider: claude-subprocess
       model: sonnet
       model_name: glm-4.7
@@ -56,7 +56,21 @@ providers:
 
 benchmarking:
   enabled: true
+  extraction_provider: gemini
+  extraction_model: gemini-3-flash-preview
 
+qa:
+  playwright:
+    base_url: "http://localhost:8765"
+    server:
+      command: "bmad-assist serve --port 8765"
+      startup_timeout: 30
+      reuse_existing: true
+    headless: true
+    timeout: 20  # per-test timeout in seconds (process timeout is calculated automatically)
+    screenshot: "only-on-failure"
+    video: "retain-on-failure"
+    trace: "retain-on-failure"
 
 notifications:
   enabled: true
