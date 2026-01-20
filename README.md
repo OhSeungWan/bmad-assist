@@ -60,6 +60,7 @@ BMAD (Brian's Methodology for AI-Driven Development) is a structured approach to
 - **Multi-LLM Orchestration** - Run parallel validations/reviews with Claude Code, Gemini CLI, and Codex
 - **Workflow Compiler** - Transform BMAD workflows into optimized standalone prompts
 - **Patch System** - Customize workflows per-project without forking
+- **Bundled Workflows** - All BMAD workflows included, no extra setup needed
 
 **TODO:**
 - Real-time Dashboard
@@ -92,23 +93,50 @@ pip install -e .
 
 ## Quick Start
 
-**Before running bmad-assist on your project:**
-
-1. Copy `_bmad/` directory from this repo to your project root
-2. Ensure your project has complete documentation in `docs/`:
-   - `prd.md` - Product Requirements Document
-   - `architecture/` or `architecture.md` - Technical architecture decisions
-   - `epics/` or `epics.md` - Epic definitions with stories
-   - `project-context.md` - AI agent implementation rules
-   - `ux-spec.md` (optional) - UX specifications
-
 ```bash
-# Check CLI is working
-bmad-assist --help
+# 1. Initialize your project
+bmad-assist init --project /path/to/your/project
 
-# Run the main development loop
+# 2. Create configuration file (see Project Configuration below)
+# Edit bmad-assist.yaml in your project root
+
+# 3. Run the development loop
 bmad-assist run --project /path/to/your/project
 ```
+
+**Your project needs documentation in `docs/`:**
+- `prd.md` - Product Requirements Document
+- `architecture/` or `architecture.md` - Technical architecture decisions
+- `epics/` or `epics.md` - Epic definitions with stories
+- `project-context.md` - AI agent implementation rules
+- `ux-spec.md` (optional) - UX specifications
+
+**Note:** Workflows are bundled with bmad-assist. No need to copy `_bmad/` directory anymore.
+
+## The `init` Command (Optional)
+
+The `bmad-assist init` command prepares your project for use with bmad-assist. **It's optional** - the `run` command will create necessary directories automatically. However, `init` is recommended for proper `.gitignore` setup.
+
+```bash
+bmad-assist init                    # Initialize current directory
+bmad-assist init -p ./my-project    # Initialize specific project
+bmad-assist init --dry-run          # Preview changes without applying
+```
+
+**What it does:**
+
+1. **Creates `.bmad-assist/` directory** - Stores internal state, cache, and patches
+2. **Updates `.gitignore`** - Adds patterns to prevent committing generated artifacts:
+   - `.bmad-assist/` (internal state)
+   - `_bmad-output/` (generated stories, validations, reviews)
+3. **Validates bundled workflows** - Checks that all required workflows are available
+
+**`init` vs `run`:**
+- `run` automatically creates `.bmad-assist/` and output directories
+- `init` additionally sets up `.gitignore` and validates workflows
+- Run `init` once to set up `.gitignore`, then use `run` normally
+
+The command is **idempotent** - safe to run multiple times.
 
 ### Try It Out
 
@@ -156,6 +184,76 @@ notifications:
       webhook_url: ${DISCORD_WEBHOOK_URL}
 ```
 
+## External Documentation
+
+By default, bmad-assist expects documentation in `docs/` and outputs artifacts to `_bmad-output/` within your project. However, you can configure **external paths** to store documentation or artifacts outside your project directory.
+
+This is useful when:
+- Multiple projects share the same documentation (monorepo, shared specs)
+- You want to keep generated artifacts on a separate drive
+- Documentation lives in a different repository
+
+### Configuration
+
+Add a `paths` section to your `bmad-assist.yaml`:
+
+```yaml
+paths:
+  # Documentation source (PRD, architecture, epics, project-context)
+  project_knowledge: /shared/docs/my-project
+
+  # Generated artifacts (stories, validations, code reviews)
+  output_folder: /data/bmad-output/my-project
+
+  # Or use relative paths (resolved from project root)
+  # project_knowledge: ../shared-docs
+```
+
+### Available Path Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `project_knowledge` | `{project-root}/docs` | Source documentation (read-only) |
+| `output_folder` | `{project-root}/_bmad-output` | Base folder for all generated artifacts |
+| `planning_artifacts` | `{output_folder}/planning-artifacts` | PRD, architecture copies |
+| `implementation_artifacts` | `{output_folder}/implementation-artifacts` | Stories, validations, reviews |
+
+### Path Resolution
+
+Paths are resolved in this order:
+1. **Absolute paths** (`/external/docs`) - used as-is
+2. **Placeholder paths** (`{project-root}/custom`) - placeholder replaced with project root
+3. **Relative paths** (`../shared-docs`) - resolved relative to project root
+
+### Example: Shared Documentation
+
+```yaml
+# Project A: /projects/frontend
+paths:
+  project_knowledge: /shared/product-docs
+
+# Project B: /projects/backend
+paths:
+  project_knowledge: /shared/product-docs
+
+# Both projects read from the same documentation source
+```
+
+### Example: Separate Output Drive
+
+```yaml
+paths:
+  output_folder: /mnt/fast-ssd/bmad-output/my-project
+  # All artifacts (stories, validations, reviews) go to the SSD
+```
+
+### Important Notes
+
+- **External `project_knowledge` must exist** - bmad-assist won't create it
+- **External `output_folder` is created automatically** - with appropriate subdirectories
+- **Permission errors show helpful messages** - if external paths are inaccessible
+- **Legacy locations are still checked** - for backwards compatibility with older projects
+
 ## Project Structure
 
 ```
@@ -164,9 +262,9 @@ bmad-assist/
 │   ├── cli.py            # Typer entry point
 │   ├── core/             # Config, state, loop
 │   ├── compiler/         # Workflow compiler
+│   ├── workflows/        # Bundled BMAD workflows
 │   ├── validation/       # Multi-LLM validation
 │   └── code_review/      # Code review orchestration
-├── _bmad/                # BMAD workflows (customized)
 ├── .bmad-assist/         # Project patches
 └── tests/                # Test suite
 ```
@@ -184,6 +282,45 @@ mypy src/
 ruff check src/
 ruff format src/
 ```
+
+## Troubleshooting
+
+### "Workflow not found" Error
+
+**Symptoms:**
+- `CompilerError: Workflow 'dev-story' not found!`
+- `Bundled workflow 'code-review' not found!`
+
+**Solution:**
+```bash
+# Reinstall bmad-assist to ensure workflows are bundled
+pip install -e .
+
+# Verify workflows are available
+bmad-assist init  # Shows workflow validation
+```
+
+### "Handler config not found" Error
+
+**Symptoms:**
+- `ConfigError: Handler config not found: ~/.bmad-assist/handlers/...`
+
+**Cause:** Handler YAML files are deprecated. The compiler should handle prompts automatically.
+
+**Solution:**
+1. Ensure bmad-assist is properly installed: `pip install -e .`
+2. Check if workflow discovery is working: `bmad-assist compile -w dev-story --debug`
+3. If using custom workflows, place them in `.bmad-assist/workflows/{workflow-name}/`
+
+### Custom Workflow Overrides
+
+To customize a workflow for your project:
+
+1. Create `.bmad-assist/workflows/{workflow-name}/` directory
+2. Copy the workflow files (`workflow.yaml`, `instructions.md`, etc.)
+3. Modify as needed
+
+Project overrides take priority over bundled workflows.
 
 ## License
 
