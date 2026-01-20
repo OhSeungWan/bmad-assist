@@ -19,7 +19,11 @@ from bmad_assist.compiler.patching.cache import (
     TemplateCache,
     compute_file_hash,
 )
-from bmad_assist.compiler.patching.discovery import discover_patch, load_patch
+from bmad_assist.compiler.patching.discovery import (
+    determine_patch_source_level,
+    discover_patch,
+    load_patch,
+)
 from bmad_assist.compiler.patching.output import TemplateMetadata, generate_template
 from bmad_assist.compiler.patching.session import PatchSession
 from bmad_assist.compiler.patching.transforms import post_process_compiled
@@ -98,10 +102,25 @@ def _find_workflow_files(
         if instructions_md.exists():
             return workflow_yaml, instructions_md
 
+    # Not found in project or global - try bundled workflows
+    from bmad_assist.workflows import get_bundled_workflow_dir
+
+    bundled_dir = get_bundled_workflow_dir(workflow)
+    if bundled_dir is not None:
+        workflow_yaml = bundled_dir / "workflow.yaml"
+        if workflow_yaml.exists():
+            instructions_xml = bundled_dir / "instructions.xml"
+            if instructions_xml.exists():
+                return workflow_yaml, instructions_xml
+
+            instructions_md = bundled_dir / "instructions.md"
+            if instructions_md.exists():
+                return workflow_yaml, instructions_md
+
     raise PatchError(
         f"Workflow not found: {workflow}\n"
         f"  Searched in: {project_root}/.bmad/**/workflows/{workflow}/\n"
-        f"  Suggestion: Ensure BMAD is installed in the project"
+        f"  Suggestion: Ensure BMAD is installed in the project or use bundled workflows"
     )
 
 
@@ -255,20 +274,13 @@ def compile_patch(
     # Count warnings (failed transforms that didn't block compilation)
     warning_count = sum(1 for r in results if not r.success)
 
-    # Determine cache location based on patch location
-    # Priority: project → CWD → global
+    # Determine cache location based on patch source
+    # Cache is stored where the patch comes from to maintain consistency:
+    # - Project patch → project cache
+    # - CWD patch → CWD cache
+    # - Global patch → global cache
     cache = TemplateCache()
-    project_patch_dir = project_root / ".bmad-assist" / "patches"
-    is_project_patch = patch_path.is_relative_to(project_patch_dir)
-
-    cache_location: Path | None = None
-    if is_project_patch:
-        cache_location = project_root
-    elif cwd is not None:
-        cwd_patch_dir = cwd / ".bmad-assist" / "patches"
-        if patch_path.is_relative_to(cwd_patch_dir):
-            cache_location = cwd
-    # else: global cache (cache_location = None)
+    cache_location = determine_patch_source_level(patch_path, project_root, cwd)
 
     cache_path = cache.get_cache_path(workflow, cache_location)
 
@@ -289,7 +301,7 @@ def compile_patch(
 
     template = generate_template(compiled_workflow, meta)
 
-    # Save cache to same location as patch
+    # Save cache to location matching patch source
     cache_meta = CacheMeta(
         compiled_at=compiled_at,
         bmad_version=patch.compatibility.bmad_version,
@@ -435,23 +447,12 @@ def load_workflow_ir(
     cache_path = ensure_template_compiled(workflow, project_root, cwd=cwd)
 
     if cache_path is not None:
-        # Load from cached template
-        cache = TemplateCache()
-
-        # Determine cache location from path
-        cache_location: Path | None = None
+        # Load directly from the verified cache path
+        # (avoid re-deriving cache_location - we already have the valid path)
         try:
-            if cache_path.is_relative_to(project_root / ".bmad-assist" / "cache"):
-                cache_location = project_root
-            elif cwd and cache_path.is_relative_to(cwd / ".bmad-assist" / "cache"):
-                cache_location = cwd
-        except ValueError:
-            pass  # Path.is_relative_to can raise for unrelated paths
-        # else: global cache
-
-        cached_content = cache.load_cached(workflow, cache_location)
-        if cached_content is None:
-            raise CompilerError(f"Failed to load cached template: {cache_path}")
+            cached_content = cache_path.read_text(encoding="utf-8")
+        except OSError as e:
+            raise CompilerError(f"Failed to load cached template: {cache_path}\n  Error: {e}") from e
 
         # Parse cached template into WorkflowIR
         # NOTE: Use ^tag to match tags at line start, not as text in comments
@@ -484,15 +485,18 @@ def load_workflow_ir(
             if output_template == "":
                 output_template = None
 
-            # Find original workflow dir for paths (template.md, checklist.md, etc.)
+            # Find original workflow dir for {installed_path} resolution
+            # config_path must point to original workflow.yaml, not cache file
             if workflow_dir is None:
                 workflow_yaml_path, _ = _find_workflow_files(workflow, project_root)
                 workflow_dir = workflow_yaml_path.parent
+            else:
+                workflow_yaml_path = workflow_dir / "workflow.yaml"
 
             workflow_ir = WorkflowIR(
                 name=config.get("name", workflow),
-                config_path=cache_path,  # Points to cache file
-                instructions_path=cache_path,  # Not a real file but needed for structure
+                config_path=workflow_yaml_path,  # Original workflow.yaml for {installed_path}
+                instructions_path=cache_path,  # Cache file for instructions content
                 template_path=config.get("template"),
                 validation_path=config.get("validation"),
                 raw_config=config,
@@ -500,11 +504,9 @@ def load_workflow_ir(
                 output_template=output_template,  # Embedded template content from cache
             )
 
-            # Get patch path for post_process loading later
-            patch_path = discover_patch(workflow, project_root, cwd=cwd)
-
+            # Cached templates have post_process already applied, no patch_path needed
             logger.info("Loaded workflow %s from cached template", workflow)
-            return workflow_ir, patch_path
+            return workflow_ir, None
 
         except Exception as e:
             raise CompilerError(

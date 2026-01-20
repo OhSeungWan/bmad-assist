@@ -1,11 +1,20 @@
 """Base handler class for phase execution.
 
 Provides common functionality for all phase handlers:
-- YAML configuration loading from ~/.bmad-assist/handlers/
-- Jinja2 prompt template rendering
 - Provider invocation
 - PhaseResult creation
 - Optional timing tracking for benchmarking
+
+DEPRECATION NOTICE:
+-------------------
+Handler YAML configuration files (~/.bmad-assist/handlers/*.yaml) are DEPRECATED.
+The workflow compiler now handles prompt generation with bundled workflows.
+
+The old YAML-based system is retained only for fallback compatibility but should
+not be used for new development. All workflows should use the compiler system
+with bundled workflow templates in src/bmad_assist/workflows/.
+
+See: src/bmad_assist/compiler/workflow_discovery.py for the new discovery system.
 
 """
 
@@ -23,6 +32,7 @@ from jinja2 import Template
 
 from bmad_assist.core.config import Config
 from bmad_assist.core.exceptions import ConfigError, ProviderExitCodeError
+from bmad_assist.core.io import get_original_cwd
 from bmad_assist.core.loop.types import PhaseResult
 from bmad_assist.core.paths import get_paths
 from bmad_assist.core.state import State
@@ -33,6 +43,50 @@ logger = logging.getLogger(__name__)
 
 # Default handlers config directory
 HANDLERS_CONFIG_DIR = Path.home() / ".bmad-assist" / "handlers"
+
+# Patterns indicating Edit tool failures in provider output (Story 22.4 AC5)
+# These patterns indicate the Edit tool couldn't find the old_string in the file
+_EDIT_FAILURE_PATTERNS = (
+    "0 occurrences found",
+    "string not found",
+    "no matches found",
+    "old_string not found",
+)
+
+
+def check_for_edit_failures(stdout: str, target_hint: str | None = None) -> None:
+    """Check provider output for Edit tool failures and log warnings.
+
+    Story 22.4 AC5: Parse provider stdout for Edit failure patterns and
+    emit warnings with guidance on using Read tool for fresh content.
+
+    This is best-effort logging - synthesis continues regardless.
+
+    Args:
+        stdout: Provider stdout to scan.
+        target_hint: Optional hint about target file (e.g., "story file").
+
+    """
+    stdout_lower = stdout.lower()
+    for pattern in _EDIT_FAILURE_PATTERNS:
+        if pattern.lower() in stdout_lower:
+            # Try to extract context around the failure
+            idx = stdout_lower.find(pattern.lower())
+            start = max(0, idx - 100)
+            end = min(len(stdout), idx + 200)
+            context = stdout[start:end].strip()
+
+            target_str = f" ({target_hint})" if target_hint else ""
+            logger.warning(
+                "Edit tool failure detected%s: '%s'\n"
+                "Context: ...%s...\n"
+                "GUIDANCE: Use Read tool to get current file content before Edit. "
+                "Do NOT use embedded prompt content as old_string.",
+                target_str,
+                pattern,
+                context[:200],
+            )
+            # Continue checking for other patterns - don't break, log all failures
 
 
 @dataclass
@@ -173,7 +227,12 @@ class BaseHandler(ABC):
 
         if not config_path.exists():
             raise ConfigError(
-                f"Handler config not found: {config_path}\nCreate it with a 'prompt_template' key."
+                f"Handler config not found: {config_path}\n\n"
+                "Handler YAML files are deprecated - the compiler handles prompts now.\n"
+                "If you see this error, the compiler is not loading the workflow.\n\n"
+                "To fix:\n"
+                "  1. Reinstall bmad-assist: pip install -e .\n"
+                "  2. Or check workflow discovery: bmad-assist compile -w {workflow} --debug\n"
             )
 
         try:
@@ -260,9 +319,12 @@ class BaseHandler(ABC):
             paths = get_paths()
 
             # Build compiler context
+            # Use get_original_cwd() to preserve original CWD when running as subprocess
             context = CompilerContext(
                 project_root=self.project_path,
                 output_folder=paths.implementation_artifacts,
+                project_knowledge=paths.project_knowledge,
+                cwd=get_original_cwd(),
                 resolved_variables=resolved_variables,
                 links_only=links_only,
             )
@@ -319,7 +381,8 @@ class BaseHandler(ABC):
             )
 
             # Find patch file for this workflow
-            patch_path = discover_patch(workflow_name, self.project_path)
+            # Use get_original_cwd() to find patches in main project when running as subprocess
+            patch_path = discover_patch(workflow_name, self.project_path, cwd=get_original_cwd())
             if patch_path is None:
                 return prompt
 

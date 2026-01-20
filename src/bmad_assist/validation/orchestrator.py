@@ -49,7 +49,7 @@ from bmad_assist.compiler import compile_workflow
 from bmad_assist.compiler.types import CompilerContext
 from bmad_assist.core.config import Config
 from bmad_assist.core.exceptions import BmadAssistError
-from bmad_assist.core.io import save_prompt
+from bmad_assist.core.io import get_original_cwd, save_prompt
 
 # get_paths() NOT used - validations_dir derived from project_path directly
 # to ensure reports are saved to the correct project (not CLI working directory)
@@ -341,10 +341,15 @@ def _compile_validation_prompt(
         Compiled prompt XML.
 
     """
+    # Use get_original_cwd() to preserve original CWD when running as subprocess
+    from bmad_assist.core.paths import get_paths
+
+    paths = get_paths()
     context = CompilerContext(
         project_root=project_path,
-        output_folder=project_path / "docs",
-        cwd=Path.cwd(),  # Enable CWD-based patch discovery
+        output_folder=paths.implementation_artifacts,
+        project_knowledge=paths.project_knowledge,
+        cwd=get_original_cwd(),
         resolved_variables={
             "epic_num": epic_num,
             "story_num": story_num,
@@ -524,14 +529,21 @@ async def run_validation_phase(
     logger.debug("Anonymization complete. Session ID: %s", mapping.session_id)
 
     # Step 6: Save individual validation reports with anonymized IDs
-    # CRITICAL: Use project_path to determine validations_dir, not get_paths() singleton!
-    # The paths singleton is initialized for the CLI working directory (bmad-assist),
-    # but reports must be saved to the TARGET project directory (bmad-assist-22-mad).
-    # Otherwise reports end up in the wrong project!
+    # PATH RESOLUTION NOTE:
+    # Using get_paths() singleton is correct for normal bmad-assist run.
+    # The singleton IS initialized for the current project in cli.py.
+    #
+    # Historical note: This code previously avoided get_paths() due to
+    # experiment scenarios where CLI runs on PROJECT_A but validates
+    # files in PROJECT_B. That case is now handled by experiments/runner.py
+    # which calls _reset_paths() + init_paths(target_project) before each run.
+    #
+    # For external paths support, we MUST use get_paths() to respect
+    # user's configured output_folder location.
     # Story 22.8: Save reports BEFORE threshold check to prevent data loss on partial failure
-    validations_dir = (
-        project_path / "_bmad-output" / "implementation-artifacts" / "story-validations"
-    )
+    from bmad_assist.core.paths import get_paths
+
+    validations_dir = get_paths().validations_dir
     validations_dir.mkdir(parents=True, exist_ok=True)
 
     # Save reports with role_id (a, b, c...) for filename and anonymized_id for display
@@ -556,6 +568,7 @@ async def run_validation_phase(
                 validations_dir=validations_dir,
                 anonymized_id=anonymized_id,
                 role_id=role_id,
+                session_id=mapping.session_id,  # Story 22.8 AC#3: Link to mapping
             )
         except OSError as e:
             # AC #5: Log warning but continue with other reports
@@ -697,6 +710,7 @@ def save_validations_for_synthesis(
     project_root: Path,
     session_id: str | None = None,
     run_timestamp: datetime | None = None,
+    failed_validators: list[str] | None = None,
 ) -> str:
     """Save anonymized validations for synthesis phase retrieval.
 
@@ -708,6 +722,7 @@ def save_validations_for_synthesis(
         session_id: Optional session ID to use. If None, generates new UUID.
             Pass mapping.session_id to maintain traceability with anonymizer.
         run_timestamp: Unified timestamp for this validation run. If None, uses now().
+        failed_validators: List of validators that failed/timed out (Story 22.8 AC#4).
 
     Returns:
         Session ID for later retrieval.
@@ -724,7 +739,7 @@ def save_validations_for_synthesis(
     # Use unified run timestamp for consistency
     timestamp = run_timestamp or datetime.now(UTC)
 
-    data = {
+    data: dict[str, Any] = {
         "session_id": session_id,
         "timestamp": timestamp.isoformat(),
         "validations": [
@@ -736,6 +751,10 @@ def save_validations_for_synthesis(
             for v in anonymized
         ],
     }
+
+    # Story 22.8 AC#4: Store failed_validators for synthesis context
+    if failed_validators:
+        data["failed_validators"] = failed_validators
 
     try:
         with open(temp_path, "w", encoding="utf-8") as f:
@@ -753,7 +772,7 @@ def save_validations_for_synthesis(
 def load_validations_for_synthesis(
     session_id: str,
     project_root: Path,
-) -> list[AnonymizedValidation]:
+) -> tuple[list[AnonymizedValidation], list[str]]:
     """Load anonymized validations by session ID.
 
     Args:
@@ -761,7 +780,10 @@ def load_validations_for_synthesis(
         project_root: Project root directory.
 
     Returns:
-        List of AnonymizedValidation objects.
+        Tuple of (validations, failed_validators):
+        - validations: List of AnonymizedValidation objects.
+        - failed_validators: List of validators that failed/timed out (Story 22.8 AC#4).
+            Empty list for backward compatibility with old cache files.
 
     Raises:
         ValidationError: If file not found or invalid.
@@ -791,5 +813,14 @@ def load_validations_for_synthesis(
             )
         )
 
-    logger.debug("Loaded %d validations for session %s", len(validations), session_id)
-    return validations
+    # Story 22.8 AC#4: Load failed_validators with backward compatibility
+    # Use 'or' to handle both missing key AND explicit None value in old cache files
+    failed_validators = data.get("failed_validators") or []
+
+    logger.debug(
+        "Loaded %d validations and %d failed validators for session %s",
+        len(validations),
+        len(failed_validators),
+        session_id,
+    )
+    return validations, failed_validators

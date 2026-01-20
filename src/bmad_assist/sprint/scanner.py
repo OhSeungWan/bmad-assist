@@ -341,8 +341,11 @@ def _get_artifact_locations(project_root: Path) -> dict[str, list[Path]]:
     # New location: _bmad-output/implementation-artifacts/
     new_base = project_root / "_bmad-output" / "implementation-artifacts"
     if new_base.exists():
+        # Stories can be in stories/ subdirectory OR directly in implementation-artifacts/
         if (new_base / "stories").exists():
             locations["stories"].append(new_base / "stories")
+        # Also check implementation-artifacts/ directly (BMAD stores stories there)
+        locations["stories"].append(new_base)
         if (new_base / "code-reviews").exists():
             locations["code_reviews"].append(new_base / "code-reviews")
         if (new_base / "story-validations").exists():

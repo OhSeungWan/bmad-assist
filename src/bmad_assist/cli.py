@@ -22,7 +22,6 @@ from bmad_assist.cli_utils import (
     EXIT_SIGTERM,
     EXIT_SUCCESS,
     _error,
-    _get_output_folder,
     _info,
     _setup_logging,
     _success,
@@ -38,6 +37,7 @@ from bmad_assist.core.config import (
 )
 from bmad_assist.core.config_generator import run_config_wizard
 from bmad_assist.core.exceptions import BmadAssistError, ConfigError
+from bmad_assist.core.io import get_original_cwd
 from bmad_assist.core.loop import LoopExitReason, run_loop
 from bmad_assist.core.loop.interactive import set_non_interactive
 from bmad_assist.core.paths import init_paths
@@ -164,9 +164,15 @@ def _handle_debug_vars(config: Config, project_path: Path) -> None:
         story_num = story_num.split(".")[-1]
 
     # Build compiler context
+    # Use get_original_cwd() to preserve original CWD when running as subprocess
+    from bmad_assist.core.paths import get_paths
+
+    paths = get_paths()
     context = CompilerContext(
         project_root=project_path,
-        output_folder=_get_output_folder(project_path),
+        output_folder=paths.output_folder,
+        project_knowledge=paths.project_knowledge,
+        cwd=get_original_cwd(),
         resolved_variables={
             "epic_num": state.current_epic,
             "story_num": story_num,
@@ -413,15 +419,11 @@ def run(
         logger.debug("Project paths initialized: %s", project_paths)
 
         # Validate sprint-status.yaml exists (CRITICAL: fail early with clear error)
-        sprint_status_locations = [
-            project_paths.sprint_status_file,  # New: implementation-artifacts/
-            project_path / "docs" / "sprint-status.yaml",  # Legacy
-            project_path / "docs" / "sprint-artifacts" / "sprint-status.yaml",  # Legacy
-        ]
-        if not any(loc.exists() for loc in sprint_status_locations):
+        sprint_path = project_paths.find_sprint_status()
+        if sprint_path is None:
             _error("sprint-status.yaml not found!")
             _error("Checked locations:")
-            for loc in sprint_status_locations:
+            for loc in project_paths.get_sprint_status_search_locations():
                 _error(f"  - {loc}")
             _error("")
             _error("To fix: Create sprint-status.yaml or run /bmad:bmm:workflows:sprint-planning")
@@ -451,8 +453,8 @@ def run(
 
         # Apply start point override if --epic specified
         if epic:
-            # Always use docs/ for read_project_state to find sprint-status.yaml
-            bmad_path = project_path / "docs"
+            # Use project_knowledge from paths singleton for BMAD files
+            bmad_path = project_paths.project_knowledge
 
             apply_start_point_override(
                 loaded_config,

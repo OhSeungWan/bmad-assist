@@ -394,8 +394,10 @@ class TestGetArtifactLocations:
     def test_new_location_only(self, temp_project: Path) -> None:
         """Test when only new location exists."""
         locations = _get_artifact_locations(temp_project)
-        assert len(locations["stories"]) == 1
-        assert "implementation-artifacts" in str(locations["stories"][0])
+        # 2 locations: stories/ subdirectory + base implementation-artifacts/
+        assert len(locations["stories"]) == 2
+        assert "stories" in str(locations["stories"][0])
+        assert "implementation-artifacts" in str(locations["stories"][1])
 
     def test_legacy_location_only(self, temp_project_legacy: Path) -> None:
         """Test when only legacy location exists."""
@@ -406,10 +408,12 @@ class TestGetArtifactLocations:
     def test_both_locations(self, temp_project_both: Path) -> None:
         """Test when both locations exist."""
         locations = _get_artifact_locations(temp_project_both)
-        assert len(locations["stories"]) == 2
-        # Legacy first, new second (new takes precedence)
+        # 3 locations: legacy stories/ + new stories/ + base implementation-artifacts/
+        assert len(locations["stories"]) == 3
+        # Legacy first, new subdirectory second, base last (new takes precedence)
         assert "sprint-artifacts" in str(locations["stories"][0])
-        assert "implementation-artifacts" in str(locations["stories"][1])
+        assert "stories" in str(locations["stories"][1])
+        assert "implementation-artifacts" in str(locations["stories"][2])
 
     def test_empty_project(self, tmp_path: Path) -> None:
         """Test with empty project."""

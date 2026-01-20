@@ -17,7 +17,6 @@ has write permission to modify the story file.
 """
 
 import logging
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -30,7 +29,8 @@ from bmad_assist.code_review.orchestrator import (
 from bmad_assist.compiler import compile_workflow
 from bmad_assist.compiler.types import CompilerContext
 from bmad_assist.core.exceptions import ConfigError
-from bmad_assist.core.loop.handlers.base import BaseHandler
+from bmad_assist.core.io import get_original_cwd
+from bmad_assist.core.loop.handlers.base import BaseHandler, check_for_edit_failures
 from bmad_assist.core.loop.types import PhaseResult
 from bmad_assist.core.paths import get_paths
 from bmad_assist.core.state import State
@@ -154,9 +154,12 @@ class CodeReviewSynthesisHandler(BaseHandler):
         paths = get_paths()
 
         # Build compiler context with reviews
+        # Use get_original_cwd() to preserve original CWD when running as subprocess
         context = CompilerContext(
             project_root=self.project_path,
             output_folder=paths.implementation_artifacts,
+            project_knowledge=paths.project_knowledge,
+            cwd=get_original_cwd(),
             resolved_variables={
                 "epic_num": epic_num,
                 "story_num": story_num,
@@ -262,6 +265,9 @@ class CodeReviewSynthesisHandler(BaseHandler):
                     len(result.stdout),
                 )
 
+                # Story 22.4 AC5: Check for Edit tool failures (best-effort logging)
+                check_for_edit_failures(result.stdout, target_hint="source files")
+
                 # Extract synthesis report using priority-based extraction
                 # 1. Markers, 2. Summary header, 3. Full content
                 extracted_synthesis = extract_synthesis_report(
@@ -344,7 +350,7 @@ class CodeReviewSynthesisHandler(BaseHandler):
         session_id: str,
         reviewers_used: list[str],
         epic: EpicId,
-        story: int,
+        story: int | str,  # Support string story IDs (Story 22.7)
         duration_ms: int,
         reviews_dir: Path,
         failed_reviewers: list[str] | None = None,
@@ -393,20 +399,14 @@ class CodeReviewSynthesisHandler(BaseHandler):
         )
         full_content = f"---\n{frontmatter_yaml}---\n\n{content}"
 
-        # Write to file using atomic write pattern (temp + rename)
-        # Story 22.7: Include timestamp in filename
+        # Use centralized atomic_write with PID collision protection (Story 22.7)
+        from bmad_assist.core.io import atomic_write
+
         timestamp_str = get_timestamp(timestamp)
         report_path = reviews_dir / f"synthesis-{epic}-{story}-{timestamp_str}.md"
-        temp_path = report_path.with_suffix(".md.tmp")
 
-        try:
-            temp_path.write_text(full_content, encoding="utf-8")
-            os.replace(temp_path, report_path)
-            logger.info("Saved code review synthesis report: %s", report_path)
-        except OSError:
-            if temp_path.exists():
-                temp_path.unlink()
-            raise
+        atomic_write(report_path, full_content)
+        logger.info("Saved code review synthesis report: %s", report_path)
 
     def _save_synthesizer_record(
         self,

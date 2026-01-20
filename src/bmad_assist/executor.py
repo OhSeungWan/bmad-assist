@@ -81,9 +81,11 @@ def _compile_qa_execute_prompt(
         CompilerError: If compilation fails.
 
     """
+    paths = get_paths()
     context = CompilerContext(
         project_root=project_path,
-        output_folder=get_paths().output_folder,
+        output_folder=paths.output_folder,
+        project_knowledge=paths.project_knowledge,
         cwd=project_path,
         resolved_variables={
             "epic_num": epic_id,

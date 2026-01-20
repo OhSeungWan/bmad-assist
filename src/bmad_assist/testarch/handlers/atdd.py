@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from bmad_assist.compiler import compile_workflow
 from bmad_assist.compiler.types import CompilerContext
+from bmad_assist.core.io import get_original_cwd
 from bmad_assist.core.loop.handlers.base import BaseHandler
 from bmad_assist.core.loop.types import PhaseResult
 from bmad_assist.core.paths import get_paths
@@ -185,9 +186,8 @@ class ATDDHandler(BaseHandler):
 
             stories_dir = get_paths().stories_dir
         except RuntimeError:
-            # Fallback if paths not initialized
-            impl_dir = self.project_path / "_bmad-output" / "implementation-artifacts"
-            stories_dir = impl_dir / "stories"
+            # Fallback if paths not initialized - stories are in implementation_artifacts directly
+            stories_dir = self.project_path / "_bmad-output" / "implementation-artifacts"
 
         # Glob for story file pattern
         pattern = f"{state.current_epic}-{story_num}-*.md"
@@ -306,11 +306,13 @@ class ATDDHandler(BaseHandler):
 
         try:
             # 1. Create CompilerContext from state
+            # Use get_original_cwd() to preserve original CWD when running as subprocess
             paths = get_paths()
             context = CompilerContext(
                 project_root=self.project_path,
                 output_folder=paths.output_folder,
-                cwd=Path.cwd(),
+                project_knowledge=paths.project_knowledge,
+                cwd=get_original_cwd(),
             )
 
             # Set resolved variables

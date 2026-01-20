@@ -31,7 +31,6 @@ Public API:
 import asyncio
 import json
 import logging
-import os
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -49,7 +48,7 @@ from bmad_assist.compiler.types import CompilerContext
 from bmad_assist.core.config import Config
 from bmad_assist.core.exceptions import BmadAssistError
 from bmad_assist.core.extraction import CODE_REVIEW_MARKERS, extract_report
-from bmad_assist.core.io import save_prompt
+from bmad_assist.core.io import get_original_cwd, save_prompt
 from bmad_assist.core.paths import get_paths
 from bmad_assist.core.types import EpicId
 from bmad_assist.providers import get_provider
@@ -351,10 +350,15 @@ def _compile_code_review_prompt(
         Compiled prompt XML.
 
     """
+    # Use get_original_cwd() to preserve original CWD when running as subprocess
+    from bmad_assist.core.paths import get_paths
+
+    paths = get_paths()
     context = CompilerContext(
         project_root=project_path,
-        output_folder=project_path / "docs",
-        cwd=Path.cwd(),
+        output_folder=paths.implementation_artifacts,
+        project_knowledge=paths.project_knowledge,
+        cwd=get_original_cwd(),
         resolved_variables={
             "epic_num": epic_num,
             "story_num": story_num,
@@ -610,6 +614,7 @@ async def run_code_review_phase(
                 story=story_num,
                 reviews_dir=reviews_dir,
                 role_id=role_id,
+                session_id=mapping.session_id,
                 anonymized_id=anonymized_id,
             )
         except OSError:
@@ -757,6 +762,7 @@ def _save_code_review_report(
     story: int | str,  # Support EpicId = int | str (TD-001)
     reviews_dir: Path,
     role_id: str,
+    session_id: str,
     anonymized_id: str | None = None,
 ) -> Path:
     """Save a code review report with YAML frontmatter.
@@ -799,8 +805,10 @@ def _save_code_review_report(
 
     # Build YAML frontmatter with anonymized ID for display
     # NOTE: Do NOT include provider/model - reports must be anonymized!
+    # Story 22.7 AC #3: session_id required for traceability
     frontmatter_data = {
         "type": "code-review",
+        "session_id": session_id,
         "role_id": role_id,
         "reviewer_id": anonymized_id or f"Reviewer {role_id.upper()}",
         "timestamp": timestamp.isoformat(),
@@ -814,20 +822,14 @@ def _save_code_review_report(
     post = frontmatter.Post(output.content, **frontmatter_data)
     content = frontmatter.dumps(post)
 
-    # Atomic write with error handling (AC #5)
-    temp_path = file_path.with_suffix(".md.tmp")
+    # Use centralized atomic_write with PID collision protection (AC #5, Story 22.7)
+    from bmad_assist.core.io import atomic_write
+
     try:
-        temp_path.write_text(content, encoding="utf-8")
-        os.replace(temp_path, file_path)
+        atomic_write(file_path, content)
         logger.info("Saved code review report: %s", file_path)
         return file_path
     except OSError as e:
-        # Cleanup temp file if it exists
-        if temp_path.exists():
-            try:
-                temp_path.unlink()
-            except OSError:
-                pass
         # Log warning but don't crash (AC #5)
         logger.warning(
             "Failed to save code review report: %s (error: %s)",
@@ -860,12 +862,13 @@ def _save_code_review_mapping(
         OSError: If write fails.
 
     """
+    from bmad_assist.core.io import atomic_write
+
     cache_dir = project_root / ".bmad-assist" / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     filename = f"code-review-mapping-{mapping.session_id}.json"
     target_path = cache_dir / filename
-    temp_path = cache_dir / f"{filename}.tmp"
 
     data = {
         "session_id": mapping.session_id,
@@ -873,21 +876,11 @@ def _save_code_review_mapping(
         "mapping": mapping.mapping,
     }
 
-    try:
-        with open(temp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-
-        os.replace(temp_path, target_path)
-        logger.info("Saved code review mapping: %s", target_path)
-        return target_path
-    except OSError:
-        # Clean up temp file if it exists
-        if temp_path.exists():
-            try:
-                temp_path.unlink()
-            except OSError:
-                pass
-        raise
+    # Use centralized atomic_write with PID collision protection (Story 22.7)
+    content = json.dumps(data, indent=2)
+    atomic_write(target_path, content)
+    logger.info("Saved code review mapping: %s", target_path)
+    return target_path
 
 
 # =============================================================================
@@ -919,13 +912,14 @@ def save_reviews_for_synthesis(
         Session ID for later retrieval.
 
     """
+    from bmad_assist.core.io import atomic_write
+
     if session_id is None:
         session_id = str(uuid.uuid4())
     cache_dir = project_root / ".bmad-assist" / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     file_path = cache_dir / f"code-reviews-{session_id}.json"
-    temp_path = file_path.with_suffix(".json.tmp")
 
     timestamp = run_timestamp or datetime.now(UTC)
 
@@ -944,15 +938,10 @@ def save_reviews_for_synthesis(
         "failed_reviewers": failed_reviewers or [],
     }
 
-    try:
-        with open(temp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        os.replace(temp_path, file_path)
-        logger.info("Saved reviews for synthesis: %s", file_path)
-    except OSError:
-        if temp_path.exists():
-            temp_path.unlink()
-        raise
+    # Use centralized atomic_write with PID collision protection (Story 22.7)
+    content = json.dumps(data, indent=2)
+    atomic_write(file_path, content)
+    logger.info("Saved reviews for synthesis: %s", file_path)
 
     return session_id
 

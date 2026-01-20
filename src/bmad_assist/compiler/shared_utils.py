@@ -224,7 +224,10 @@ def safe_read_file(path: Path, project_root: Path | None = None) -> str:
         resolved = path.resolve()
         if project_root is not None:
             resolved_root = project_root.resolve()
-            if not resolved.is_relative_to(resolved_root):
+            is_in_project = resolved.is_relative_to(resolved_root)
+            # Allow bundled workflows (installed in bmad_assist/workflows/)
+            is_bundled = "bmad_assist/workflows" in str(resolved) or "bmad_assist\\workflows" in str(resolved)
+            if not is_in_project and not is_bundled:
                 logger.warning("Path outside project root, skipping: %s", path)
                 return ""
         return resolved.read_text(encoding="utf-8")
@@ -497,7 +500,14 @@ def load_workflow_template(
 
         resolved_template = template_path.resolve()
         resolved_root = context.project_root.resolve()
-        if not resolved_template.is_relative_to(resolved_root):
+
+        # Check if template is within project root
+        is_in_project = resolved_template.is_relative_to(resolved_root)
+
+        # Allow bundled workflows (installed in bmad_assist/workflows/)
+        is_bundled = "bmad_assist/workflows" in str(resolved_template) or "bmad_assist\\workflows" in str(resolved_template)
+
+        if not is_in_project and not is_bundled:
             raise CompilerError(
                 f"Path security violation: {template_path}\n"
                 f"  Reason: Path outside project boundary\n"
@@ -566,7 +576,8 @@ def find_sprint_status_file(context: CompilerContext) -> Path | None:
 def find_project_context_file(context: CompilerContext) -> Path | None:
     """Find project_context.md (or project-context.md) in known locations.
 
-    Searches in output_folder/, project_root/docs/, and project_root/.
+    Searches in: project_knowledge/ (if set), output_folder/, project_root/docs/,
+    and project_root/. Supports both naming conventions (hyphen and underscore).
 
     Args:
         context: Compilation context with paths.
@@ -575,12 +586,30 @@ def find_project_context_file(context: CompilerContext) -> Path | None:
         Path to project_context.md or None if not found.
 
     """
-    candidates = [
-        context.output_folder / "project-context.md",  # New naming convention
-        context.output_folder / "project_context.md",  # Legacy naming convention
-        context.project_root / "docs" / "project_context.md",
-        context.project_root / "project_context.md",
-    ]
+    candidates: list[Path] = []
+
+    # Priority 1: External project_knowledge path (if configured)
+    if context.project_knowledge is not None:
+        candidates.extend([
+            context.project_knowledge / "project-context.md",
+            context.project_knowledge / "project_context.md",
+        ])
+
+    # Priority 2: Output folder
+    candidates.extend([
+        context.output_folder / "project-context.md",
+        context.output_folder / "project_context.md",
+    ])
+
+    # Priority 3: Local docs folder (if not using external project_knowledge)
+    if context.project_knowledge is None:
+        candidates.extend([
+            context.project_root / "docs" / "project-context.md",
+            context.project_root / "docs" / "project_context.md",
+        ])
+
+    # Priority 4: Project root (legacy)
+    candidates.append(context.project_root / "project_context.md")
 
     for candidate in candidates:
         if candidate.exists():

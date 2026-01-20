@@ -74,6 +74,8 @@ class CompilerContext:
     Attributes:
         project_root: Root directory of the project being compiled for.
         output_folder: Directory where BMAD outputs (PRD, epics, etc.) are stored.
+        project_knowledge: Directory containing project documentation (docs/).
+            If not set, defaults to project_root/docs.
         cwd: Current working directory (for CWD-based patch/cache discovery).
         workflow_ir: Parsed intermediate representation of the workflow.
         patch_path: Path to the patch file (for post_process loading).
@@ -86,6 +88,7 @@ class CompilerContext:
 
     project_root: Path
     output_folder: Path
+    project_knowledge: Path | None = None  # External docs path (defaults to project_root/docs)
     cwd: Path | None = None
     workflow_ir: WorkflowIR | None = None
     patch_path: Path | None = None  # Path to patch file for post_process

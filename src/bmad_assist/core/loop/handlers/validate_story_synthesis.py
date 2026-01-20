@@ -25,7 +25,8 @@ from typing import Any
 from bmad_assist.compiler import compile_workflow
 from bmad_assist.compiler.types import CompilerContext
 from bmad_assist.core.exceptions import ConfigError
-from bmad_assist.core.loop.handlers.base import BaseHandler
+from bmad_assist.core.io import get_original_cwd
+from bmad_assist.core.loop.handlers.base import BaseHandler, check_for_edit_failures
 from bmad_assist.core.loop.types import PhaseResult
 from bmad_assist.core.paths import get_paths
 from bmad_assist.core.state import State
@@ -144,8 +145,9 @@ class ValidateStorySynthesisHandler(BaseHandler):
             )
 
         # Load anonymized validations from cache
+        # Story 22.8 AC#4: Unpack tuple with failed_validators
         try:
-            anonymized_validations = load_validations_for_synthesis(
+            anonymized_validations, _ = load_validations_for_synthesis(
                 session_id,
                 self.project_path,
             )
@@ -166,9 +168,12 @@ class ValidateStorySynthesisHandler(BaseHandler):
         paths = get_paths()
 
         # Build compiler context with validations
+        # Use get_original_cwd() to preserve original CWD when running as subprocess
         context = CompilerContext(
             project_root=self.project_path,
             output_folder=paths.implementation_artifacts,
+            project_knowledge=paths.project_knowledge,
+            cwd=get_original_cwd(),
             resolved_variables={
                 "epic_num": epic_num,
                 "story_num": story_num,
@@ -224,7 +229,8 @@ class ValidateStorySynthesisHandler(BaseHandler):
                     "Run VALIDATE_STORY phase first."
                 )
 
-            anonymized_validations = load_validations_for_synthesis(
+            # Story 22.8 AC#4: Unpack tuple with failed_validators
+            anonymized_validations, failed_validators = load_validations_for_synthesis(
                 session_id,
                 self.project_path,
             )
@@ -261,6 +267,9 @@ class ValidateStorySynthesisHandler(BaseHandler):
                     len(result.stdout),
                 )
 
+                # Story 22.4 AC5: Check for Edit tool failures (best-effort logging)
+                check_for_edit_failures(result.stdout, target_hint="story file")
+
                 # Extract synthesis report using priority-based extraction
                 # 1. Markers, 2. Summary header, 3. Full content
                 extracted_synthesis = extract_synthesis_report(
@@ -279,6 +288,7 @@ class ValidateStorySynthesisHandler(BaseHandler):
                 validations_dir.mkdir(parents=True, exist_ok=True)
 
                 master_validator_id = f"master-{self.get_model()}"
+                # Story 22.8 AC#2, AC#4: Pass failed_validators to synthesis report
                 save_synthesis_report(
                     content=synthesis_content,
                     master_validator_id=master_validator_id,
@@ -288,9 +298,13 @@ class ValidateStorySynthesisHandler(BaseHandler):
                     story=story_num,
                     duration_ms=result.duration_ms or 0,
                     validations_dir=validations_dir,
+                    failed_validators=failed_validators,
                 )
 
                 # Story 13.6: Extract metrics and save synthesizer record
+                # Estimate tokens from char count (~4 chars per token)
+                # Consistent with code_review_synthesis.py token estimation
+                estimated_output_tokens = len(result.stdout) // 4 if result.stdout else 0
                 self._save_synthesizer_record(
                     synthesis_output=result.stdout,
                     epic_num=epic_num,
@@ -299,7 +313,7 @@ class ValidateStorySynthesisHandler(BaseHandler):
                     start_time=start_time,
                     end_time=end_time,
                     input_tokens=0,  # Not available from current provider result
-                    output_tokens=len(result.stdout),  # Estimate from output length
+                    output_tokens=estimated_output_tokens,
                     validator_count=len(validators_used),
                 )
 

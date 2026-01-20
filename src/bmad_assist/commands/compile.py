@@ -223,6 +223,7 @@ def compile_command(
     context = CompilerContext(
         project_root=project_path,
         output_folder=get_paths().output_folder,
+        project_knowledge=get_paths().project_knowledge,
         cwd=cwd,
         resolved_variables=resolved_vars,
         links_only=links_only,
