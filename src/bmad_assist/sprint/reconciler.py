@@ -45,12 +45,64 @@ __all__ = [
     "ReconciliationResult",
     "ConflictResolution",
     "reconcile",
+    # Internal helpers exported for testing
+    "STATUS_ORDER",
+    "_is_status_advancement",
+    "_sort_entries_by_epic_order",
+    "_extract_epic_id_from_key",
+    "_normalize_story_key",
+    "_should_preserve_entry",
+    "_merge_epic_story",
+    "_recalculate_epic_meta",
+    "_detect_removed_stories",
 ]
 
 
 # ============================================================================
 # ConflictResolution Enum
 # ============================================================================
+
+
+# Status progression order (higher = more advanced)
+# Used for forward-only protection: status can only move forward, never backward
+STATUS_ORDER: dict[str, int] = {
+    "deferred": -1,
+    "backlog": 0,
+    "ready-for-dev": 1,
+    "in-progress": 2,
+    "blocked": 2,  # Same level as in-progress
+    "review": 3,
+    "done": 4,
+}
+
+
+def _is_status_advancement(old_status: str | None, new_status: str) -> bool:
+    """Check if new_status is same or more advanced than old_status.
+
+    Returns True if transition should be allowed (forward or same).
+    Returns False if this would be a downgrade.
+
+    Args:
+        old_status: Current status (None if new entry).
+        new_status: Proposed new status.
+
+    Returns:
+        True if transition is forward or same level, False if downgrade.
+
+    Examples:
+        >>> _is_status_advancement("backlog", "done")
+        True
+        >>> _is_status_advancement("done", "backlog")
+        False
+        >>> _is_status_advancement(None, "done")
+        True
+
+    """
+    if old_status is None:
+        return True
+    old_order = STATUS_ORDER.get(old_status, 0)
+    new_order = STATUS_ORDER.get(new_status, 0)
+    return new_order >= old_order
 
 
 class ConflictResolution(Enum):
@@ -198,6 +250,90 @@ class ReconciliationResult:
 # ============================================================================
 
 
+def _sort_entries_by_epic_order(
+    entries: dict[str, SprintStatusEntry],
+) -> dict[str, SprintStatusEntry]:
+    """Sort entries by epic grouping: epic-X, X-* stories, epic-X-retrospective.
+
+    Preserves standalone entries at the end in their relative position.
+    Uses natural sort for numeric epics, alphabetical for string epics.
+
+    Args:
+        entries: Dict of key -> SprintStatusEntry to sort.
+
+    Returns:
+        New OrderedDict with entries sorted by epic grouping.
+
+    """
+
+    def _get_epic_id_from_key(key: str) -> str | int | None:
+        """Extract epic ID from key for sorting."""
+        # epic-X pattern (meta or retrospective)
+        if key.startswith("epic-"):
+            rest = key[5:]  # Remove "epic-" prefix
+            # Handle retrospective: epic-12-retrospective -> 12
+            if "-retrospective" in rest:
+                rest = rest.replace("-retrospective", "")
+            try:
+                return int(rest)
+            except ValueError:
+                return rest
+        # Story pattern: X-Y-slug
+        match = re.match(r"^([a-z0-9][a-z0-9-]*?)-(\d+)(?:-|$)", key, re.IGNORECASE)
+        if match:
+            epic_str = match.group(1)
+            try:
+                return int(epic_str)
+            except ValueError:
+                return epic_str
+        return None
+
+    def _get_story_num(key: str) -> int:
+        """Extract story number from key for sorting within epic."""
+        match = re.match(r"^[a-z0-9][a-z0-9-]*?-(\d+)(?:-|$)", key, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+        return 0
+
+    def _sort_key(item: tuple[str, SprintStatusEntry]) -> tuple[int, str | int, int, str]:
+        """Generate sort key for an entry.
+
+        Returns tuple: (group_order, epic_id, entry_order_within_epic, key)
+        - group_order: 0 for numeric epics, 1 for string epics, 2 for standalone
+        - epic_id: numeric or string epic id (for sorting within group)
+        - entry_order_within_epic: 0=meta, 1-999=story, 1000=retrospective
+        - key: original key for stable sort
+        """
+        key, _entry = item
+        epic_id = _get_epic_id_from_key(key)
+
+        # Standalone entries go to the end
+        if epic_id is None:
+            return (2, "", 0, key)
+
+        # Determine group order (numeric first, then string)
+        if isinstance(epic_id, int):
+            group_order = 0
+            epic_sort_key: str | int = epic_id
+        else:
+            group_order = 1
+            epic_sort_key = epic_id
+
+        # Determine entry order within epic
+        if key == f"epic-{epic_id}":
+            entry_order = 0  # Epic meta first
+        elif key.endswith("-retrospective"):
+            entry_order = 1000  # Retrospective last
+        else:
+            entry_order = _get_story_num(key)  # Stories in the middle
+
+        return (group_order, epic_sort_key, entry_order, key)
+
+    # Sort and return new dict
+    sorted_items = sorted(entries.items(), key=_sort_key)
+    return dict(sorted_items)
+
+
 def _extract_epic_id_from_key(key: str) -> str | int | None:
     """Extract epic ID from story key pattern.
 
@@ -328,9 +464,19 @@ def _merge_epic_story(
     elif inferred_confidence >= InferenceConfidence.MEDIUM:
         # Evidence-based inference with good confidence
         if strategy == ConflictResolution.EVIDENCE_WINS:
-            new_status = inferred_status
-            reason = f"evidence_inference_{inferred_confidence.name.lower()}"
-            report_confidence = inferred_confidence
+            # Forward-only: only apply if advancement or same level
+            if _is_status_advancement(old_status, inferred_status):
+                new_status = inferred_status
+                reason = f"evidence_inference_{inferred_confidence.name.lower()}"
+                report_confidence = inferred_confidence
+            else:
+                # Preserve existing status - don't downgrade
+                # Note: old_status cannot be None here because _is_status_advancement(None, x)
+                # always returns True, so we only reach this branch when old_status exists
+                assert old_status is not None
+                new_status = old_status
+                reason = "preserve_higher_status_forward_only"
+                report_confidence = None
         elif existing_entry is not None:
             # PRESERVE_EXISTING: keep existing unless no entry
             new_status = existing_entry.status
@@ -767,6 +913,12 @@ def reconcile(
                 updated_count += 1
         else:
             preserved_count += 1
+
+    # ========================================================================
+    # Step 7: Sort entries by epic order
+    # ========================================================================
+
+    result_entries = _sort_entries_by_epic_order(result_entries)
 
     # ========================================================================
     # Build result SprintStatus

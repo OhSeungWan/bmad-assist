@@ -43,8 +43,10 @@ class TestTestReviewCompilerWorkflowDir:
 
         workflow_dir = compiler.get_workflow_dir(context)
 
-        expected = tmp_path / "_bmad/bmm/workflows/testarch/test-review"
-        assert workflow_dir == expected
+        # With bundled workflows, falls back to package path when BMAD not installed
+        bmad_path = tmp_path / "_bmad/bmm/workflows/testarch/test-review"
+        bundled_path_suffix = "workflows/testarch-test-review"
+        assert workflow_dir == bmad_path or str(workflow_dir).endswith(bundled_path_suffix)
 
 
 class TestTestReviewCompilerRequiredFiles:
@@ -155,8 +157,12 @@ class TestTestReviewCompilerValidation:
         with pytest.raises(CompilerError, match="story_num"):
             compiler.validate_context(context)
 
-    def test_validate_context_requires_workflow_dir(self, tmp_path: Path) -> None:
-        """Test validation fails when workflow directory doesn't exist."""
+    def test_validate_context_uses_bundled_fallback(self, tmp_path: Path) -> None:
+        """Test validation uses bundled workflow when BMAD not installed.
+
+        With bundled workflows, validate_context should NOT fail when
+        the BMAD directory doesn't exist - it falls back to bundled.
+        """
         compiler = get_workflow_compiler("testarch-test-review")
         context = CompilerContext(
             project_root=tmp_path,
@@ -164,8 +170,13 @@ class TestTestReviewCompilerValidation:
         )
         context.resolved_variables = {"epic_num": 1, "story_num": 1}
 
-        with pytest.raises(CompilerError, match="not found"):
-            compiler.validate_context(context)
+        # Create a story file so validation doesn't fail for other reasons
+        stories_dir = tmp_path / "_bmad-output/implementation-artifacts/stories"
+        stories_dir.mkdir(parents=True)
+        (stories_dir / "1-1-test.md").write_text("# Story 1.1")
+
+        # Should NOT raise - uses bundled workflow as fallback
+        compiler.validate_context(context)  # No exception expected
 
 
 class TestTestReviewCompilerCompile:
@@ -521,11 +532,22 @@ class TestTestReviewCompilerBuildMission:
 class TestTestReviewCompilerErrorHandling:
     """Test error handling in TestarchTestReviewCompiler."""
 
-    def test_compile_fails_with_missing_workflow_dir(self, tmp_path: Path) -> None:
-        """Test compile fails gracefully when workflow dir missing."""
+    def test_compile_uses_bundled_fallback_when_workflow_dir_missing(
+        self, tmp_path: Path
+    ) -> None:
+        """Test compile uses bundled fallback when workflow dir missing.
+
+        With bundled workflows, compile_workflow should NOT fail when
+        the BMAD directory doesn't exist - it falls back to bundled.
+        """
+        # Create story file so validation doesn't fail for other reasons
+        stories_dir = tmp_path / "_bmad-output/implementation-artifacts/stories"
+        stories_dir.mkdir(parents=True)
+        (stories_dir / "1-1-test.md").write_text("# Story 1.1")
+
         context = CompilerContext(
             project_root=tmp_path,
-            output_folder=tmp_path / "docs",
+            output_folder=tmp_path / "_bmad-output/implementation-artifacts",
             cwd=tmp_path,
         )
         context.resolved_variables = {
@@ -533,8 +555,9 @@ class TestTestReviewCompilerErrorHandling:
             "story_num": "1",
         }
 
-        with pytest.raises(CompilerError):
-            compile_workflow("testarch-test-review", context)
+        # Should NOT raise - uses bundled workflow as fallback
+        result = compile_workflow("testarch-test-review", context)
+        assert result.workflow_name == "testarch-test-review"
 
     def test_compile_raises_when_workflow_ir_not_set(self, tmp_path: Path) -> None:
         """Test compile raises when workflow_ir is not set in context."""

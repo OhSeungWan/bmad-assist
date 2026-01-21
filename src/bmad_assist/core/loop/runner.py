@@ -9,6 +9,7 @@ Story 20.10: Sprint-status sync and repair integration.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import subprocess
@@ -39,7 +40,7 @@ from bmad_assist.core.loop.signals import (
     unregister_signal_handlers,
 )
 from bmad_assist.core.loop.story_transitions import handle_story_completion
-from bmad_assist.core.loop.types import GuardianDecision, LoopExitReason
+from bmad_assist.core.loop.types import GuardianDecision, LoopExitReason, PhaseResult
 from bmad_assist.core.state import (
     Phase,
     State,
@@ -115,10 +116,11 @@ def _get_story_title(project_path: Path, story_id: str) -> str | None:
 
     """
     try:
+        from bmad_assist.core.paths import get_paths
         from bmad_assist.sprint.parser import parse_sprint_status
 
         # Load sprint-status to find story entry with title
-        sprint_path = project_path / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml"
+        sprint_path = get_paths().sprint_status_file
         if not sprint_path.exists():
             return None
 
@@ -477,6 +479,180 @@ def _run_archive_artifacts(project_path: Path) -> None:
 
 
 # =============================================================================
+# Epic Scope Phase Helpers - Runner Epic Scope Refactor
+# =============================================================================
+
+
+def _execute_epic_setup(
+    state: LoopState,
+    state_path: Path,
+    project_path: Path,
+) -> tuple[LoopState, bool]:
+    """Execute epic setup phases before first story.
+
+    Iterates through all phases in loop_config.epic_setup and executes each.
+    On failure, returns immediately with success=False (loop should HALT).
+    On success, sets epic_setup_complete=True and persists state.
+
+    Per ADR-007: If resuming after a crash during setup, this function will
+    re-run ALL setup phases from the beginning (setup phases must be idempotent).
+
+    Args:
+        state: Current loop state.
+        state_path: Path to state file for persistence.
+        project_path: Project root directory.
+
+    Returns:
+        Tuple of (updated_state, success).
+        - success=True: All setup phases completed, epic_setup_complete=True
+        - success=False: A setup phase failed, loop should halt with GUARDIAN_HALT
+
+    """
+    from bmad_assist.core.config import get_loop_config
+
+    loop_config = get_loop_config()
+
+    if not loop_config.epic_setup:
+        # No setup phases configured - nothing to do
+        logger.debug("No epic_setup phases configured, skipping")
+        return state, True
+
+    logger.info(
+        "Running %d epic setup phases for epic %s: %s",
+        len(loop_config.epic_setup),
+        state.current_epic,
+        loop_config.epic_setup,
+    )
+
+    for phase_name in loop_config.epic_setup:
+        # Set current phase for this setup phase
+        now = datetime.now(UTC).replace(tzinfo=None)
+        state = state.model_copy(
+            update={
+                "current_phase": Phase(phase_name),
+                "updated_at": now,
+            }
+        )
+        # Reset phase timing before execution (consistent with main loop)
+        start_phase_timing(state)
+        save_state(state, state_path)
+
+        # Execute the setup phase
+        logger.info("Executing epic setup phase: %s", phase_name)
+        result = execute_phase(state)
+
+        if not result.success:
+            # Setup failure - halt the loop (per ADR-001)
+            logger.error(
+                "Epic setup phase %s failed for epic %s: %s",
+                phase_name,
+                state.current_epic,
+                result.error,
+            )
+            # Save state with failed phase for resume
+            save_state(state, state_path)
+            return state, False
+
+        logger.info("Epic setup phase %s completed successfully", phase_name)
+
+    # All setup phases completed successfully - set to first story phase from config
+    first_story_phase = Phase(loop_config.story[0])
+    now = datetime.now(UTC).replace(tzinfo=None)
+    state = state.model_copy(
+        update={
+            "epic_setup_complete": True,
+            "current_phase": first_story_phase,  # Ready for first story phase
+            "updated_at": now,
+        }
+    )
+    save_state(state, state_path)
+
+    logger.info(
+        "Epic setup complete for epic %s, ready for %s",
+        state.current_epic,
+        first_story_phase.name,
+    )
+    return state, True
+
+
+def _execute_epic_teardown(
+    state: LoopState,
+    state_path: Path,
+    project_path: Path,
+) -> tuple[LoopState, PhaseResult | None]:
+    """Execute epic teardown phases after last story.
+
+    Iterates through all phases in loop_config.epic_teardown and executes each.
+    On failure, logs warning and CONTINUES to next phase (per ADR-002).
+    Returns the last PhaseResult for metrics/logging purposes.
+
+    Args:
+        state: Current loop state after last story's CODE_REVIEW_SYNTHESIS.
+        state_path: Path to state file for persistence.
+        project_path: Project root directory.
+
+    Returns:
+        Tuple of (updated_state, last_result).
+        - last_result: PhaseResult from the last executed phase (for metrics)
+        - last_result is None if epic_teardown is empty
+
+    """
+    from bmad_assist.core.config import get_loop_config
+
+    loop_config = get_loop_config()
+
+    if not loop_config.epic_teardown:
+        # No teardown phases configured - nothing to do
+        logger.debug("No epic_teardown phases configured, skipping")
+        return state, None
+
+    logger.info(
+        "Running %d epic teardown phases for epic %s: %s",
+        len(loop_config.epic_teardown),
+        state.current_epic,
+        loop_config.epic_teardown,
+    )
+
+    last_result: PhaseResult | None = None
+
+    for phase_name in loop_config.epic_teardown:
+        # Set current phase for this teardown phase
+        now = datetime.now(UTC).replace(tzinfo=None)
+        state = state.model_copy(
+            update={
+                "current_phase": Phase(phase_name),
+                "updated_at": now,
+            }
+        )
+        # Reset phase timing before execution (consistent with main loop)
+        start_phase_timing(state)
+        save_state(state, state_path)
+
+        # Execute the teardown phase
+        logger.info("Executing epic teardown phase: %s", phase_name)
+        result = execute_phase(state)
+        last_result = result
+
+        if not result.success:
+            # Teardown failure - log warning and CONTINUE (per ADR-002)
+            logger.warning(
+                "Epic teardown phase %s failed for epic %s: %s. "
+                "Continuing to next teardown phase.",
+                phase_name,
+                state.current_epic,
+                result.error,
+            )
+            # Still save state even on failure
+            save_state(state, state_path)
+            continue
+
+        logger.info("Epic teardown phase %s completed successfully", phase_name)
+
+    logger.info("Epic teardown complete for epic %s", state.current_epic)
+    return state, last_result
+
+
+# =============================================================================
 # Lock File Context Manager - Dashboard Process Detection
 # =============================================================================
 
@@ -496,6 +672,11 @@ def _is_pid_alive(pid: int) -> bool:
         True if process is running, False if PID is not found (stale lock).
 
     """
+    # Validate PID is positive - negative PIDs have special meaning in os.kill()
+    # (e.g., -1 = all processes in caller's process group)
+    if pid <= 0:
+        return False
+
     try:
         os.kill(pid, 0)  # Signal 0 doesn't kill, just checks existence
         return True
@@ -604,8 +785,6 @@ def _running_lock(project_path: Path):
     finally:
         # Story 22.3: Always remove lock file on exit
         # Use contextlib.suppress for robustness if file was externally deleted
-        import contextlib
-
         with contextlib.suppress(FileNotFoundError):
             lock_path.unlink()
 
@@ -678,19 +857,32 @@ def run_loop(
     reset_shutdown()
     register_signal_handlers()
 
-    # Initialize phase handlers with config and project path
-    init_handlers(config, project_path)
+    try:
+        # Load loop config and set singleton for this run
+        from bmad_assist.core.config import load_loop_config, set_loop_config
 
-    # Story 20.10: Register sprint sync callback at loop startup
-    _ensure_sprint_sync_callback()
+        loop_config = load_loop_config(project_path)
+        set_loop_config(loop_config)
+        logger.debug(
+            "Loaded loop config: epic_setup=%d phases, story=%d phases, epic_teardown=%d phases",
+            len(loop_config.epic_setup),
+            len(loop_config.story),
+            len(loop_config.epic_teardown),
+        )
 
-    # Dashboard: Create lock file for process detection
-    with _running_lock(project_path):
-        try:
+        # Initialize phase handlers with config and project path
+        init_handlers(config, project_path)
+
+        # Story 20.10: Register sprint sync callback at loop startup
+        _ensure_sprint_sync_callback()
+
+        # Dashboard: Create lock file for process detection
+        with _running_lock(project_path):
             return _run_loop_body(config, project_path, epic_list, epic_stories_loader)
-        finally:
-            # Story 6.6: Always restore previous signal handlers on exit
-            unregister_signal_handlers()
+    finally:
+        # Story 6.6: Always restore previous signal handlers on exit
+        # Moved outside _running_lock to ensure cleanup even if lock acquisition fails
+        unregister_signal_handlers()
 
 
 def _run_loop_body(
@@ -734,6 +926,11 @@ def _run_loop_body(
     except StateError:
         # Invalid state file - let exception propagate per AC1
         raise
+
+    # Get loop config early for use in fresh start and epic scope phases
+    from bmad_assist.core.config import get_loop_config
+
+    loop_config = get_loop_config()
 
     # Check if this is a fresh start (ALL position fields are None)
     # Code Review Fix: Use AND logic - only fresh start if ALL fields are None
@@ -780,6 +977,9 @@ def _run_loop_body(
         if is_git_enabled():
             ensure_epic_branch(first_epic, project_path)
 
+        # Get first story phase from loop config (not hardcoded CREATE_STORY)
+        first_story_phase = Phase(loop_config.story[0])
+
         # Get naive UTC timestamp (project convention)
         now = datetime.now(UTC).replace(tzinfo=None)
 
@@ -787,7 +987,7 @@ def _run_loop_body(
             update={
                 "current_epic": first_epic,
                 "current_story": first_story,
-                "current_phase": Phase.CREATE_STORY,
+                "current_phase": first_story_phase,
                 "started_at": now,
                 "updated_at": now,
             }
@@ -802,7 +1002,7 @@ def _run_loop_body(
             "Fresh start: epic=%s story=%s phase=%s",
             first_epic,
             first_story,
-            Phase.CREATE_STORY.name,
+            first_story_phase.name,
         )
 
         # AC1: Persist initial state BEFORE first phase execution
@@ -819,7 +1019,7 @@ def _run_loop_body(
             "story_started",
             project_path,
             state,
-            phase=Phase.CREATE_STORY.name,
+            phase=first_story_phase.name,
             story_title=story_title,
         )
 
@@ -845,7 +1045,7 @@ def _run_loop_body(
             sequence_id=sequence_id,
             epic_num=epic_num,
             story_id=first_story,
-            phase=Phase.CREATE_STORY.name,
+            phase=first_story_phase.name,
             phase_status="in-progress",
         )
 
@@ -898,6 +1098,15 @@ def _run_loop_body(
     logger.debug("Config providers.master.model: %s", config.providers.master.model)
     logger.debug("Project path: %s", project_path)
 
+    # Epic setup: run before first story if not already complete
+    # Per ADR-007: This also handles resume-after-setup-crash by restarting all setup phases
+    if not state.epic_setup_complete and loop_config.epic_setup:
+        logger.info("Running epic setup phases for epic %s", state.current_epic)
+        state, setup_success = _execute_epic_setup(state, state_path, project_path)
+        if not setup_success:
+            logger.error("Epic setup failed, halting loop")
+            return LoopExitReason.GUARDIAN_HALT
+
     # Main loop - runs until project complete or guardian halt
     while True:
         # Story standalone-03 AC1: Reset phase timing BEFORE each phase execution
@@ -917,6 +1126,19 @@ def _run_loop_body(
             result.error if not result.success else "none",
         )
 
+        # Story 22.9: Emit dashboard workflow_status event with completed/failed status
+        # This complements the "in-progress" emission at phase start
+        if state.current_phase is not None and state.current_epic is not None:
+            sequence_id += 1
+            emit_workflow_status(
+                run_id=run_id,
+                sequence_id=sequence_id,
+                epic_num=state.current_epic,
+                story_id=str(state.current_story) if state.current_story else "unknown",
+                phase=state.current_phase.name,
+                phase_status="completed" if result.success else "failed",
+            )
+
         # AC5: Handle phase failures
         if not result.success:
             logger.warning(
@@ -935,30 +1157,36 @@ def _run_loop_body(
                 message=result.error or "Unknown error",
             )
 
-            if state.current_phase == Phase.RETROSPECTIVE:
-                # AC5: RETROSPECTIVE failure - log warning, proceed to next epic
+            # Check if this is a teardown phase failure (resume case)
+            # Teardown phases should warn and continue, not halt (per ADR-002)
+            teardown_phases = (
+                [Phase(p) for p in loop_config.epic_teardown]
+                if loop_config.epic_teardown
+                else []
+            )
+            is_teardown_failure = state.current_phase in teardown_phases
+
+            if is_teardown_failure:
+                # Teardown phase failure - log warning and advance to next epic
                 logger.warning(
-                    "RETROSPECTIVE phase failed for epic %s. Error: %s. "
-                    "Logging warning and proceeding to next epic.",
+                    "Teardown phase %s failed for epic %s: %s. Continuing to next epic.",
+                    state.current_phase.name if state.current_phase else "None",
                     state.current_epic,
                     result.error,
                 )
-                # Ensure state is saved with current (failed) retrospective
                 save_state(state, state_path)
-                # Story 20.10: Invoke sync callbacks after retrospective failure save
                 _invoke_sprint_sync(state, project_path)
 
-                # Now, attempt to advance to the next epic as if retrospective succeeded
-                # This ensures the loop continues if there are more epics
                 # Calculate epic timing before handle_epic_completion modifies state
                 epic_duration_ms = get_epic_duration_ms(state)
                 epic_stories_count = _count_epic_stories(state)
 
+                # Advance to next epic
                 new_state, is_project_complete = handle_epic_completion(
                     state, epic_list, epic_stories_loader, state_path
                 )
 
-                # Story standalone-03 AC6: Dispatch epic_completed event (even on failure)
+                # Dispatch epic_completed event (even on teardown failure)
                 _dispatch_event(
                     "epic_completed",
                     project_path,
@@ -968,7 +1196,6 @@ def _run_loop_body(
                 )
 
                 if is_project_complete:
-                    # Story standalone-03 AC7: Dispatch project_completed event
                     project_duration_ms = get_project_duration_ms(state)
                     total_stories = len(state.completed_stories) if state.completed_stories else 0
                     _dispatch_event(
@@ -979,23 +1206,24 @@ def _run_loop_body(
                         epics_completed=len(epic_list),
                         stories_completed=total_stories,
                     )
+                    _invoke_sprint_sync(new_state, project_path)
                     logger.info(
-                        "Project complete after RETROSPECTIVE failure. All %d epics finished.",
+                        "Project complete after teardown failure. All %d epics finished.",
                         len(epic_list),
                     )
                     return LoopExitReason.COMPLETED
-                else:
-                    state = new_state
-                    # Story standalone-03 AC6: Start timing for the new epic
-                    start_epic_timing(state)
-                    start_story_timing(state)
-                    logger.info(
-                        "Advanced to next epic %s (story %s) after RETROSPECTIVE failure.",
-                        state.current_epic,
-                        state.current_story,
-                    )
-                    continue
 
+                # Continue with next epic
+                state = new_state
+                start_epic_timing(state)
+                start_story_timing(state)
+                logger.info(
+                    "Advanced to epic %s after teardown failure",
+                    state.current_epic,
+                )
+                continue
+
+            # Story phase failure - goes through normal guardian flow
             # AC5: Save state FIRST (before guardian call) to preserve position
             save_state(state, state_path)
             # Story 20.10: Invoke sync callbacks after failure path save
@@ -1059,6 +1287,13 @@ def _run_loop_body(
             # Validate state before pause (AC #3, #6)
             if not validate_state_for_pause(state_path):
                 logger.error("State validation failed - unsafe to pause, continuing loop")
+                # Clean up pause flag to prevent re-detection in next iteration
+                pause_flag = project_path / ".bmad-assist" / "pause.flag"
+                try:
+                    pause_flag.unlink(missing_ok=True)
+                    logger.info("Removed pause flag due to state validation failure")
+                except OSError as e:
+                    logger.warning("Failed to remove pause flag: %s", e)
                 # Continue loop instead of pausing with corrupted state
             else:
                 # State is valid - emit paused event before entering wait loop
@@ -1098,7 +1333,7 @@ def _run_loop_body(
         )
 
         # Git auto-commit for the COMPLETED phase (before advancing)
-        # Only commits if phase is in COMMIT_PHASES (CREATE_STORY, DEV_STORY, CODE_REVIEW_SYNTHESIS)
+        # Only commits if phase is in COMMIT_PHASES (CREATE_STORY, DEV_STORY, CODE_REVIEW_SYNTHESIS, RETROSPECTIVE)
         # Validation phases are NOT in COMMIT_PHASES, so their reports are not committed.
         # Lazy import to avoid circular dependency
         from bmad_assist.git import auto_commit_phase
@@ -1144,20 +1379,60 @@ def _run_loop_body(
             new_state, is_epic_complete = handle_story_completion(state, epic_stories, state_path)
 
             if is_epic_complete:
-                # AC3: Last story in epic - run_loop sets phase to RETROSPECTIVE
-                state = new_state.model_copy(update={"current_phase": Phase.RETROSPECTIVE})
-                save_state(state, state_path)
-                # Story 20.10: Invoke sync callbacks after RETROSPECTIVE transition save
-                _invoke_sprint_sync(state, project_path)
-                logger.info(
-                    "Epic %s stories complete, starting retrospective",
-                    state.current_epic,
+                # Run all epic teardown phases (retrospective, qa_plan_*, etc.)
+                logger.info("Epic %s stories complete, running teardown phases", state.current_epic)
+                state, _teardown_result = _execute_epic_teardown(
+                    new_state, state_path, project_path
                 )
+                _invoke_sprint_sync(state, project_path)
 
-                # Story 6.6: Check for shutdown after RETROSPECTIVE transition save_state
+                # Story 6.6: Check for shutdown after teardown
                 if shutdown_requested():
                     logger.info("Loop interrupted by signal, state saved")
                     return _get_interrupt_exit_reason()
+
+                # Teardown complete - now handle epic transition
+                # Calculate epic timing before handle_epic_completion modifies state
+                epic_duration_ms = get_epic_duration_ms(state)
+                epic_stories_count = _count_epic_stories(state)
+
+                # Advance to next epic (or complete project)
+                advanced_state, is_project_complete = handle_epic_completion(
+                    state, epic_list, epic_stories_loader, state_path
+                )
+
+                # Story standalone-03 AC6: Dispatch epic_completed event
+                _dispatch_event(
+                    "epic_completed",
+                    project_path,
+                    state,
+                    duration_ms=epic_duration_ms,
+                    stories_completed=epic_stories_count,
+                )
+
+                if is_project_complete:
+                    # Story standalone-03 AC7: Dispatch project_completed event
+                    project_duration_ms = get_project_duration_ms(state)
+                    total_stories = len(state.completed_stories) if state.completed_stories else 0
+                    _dispatch_event(
+                        "project_completed",
+                        project_path,
+                        state,
+                        duration_ms=project_duration_ms,
+                        epics_completed=len(epic_list),
+                        stories_completed=total_stories,
+                    )
+                    _invoke_sprint_sync(advanced_state, project_path)
+                    logger.info("Project complete after epic %s teardown", state.current_epic)
+                    return LoopExitReason.COMPLETED
+
+                # Continue with next epic
+                state = advanced_state
+                # Reset timing for new epic
+                start_epic_timing(state)
+                start_story_timing(state)
+                logger.info("Advanced to epic %s after teardown", state.current_epic)
+                continue  # Next iteration will run epic_setup for new epic
             else:
                 # AC3: Not last story - advance to next story
                 state = new_state
@@ -1252,6 +1527,9 @@ def _run_loop_body(
                     epics_completed=len(epic_list),
                     stories_completed=total_stories,
                 )
+                # Bug fix: Sync sprint-status before returning to mark epic/retro as done
+                # Use new_state which has epic in completed_epics
+                _invoke_sprint_sync(new_state, project_path)
                 # AC4: Last epic - project complete, terminate gracefully
                 logger.info(
                     "Project complete! All %d epics finished.",
@@ -1314,32 +1592,45 @@ def _run_loop_body(
 
         next_phase = get_next_phase(current_phase)
         if next_phase is None:
-            # RETROSPECTIVE is last phase when QA disabled - handle epic completion
-            if current_phase == Phase.RETROSPECTIVE and result.success:
+            # NOTE: Epic teardown phases (retrospective, qa_plan_*, etc.) are now handled
+            # in _execute_epic_teardown() called from the CODE_REVIEW_SYNTHESIS block above.
+            # This check should only be reached for unexpected cases.
+            #
+            # Check if this is the last epic_teardown phase (in case get_next_phase
+            # returns None for a phase that's part of teardown but executed separately)
+            teardown_phases = (
+                [Phase(p) for p in loop_config.epic_teardown]
+                if loop_config.epic_teardown
+                else []
+            )
+            is_teardown_phase = current_phase in teardown_phases
+
+            if is_teardown_phase and result.success:
+                # This path handles edge case where a teardown phase is executed
+                # through the main loop (e.g., resumed mid-teardown)
                 logger.info(
-                    "RETROSPECTIVE complete for epic %s (QA phases disabled)",
+                    "Teardown phase %s complete for epic %s",
+                    current_phase.name,
                     state.current_epic,
                 )
                 # Calculate epic timing before handle_epic_completion modifies state
                 epic_duration_ms = get_epic_duration_ms(state)
-                completed_epic = state.current_epic
                 epic_stories_count = _count_epic_stories(state)
 
                 new_state, is_project_complete = handle_epic_completion(
                     state, epic_list, epic_stories_loader, state_path
                 )
 
-                # Story standalone-03 AC6: Dispatch epic_completed event
+                # Dispatch epic_completed event
                 _dispatch_event(
                     "epic_completed",
                     project_path,
-                    state,  # Use original state with completed epic
+                    state,
                     duration_ms=epic_duration_ms,
                     stories_completed=epic_stories_count,
                 )
 
                 if is_project_complete:
-                    # Story standalone-03 AC7: Dispatch project_completed event
                     project_duration_ms = get_project_duration_ms(state)
                     total_stories = len(state.completed_stories) if state.completed_stories else 0
                     _dispatch_event(
@@ -1350,6 +1641,7 @@ def _run_loop_body(
                         epics_completed=len(epic_list) if epic_list else 1,
                         stories_completed=total_stories,
                     )
+                    _invoke_sprint_sync(new_state, project_path)
                     logger.info(
                         "Project complete! All %d epics finished.",
                         len(epic_list) if epic_list else 1,
@@ -1365,10 +1657,9 @@ def _run_loop_body(
                 if is_git_enabled() and state.current_epic is not None:
                     ensure_epic_branch(state.current_epic, project_path)
 
-                # Story standalone-03 AC6: Start timing for the new epic
+                # Start timing for the new epic
                 start_epic_timing(state)
                 start_story_timing(state)
-                # Sync after epic completion
                 _invoke_sprint_sync(state, project_path)
                 logger.info(
                     "Advanced to epic %s, story %s",

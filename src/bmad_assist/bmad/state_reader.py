@@ -28,38 +28,37 @@ logger = logging.getLogger(__name__)
 def _get_sprint_status_candidates(bmad_path: Path) -> list[Path]:
     """Get candidate paths for sprint-status.yaml.
 
-    Uses paths singleton if available, plus legacy fallback locations.
+    Uses paths singleton if available (handles external paths correctly),
+    plus legacy fallback locations for fixtures/legacy projects.
 
     Args:
-        bmad_path: BMAD documentation root.
+        bmad_path: BMAD documentation root (used for legacy fallbacks only).
 
     Returns:
         List of possible sprint-status.yaml paths to try.
 
+    Note: When external paths are configured, bmad_path could point anywhere.
+    The paths singleton handles external paths correctly. Legacy fallbacks
+    use bmad_path directly (not bmad_path.parent) since bmad_path IS the
+    docs folder where sprint-artifacts/ would be located.
     """
-    candidates: list[Path] = []
+    from bmad_assist.core.paths import get_paths
 
-    # Try paths singleton first (for configured projects)
     try:
-        from bmad_assist.core.paths import get_paths
-
-        candidates.append(get_paths().sprint_status_file)
-    except (RuntimeError, ImportError):
-        pass
-
-    # Always add fallback paths (for fixtures, legacy projects, etc.)
-    candidates.extend(
-        [
-            bmad_path.parent
-            / "_bmad-output"
-            / "implementation-artifacts"
-            / "sprint-status.yaml",  # New location
+        paths = get_paths()
+        # Use singleton's configured paths (handles external paths correctly)
+        return paths.get_sprint_status_search_locations()
+    except RuntimeError:
+        # Singleton not yet initialized - use explicit fallback
+        # NOTE: When singleton is not initialized, we assume default config where
+        # bmad_path = project_root / "docs". For external paths, singleton MUST be initialized.
+        # We derive project_root from bmad_path.parent (valid for default config only).
+        project_root = bmad_path.parent
+        return [
+            project_root / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml",  # New
             bmad_path / "sprint-artifacts" / "sprint-status.yaml",  # Legacy
-            bmad_path / "sprint-status.yaml",  # Legacy
+            bmad_path / "sprint-status.yaml",  # Legacy (direct)
         ]
-    )
-
-    return candidates
 
 
 @dataclass

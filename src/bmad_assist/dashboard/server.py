@@ -29,6 +29,7 @@ from starlette.routing import BaseRoute, Mount
 from starlette.staticfiles import StaticFiles
 
 from bmad_assist.core.exceptions import DashboardError
+from bmad_assist.core.state import State, get_state_path, load_state
 
 # Story 22.9: Dashboard event marker for stdout parsing
 from bmad_assist.core.loop.dashboard_events import DASHBOARD_EVENT_MARKER
@@ -90,6 +91,51 @@ def find_available_port(
     )
 
 
+# Phase display name mapping (snake_case → human-readable)
+# Follows unified convention from docs/project_context.md
+# Synthesis phases use shortcuts ("Val Synth", "Rev Synth") for space-constrained UI
+PHASE_DISPLAY_NAMES: dict[str, str] = {
+    "create_story": "Create Story",
+    "validate_story": "Validate Story",
+    "validate_story_synthesis": "Val Synth",
+    "atdd": "ATDD",
+    "dev_story": "Develop Story",
+    "code_review": "Code Review",
+    "code_review_synthesis": "Rev Synth",
+    "test_review": "Test Review",
+    "retrospective": "Retrospective",
+    "qa_plan_generate": "QA Plan",
+    "qa_plan_execute": "QA Exec",
+}
+
+
+def _build_phases_from_config(phase_list: list[str]) -> list[dict[str, str]]:
+    """Build phase dictionaries from loop config phase list.
+
+    Converts snake_case phase IDs to display-friendly format.
+
+    Args:
+        phase_list: List of phase IDs from LoopConfig.story.
+
+    Returns:
+        List of phase dicts with id, name, and status keys.
+
+    Example:
+        >>> _build_phases_from_config(["create_story", "dev_story"])
+        [{"id": "create_story", "name": "Create Story", "status": "pending"},
+         {"id": "dev_story", "name": "Develop Story", "status": "pending"}]
+
+    """
+    phases = []
+    for phase_id in phase_list:
+        display_name = PHASE_DISPLAY_NAMES.get(
+            phase_id,
+            phase_id.replace("_", " ").title(),  # Fallback: snake_case → Title Case
+        )
+        phases.append({"id": phase_id, "name": display_name, "status": "pending"})
+    return phases
+
+
 class DashboardServer:
     """Main dashboard server for bmad-assist.
 
@@ -127,21 +173,23 @@ class DashboardServer:
         self.port = port
         self.project_root = project_root
 
+        # Initialize paths singleton if not already done
+        self._ensure_paths_initialized()
+
         # Find or auto-generate sprint-status.yaml
         self._sprint_status_path = self._find_sprint_status()
         if self._sprint_status_path is None:
             logger.info("sprint-status.yaml not found, auto-generating from epics...")
             self._sprint_status_path = self._generate_sprint_status()
             if self._sprint_status_path is None:
-                paths_tried = [
-                    project_root / "_bmad-output/implementation-artifacts/sprint-status.yaml",
-                    project_root / "docs/sprint-artifacts/sprint-status.yaml",
-                ]
+                from bmad_assist.core.paths import get_paths
+
+                paths = get_paths()
+                searched = paths.get_sprint_status_search_locations()
+                paths_list = "\n".join(f"  - {p}" for p in searched)
                 raise DashboardError(
                     f"sprint-status.yaml not found and auto-generation failed!\n\n"
-                    f"Tried:\n"
-                    f"  - {paths_tried[0]}\n"
-                    f"  - {paths_tried[1]}\n\n"
+                    f"Searched locations:\n{paths_list}\n\n"
                     f"This project has no epic files to generate from.\n"
                     f"Create an epic file in docs/epics/ first."
                 )
@@ -164,21 +212,43 @@ class DashboardServer:
         self._active_experiment_run_id: str | None = None
         self._active_experiment_cancel_event: asyncio.Event | None = None
 
+    def _ensure_paths_initialized(self) -> None:
+        """Initialize paths singleton if not already done.
+
+        Loads config to get external paths if configured, otherwise uses defaults.
+        """
+        from bmad_assist.core.paths import get_paths, init_paths
+
+        try:
+            get_paths()  # Check if already initialized
+        except RuntimeError:
+            # Initialize paths if not already done (e.g., standalone serve)
+            from bmad_assist.core.config import load_config_with_project
+            from bmad_assist.core.exceptions import ConfigError
+
+            try:
+                config = load_config_with_project(project_path=self.project_root)
+                paths_config = {}
+                if config.paths:
+                    if config.paths.output_folder:
+                        paths_config["output_folder"] = config.paths.output_folder
+                    if config.paths.project_knowledge:
+                        paths_config["project_knowledge"] = config.paths.project_knowledge
+                init_paths(self.project_root, paths_config)
+            except ConfigError:
+                # No config - use defaults
+                init_paths(self.project_root, {})
+
     def _find_sprint_status(self) -> Path | None:
-        """Find sprint-status.yaml in project.
+        """Find sprint-status.yaml using paths singleton.
 
         Returns:
             Path to sprint-status.yaml or None if not found.
 
         """
-        paths = [
-            self.project_root / "_bmad-output/implementation-artifacts/sprint-status.yaml",
-            self.project_root / "docs/sprint-artifacts/sprint-status.yaml",
-        ]
-        for path in paths:
-            if path.exists():
-                return path
-        return None
+        from bmad_assist.core.paths import get_paths
+
+        return get_paths().find_sprint_status()
 
     def _generate_sprint_status(self) -> Path | None:
         """Auto-generate sprint-status.yaml from epic files.
@@ -190,9 +260,11 @@ class DashboardServer:
             Path to generated sprint-status.yaml, or None on failure.
 
         """
+        from bmad_assist.core.paths import get_paths
         from bmad_assist.sprint import generate_from_epics, write_sprint_status
 
-        target_dir = self.project_root / "_bmad-output/implementation-artifacts"
+        paths = get_paths()
+        target_dir = paths.implementation_artifacts
         target_path = target_dir / "sprint-status.yaml"
 
         try:
@@ -325,14 +397,9 @@ class DashboardServer:
 
         logger.info("Loop resumed - cleared pause flag")
 
-        # Broadcast resume event (Story 22.10 - Task 5)
-        await self.sse_broadcaster.broadcast_event(
-            "LOOP_RESUMED",
-            {
-                "timestamp": datetime.now(UTC).isoformat(),
-                "run_id": self._run_id,
-            },
-        )
+        # Note: LOOP_RESUMED SSE event is emitted by the subprocess (runner.py)
+        # when it actually exits the wait loop. This ensures the event is emitted
+        # at the correct time (when subprocess resumes) rather than prematurely.
 
         await self.sse_broadcaster.broadcast_output(
             "▶️ Resumed - continuing loop...", provider="dashboard"
@@ -402,10 +469,12 @@ class DashboardServer:
             ]
 
             # Set BMAD_DASHBOARD_MODE to enable dashboard event emission in subprocess
+            # Set BMAD_ORIGINAL_CWD to preserve original working directory for patch/cache lookup
             import os
 
             subprocess_env = os.environ.copy()
             subprocess_env["BMAD_DASHBOARD_MODE"] = "1"
+            subprocess_env["BMAD_ORIGINAL_CWD"] = str(Path.cwd())
 
             self._current_process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -431,7 +500,10 @@ class DashboardServer:
 
                         await self.sse_broadcaster.broadcast_output(text, provider="workflow")
 
-                # Story 22.11: Stdout EOF reached - subprocess has closed stdout
+                # Story 22.11 Task 1: Stdout EOF reached - subprocess has closed stdout
+                # Log EOF event for observability before waiting for process exit
+                logger.info("Subprocess stdout EOF - waiting for process exit")
+
                 # Now wait for process to fully exit
                 await self._current_process.wait()
 
@@ -746,6 +818,30 @@ class DashboardServer:
         logger.info("Dashboard server shutting down...")
         await self.sse_broadcaster.shutdown()
 
+    def get_current_state(self) -> State | None:
+        """Load current execution state from state.yaml.
+
+        Reads state from {project_root}/.bmad-assist/state.yaml which contains
+        current execution position (epic, story, phase) maintained by the loop.
+
+        Returns:
+            State instance if file exists and is valid, None otherwise.
+            Returns None without logging if file doesn't exist (normal case).
+            Logs warning if file exists but is corrupted or unreadable.
+
+        """
+        state_path = get_state_path(project_root=self.project_root)
+
+        if not state_path.exists():
+            return None  # No state file - normal case, no logging needed
+
+        try:
+            return load_state(state_path)
+        except Exception as e:
+            # File exists but failed to load - log the error
+            logger.warning("Failed to load state from %s: %s", state_path, e)
+            return None
+
     def get_sprint_status(self) -> dict[str, Any]:
         """Get current sprint status from project state.
 
@@ -754,11 +850,13 @@ class DashboardServer:
 
         """
         from bmad_assist.bmad.state_reader import read_project_state
+        from bmad_assist.core.paths import get_paths
 
-        # Try implementation artifacts first, then docs
+        # Try implementation artifacts first, then project_knowledge
+        paths = get_paths()
         bmad_paths = [
-            self.project_root / "_bmad-output/implementation-artifacts",
-            self.project_root / "docs",
+            paths.implementation_artifacts,
+            paths.project_knowledge,
         ]
 
         for bmad_path in bmad_paths:
@@ -801,6 +899,9 @@ class DashboardServer:
     def get_stories(self) -> dict[str, Any]:
         """Get story hierarchy with workflow phases.
 
+        Uses state.yaml for current execution position when available,
+        falling back to sprint-status.yaml story status inference.
+
         Returns:
             Hierarchical structure of epics, stories, and phases.
 
@@ -808,6 +909,9 @@ class DashboardServer:
         status = self.get_sprint_status()
         if "error" in status:
             return status
+
+        # Load execution state for accurate phase status
+        state = self.get_current_state()
 
         epics = status.get("epics", [])
         result: dict[str, Any] = {"epics": []}
@@ -828,7 +932,9 @@ class DashboardServer:
                     "id": story.get("id"),
                     "title": story.get("title"),
                     "status": story_status,
-                    "phases": self._get_story_phases(epic.get("id"), story.get("id"), story_status),
+                    "phases": self._get_story_phases(
+                        epic.get("id"), story.get("id"), story_status, state
+                    ),
                 }
                 stories_list.append(story_data)
 
@@ -1095,6 +1201,227 @@ class DashboardServer:
             logger.exception("Failed to get story %s in epic %s", story_id, epic_id)
             return None
 
+    def get_story_file_content(
+        self, epic_id: str, story_id: str
+    ) -> dict[str, Any] | None:
+        """Get story file content from implementation-artifacts directory.
+
+        Story 24.5: Searches for story files matching pattern {epic}-{story}-*.md
+        and returns the content along with title and file path.
+
+        Args:
+            epic_id: Epic identifier (e.g., "24" or "testarch").
+            story_id: Story number (e.g., "5" or "1").
+
+        Returns:
+            Dictionary with content, file_path, and title, or None if not found.
+            On success: {"content": "...", "file_path": "...", "title": "..."}
+
+        """
+        from bmad_assist.core.paths import get_paths
+
+        try:
+            # Validate inputs to prevent glob injection and path traversal
+            # Only allow alphanumeric characters, hyphens, and underscores
+            if not re.match(r"^[a-zA-Z0-9_-]+$", str(epic_id)):
+                logger.warning("Invalid epic_id format: %s", epic_id)
+                return None
+            if not re.match(r"^[a-zA-Z0-9_-]+$", str(story_id)):
+                logger.warning("Invalid story_id format: %s", story_id)
+                return None
+
+            impl_dir = get_paths().implementation_artifacts
+
+            # Search for story files with pattern {epic}-{story}-*.md
+            pattern = f"{epic_id}-{story_id}-*.md"
+            matching_files = list(impl_dir.glob(pattern))
+
+            if not matching_files:
+                logger.debug("No story files found for pattern %s in %s", pattern, impl_dir)
+                return None
+
+            # If multiple matches, select the one with most recent mtime
+            if len(matching_files) > 1:
+                logger.warning(
+                    "Found %d matches for %s, using most recent",
+                    len(matching_files),
+                    pattern,
+                )
+                matching_files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+
+            story_file = matching_files[0]
+            content = story_file.read_text(encoding="utf-8")
+
+            # Extract title with fallback hierarchy
+            title = self._extract_story_title(content, story_file.name, epic_id, story_id)
+
+            # Return relative path from project root
+            try:
+                relative_path = str(story_file.relative_to(self.project_root))
+            except ValueError:
+                relative_path = str(story_file)
+
+            return {
+                "content": content,
+                "file_path": relative_path,
+                "title": title,
+            }
+
+        except Exception:
+            logger.exception(
+                "Failed to get story file content for %s.%s", epic_id, story_id
+            )
+            return None
+
+    def _extract_story_title(
+        self, content: str, filename: str, epic_id: str, story_id: str
+    ) -> str:
+        """Extract story title with fallback hierarchy.
+
+        Story 24.5: Title extraction order:
+        1. Primary: Extract from first H1 heading (# Story X.Y: Title)
+        2. Fallback: Convert filename slug to title (kebab-case -> Title Case)
+        3. Last resort: "Story {epic}.{story}"
+
+        Args:
+            content: Story file content.
+            filename: Story filename.
+            epic_id: Epic identifier.
+            story_id: Story number.
+
+        Returns:
+            Extracted or fallback title.
+
+        """
+        # Primary: Extract from first H1 heading
+        # Pattern matches: "# Story 24.5: Title" or "# Title"
+        lines = content.split("\n")
+        for line in lines[:20]:  # Check first 20 lines
+            line = line.strip()
+            if line.startswith("# "):
+                heading = line[2:].strip()
+                # Try pattern "Story X.Y: Title"
+                match = re.match(
+                    rf"Story\s+{re.escape(epic_id)}\.{re.escape(story_id)}\s*:\s*(.+)",
+                    heading,
+                    re.IGNORECASE,
+                )
+                if match:
+                    return match.group(1).strip()
+                # Just use the heading as title
+                return heading
+
+        # Fallback: Convert filename slug to title
+        # Filename pattern: {epic}-{story}-{slug}.md
+        # Extract slug and convert to Title Case
+        match = re.match(rf"^{re.escape(epic_id)}-{re.escape(story_id)}-(.+)\.md$", filename)
+        if match:
+            slug = match.group(1)
+            if slug:
+                # Convert kebab-case to Title Case
+                return slug.replace("-", " ").replace("_", " ").title()
+
+        # Last resort: generic title
+        return f"Story {epic_id}.{story_id}"
+
+    def get_epic_metrics(self, epic_id: int | str) -> dict[str, Any] | None:
+        """Get aggregated benchmark metrics for an epic.
+
+        Scans benchmarks directory for all evaluation files matching this epic
+        and aggregates timing and workflow statistics.
+
+        Args:
+            epic_id: Epic identifier (numeric or string like 'testarch').
+
+        Returns:
+            Dictionary with aggregated metrics or None if no benchmarks found.
+
+        """
+        import yaml
+
+        from bmad_assist.core.paths import get_paths
+
+        benchmarks_dir = get_paths().benchmarks_dir
+        if not benchmarks_dir.exists():
+            return None
+
+        epic_id_str = str(epic_id)
+        metrics: dict[str, Any] = {
+            "epic_id": epic_id,
+            "total_duration_ms": 0,
+            "story_count": 0,
+            "workflow_breakdown": {},
+            "stories": {},
+        }
+
+        # Scan all subdirectories (YYYY-MM format)
+        for month_dir in benchmarks_dir.iterdir():
+            if not month_dir.is_dir():
+                continue
+
+            # Pattern: eval-{epic}-{story}-{role}-{timestamp}.yaml
+            for eval_file in month_dir.glob(f"eval-{epic_id_str}-*.yaml"):
+                try:
+                    data = yaml.safe_load(eval_file.read_text(encoding="utf-8"))
+                    if not data:
+                        continue
+
+                    story_num = data.get("story", {}).get("story_num")
+                    workflow_id = data.get("workflow", {}).get("id", "unknown")
+                    duration_ms = data.get("execution", {}).get("duration_ms", 0)
+                    role = data.get("evaluator", {}).get("role", "unknown")
+
+                    # Aggregate totals
+                    metrics["total_duration_ms"] += duration_ms
+
+                    # Per-workflow breakdown
+                    if workflow_id not in metrics["workflow_breakdown"]:
+                        metrics["workflow_breakdown"][workflow_id] = {
+                            "count": 0,
+                            "total_duration_ms": 0,
+                        }
+                    metrics["workflow_breakdown"][workflow_id]["count"] += 1
+                    metrics["workflow_breakdown"][workflow_id]["total_duration_ms"] += duration_ms
+
+                    # Per-story tracking
+                    story_key = str(story_num)
+                    if story_key not in metrics["stories"]:
+                        metrics["stories"][story_key] = {
+                            "story_num": story_num,
+                            "title": data.get("story", {}).get("title", f"Story {story_num}"),
+                            "total_duration_ms": 0,
+                            "workflows": {},
+                        }
+                    metrics["stories"][story_key]["total_duration_ms"] += duration_ms
+
+                    # Per-story workflow tracking
+                    if workflow_id not in metrics["stories"][story_key]["workflows"]:
+                        metrics["stories"][story_key]["workflows"][workflow_id] = {
+                            "duration_ms": 0,
+                            "roles": [],
+                        }
+                    metrics["stories"][story_key]["workflows"][workflow_id]["duration_ms"] += duration_ms
+                    if role not in metrics["stories"][story_key]["workflows"][workflow_id]["roles"]:
+                        metrics["stories"][story_key]["workflows"][workflow_id]["roles"].append(role)
+
+                except Exception as e:
+                    logger.warning("Failed to parse benchmark file %s: %s", eval_file, e)
+                    continue
+
+        metrics["story_count"] = len(metrics["stories"])
+
+        # Return None if no benchmarks found
+        if metrics["story_count"] == 0:
+            return None
+
+        # Convert stories dict to sorted list
+        metrics["stories"] = sorted(
+            metrics["stories"].values(),
+            key=lambda s: (s.get("story_num") or 0),
+        )
+
+        return metrics
+
     def _get_sprint_status_from_file(self) -> dict[str, Any]:
         """Read sprint-status.yaml directly when epic files don't exist.
 
@@ -1183,35 +1510,95 @@ class DashboardServer:
             return {"error": f"Failed to read sprint-status.yaml: {e}"}
 
     def _get_story_phases(
-        self, epic_id: str | int, story_id: str | int, status: str
+        self,
+        epic_id: str | int,
+        story_id: str | int,
+        status: str,
+        state: State | None = None,
     ) -> list[dict[str, str]]:
         """Get workflow phases for a story.
+
+        Uses state.yaml to determine current phase when available.
+        Falls back to inferring from story status if state not available.
 
         Args:
             epic_id: Epic identifier.
             story_id: Story identifier (just the number part).
-            status: Story status.
+            status: Story status from sprint-status.yaml.
+            state: Optional execution state from state.yaml.
 
         Returns:
             List of phase dictionaries with status.
 
         """
-        phases = [
-            {"name": "create-story", "status": "pending"},
-            {"name": "validate", "status": "pending"},
-            {"name": "validation-synthesis", "status": "pending"},
-            {"name": "dev-story", "status": "pending"},
-            {"name": "code-review", "status": "pending"},
-            {"name": "review-synthesis", "status": "pending"},
-        ]
+        # Get phases from loop config (hot-reload on each request)
+        from bmad_assist.core.config import load_loop_config
 
-        # Determine phase statuses based on story status
+        loop_config = load_loop_config(self.project_root)
+        phases = _build_phases_from_config(loop_config.story)
+
+        # Build story key for comparison with state (e.g., "22.3")
+        story_key = f"{epic_id}.{story_id}"
+
+        # If we have state and this is the current story, use state for phase status
+        if state and state.current_story == story_key and state.current_phase:
+            current_phase_id = state.current_phase.value
+            phase_order = [p["id"] for p in phases]
+
+            # Build dynamic phase position map from loop config
+            # Phases in LoopConfig.story are displayed, others map to end position
+            phase_position_map: dict[str, int] = {}
+            for i, phase_id in enumerate(loop_config.story):
+                phase_position_map[phase_id] = i
+
+            # Non-displayed phases (epic_teardown, etc.) map to after all story phases
+            # This ensures they show all story phases as completed
+            end_position = len(loop_config.story)
+            for phase_id in loop_config.epic_teardown:
+                if phase_id not in phase_position_map:
+                    phase_position_map[phase_id] = end_position
+
+            # Also handle any Phase enum values not in config (legacy/testarch phases)
+            # These map to positions based on their typical location in the workflow
+            legacy_phase_positions = {
+                "atdd": 3,  # Between val_synth and dev
+                "test_review": end_position,  # After all story phases
+            }
+            for phase_id, pos in legacy_phase_positions.items():
+                if phase_id not in phase_position_map:
+                    phase_position_map[phase_id] = pos
+
+            if current_phase_id in phase_position_map:
+                current_idx = phase_position_map[current_phase_id]
+                is_displayed_phase = current_phase_id in phase_order
+
+                for i, phase in enumerate(phases):
+                    if i < current_idx:
+                        phase["status"] = "completed"
+                    elif i == current_idx and is_displayed_phase:
+                        phase["status"] = "in-progress"
+                    # else: stays "pending"
+                return phases
+
+            # Unknown phase - log and fall through to status-based inference
+            logger.debug(
+                "Phase %s not in display mapping, using status-based inference",
+                current_phase_id,
+            )
+
+        # Fallback: determine phase statuses based on story status
+        if status == "done":
+            for phase in phases:
+                phase["status"] = "completed"
+            return phases
+
+        # Map story status to number of completed phases (0-indexed)
+        # Phase indices: 0=create, 1=validate, 2=val_synth, 3=dev, 4=review, 5=rev_synth
         status_progression = {
-            "backlog": 0,
-            "ready-for-dev": 3,  # create + validate + synthesis done
-            "in-progress": 4,  # dev-story in progress
-            "review": 5,  # dev done, review in progress
-            "done": 6,  # all done
+            "backlog": 0,  # No phases completed
+            "ready-for-dev": 3,  # create + validate + synthesis done (phases 0-2)
+            "in-progress": 3,  # Same 3 done, dev_story (index 3) in-progress
+            "review": 4,  # First 4 done, code_review (index 4) in-progress
         }
 
         completed_phases = status_progression.get(status, 0)
@@ -1219,7 +1606,7 @@ class DashboardServer:
         for i, phase in enumerate(phases):
             if i < completed_phases:
                 phase["status"] = "completed"
-            elif i == completed_phases and status not in ("backlog", "done"):
+            elif i == completed_phases and status not in ("backlog",):
                 phase["status"] = "in-progress"
 
         return phases
@@ -1250,13 +1637,16 @@ class DashboardServer:
             pass  # Fall through to legacy cache
 
         # Fallback: Legacy cached templates in .bmad-assist/cache/
-        # Map UI phase names to template file names
+        # Map phase IDs (snake_case) to template file names (kebab-case)
         phase_mapping = {
-            "validate": "validate-story",
-            "validation-synthesis": "validate-story",  # Uses same template
-            "review-synthesis": "code-review",  # Uses same template
+            "create_story": "create-story",
+            "validate_story": "validate-story",
+            "validate_story_synthesis": "validate-story",  # Uses same template
+            "dev_story": "dev-story",
+            "code_review": "code-review",
+            "code_review_synthesis": "code-review",  # Uses same template
         }
-        template_phase = phase_mapping.get(phase, phase)
+        template_phase = phase_mapping.get(phase, phase.replace("_", "-"))
 
         # Valid phases per AC 1.3
         valid_phases = {"create-story", "dev-story", "validate-story", "code-review"}
@@ -1287,7 +1677,9 @@ class DashboardServer:
             Returns empty list (not error) if no reports found (AC 2.5).
 
         """
-        reports_dir = self.project_root / "_bmad-output/implementation-artifacts/story-validations"
+        from bmad_assist.core.paths import get_paths
+
+        reports_dir = get_paths().validations_dir
 
         reports: list[dict[str, str | None]] = []
         synthesis: dict[str, str | None] | None = None
@@ -1349,6 +1741,94 @@ class DashboardServer:
         # Try legacy format: multi-char provider with underscore timestamp
         match = re.match(r"validation-\d+-\d+-(.+)-\d{8}_\d{4}\.md", filename)
         return match.group(1) if match else None
+
+    def get_code_review_reports(self, epic: str, story: str) -> dict[str, Any]:
+        """Get code review reports for a story.
+
+        Searches archive/ subdirectory for individual reports and root for synthesis.
+        Similar to get_validation_reports but for code-reviews directory.
+
+        Args:
+            epic: Epic identifier.
+            story: Story number.
+
+        Returns:
+            Dictionary with reports list and synthesis object.
+
+        """
+        from bmad_assist.core.paths import get_paths
+
+        reports_dir = get_paths().code_reviews_dir
+
+        reports: list[dict[str, str | None]] = []
+        synthesis: dict[str, str | None] | None = None
+
+        # Search archive/ subdirectory for individual code review reports
+        archive_dir = reports_dir / "archive"
+        archive_pattern = f"code-review-{epic}-{story}-*.md"
+        if archive_dir.exists():
+            for report_path in sorted(archive_dir.glob(archive_pattern)):
+                # Extract provider from filename
+                provider = self._extract_code_review_provider(report_path.name)
+                reports.append(
+                    {
+                        "path": str(report_path),
+                        "name": report_path.name,
+                        "provider": provider,
+                    }
+                )
+
+        # Search root for synthesis report
+        synthesis_pattern = f"synthesis-{epic}-{story}-*.md"
+        for synth_path in sorted(reports_dir.glob(synthesis_pattern)):
+            synthesis = {
+                "path": str(synth_path),
+                "name": synth_path.name,
+                "provider": None,
+            }
+            break  # Take first (should only be one)
+
+        return {"reports": reports, "synthesis": synthesis}
+
+    def _extract_code_review_provider(self, filename: str) -> str | None:
+        """Extract provider from code review filename.
+
+        Pattern: code-review-{epic}-{story}-{provider}-{timestamp}.md
+        Provider may contain underscores (e.g., claude_opus_4_5, gemini_3_flash_preview)
+        Timestamp format: YYYYMMDD_HHMM
+
+        Args:
+            filename: Code review report filename.
+
+        Returns:
+            Provider name, or None if pattern doesn't match.
+
+        """
+        # Pattern: code-review-{epic}-{story}-{provider}-{timestamp}.md
+        match = re.match(r"code-review-[a-z0-9]+-[a-z0-9]+-(.+)-\d{8}_\d{4}\.md", filename, re.IGNORECASE)
+        return match.group(1) if match else None
+
+    def get_all_reviews(self, epic: str, story: str) -> dict[str, Any]:
+        """Get all review reports (validation + code-review) for a story.
+
+        Combines validation and code review reports into a single response
+        with separate sections for each type.
+
+        Args:
+            epic: Epic identifier.
+            story: Story number.
+
+        Returns:
+            Dictionary with validation and code_review sections.
+
+        """
+        validation = self.get_validation_reports(epic, story)
+        code_review = self.get_code_review_reports(epic, story)
+
+        return {
+            "validation": validation,
+            "code_review": code_review,
+        }
 
     async def run(self, log_level: str = "info") -> None:
         """Start the server and run until shutdown.

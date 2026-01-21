@@ -493,11 +493,26 @@ def trigger_sync(state: State, project_root: Path) -> SyncResult:
         'Synced 3 stories, 1 epics'
 
     """
+    from bmad_assist.core.paths import get_paths
     from bmad_assist.sprint.parser import parse_sprint_status
     from bmad_assist.sprint.writer import write_sprint_status
 
-    # Find sprint-status location (BMAD v6 convention)
-    sprint_path = project_root / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml"
+    # Find sprint-status location (uses paths singleton for external paths support)
+    try:
+        sprint_path = get_paths().sprint_status_file
+    except RuntimeError:
+        # Fallback for tests or early startup when singleton not initialized
+        # Check multiple locations for consistency with state_reader.py
+        fallback_candidates = [
+            project_root / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml",  # New
+            project_root / "docs" / "sprint-artifacts" / "sprint-status.yaml",  # Legacy
+            project_root / "docs" / "sprint-status.yaml",  # Legacy (direct)
+        ]
+        # Use first existing, or default to new location for creation
+        sprint_path = next(
+            (p for p in fallback_candidates if p.exists()),
+            fallback_candidates[0],  # Default to new location
+        )
 
     # Load or create empty sprint-status
     file_existed = sprint_path.exists()

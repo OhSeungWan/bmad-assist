@@ -20,7 +20,6 @@ from __future__ import annotations
 import os
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -35,8 +34,9 @@ from bmad_assist.sprint.models import (
 )
 from bmad_assist.sprint.parser import parse_sprint_status
 from bmad_assist.sprint.writer import (
+    _add_epic_comments,
     _build_output_data,
-    _check_ruamel,
+    _extract_epic_id,
     _load_with_comments,
     _write_with_pyyaml,
     has_ruamel,
@@ -135,53 +135,19 @@ def fixture_unicode(fixture_dir: Path) -> Path:
 
 
 class TestHasRuamel:
-    """Tests for ruamel.yaml availability detection."""
+    """Tests for ruamel.yaml availability (always True since required dependency)."""
 
-    def test_has_ruamel_returns_bool(self):
-        """has_ruamel() returns a boolean."""
+    def test_has_ruamel_returns_true(self):
+        """has_ruamel() always returns True since ruamel.yaml is now required."""
         result = has_ruamel()
-        assert isinstance(result, bool)
+        assert result is True
 
-    def test_has_ruamel_cached(self):
-        """has_ruamel() result is cached after first call."""
-        # Call twice and verify same result (no change between calls)
+    def test_has_ruamel_consistent(self):
+        """has_ruamel() returns consistent True result on multiple calls."""
         result1 = has_ruamel()
         result2 = has_ruamel()
-        assert result1 == result2
-
-    def test_check_ruamel_with_mock_import_error(self):
-        """_check_ruamel returns False when ruamel.yaml not available."""
-        import bmad_assist.sprint.writer as writer_module
-
-        # Reset cache state
-        original_checked = writer_module._RUAMEL_CHECKED
-        original_available = writer_module._RUAMEL_AVAILABLE
-
-        try:
-            # Reset cache to force re-check
-            writer_module._RUAMEL_CHECKED = False
-            writer_module._RUAMEL_AVAILABLE = True  # Start as True
-
-            # Mock the import to fail
-            def mock_import_fail(name: str, *args: Any, **kwargs: Any) -> None:
-                if name == "ruamel.yaml" or name.startswith("ruamel"):
-                    raise ImportError(f"Mocked: No module named '{name}'")
-                return original_import(name, *args, **kwargs)
-
-            import builtins
-
-            original_import = builtins.__import__
-            with patch.object(builtins, "__import__", side_effect=mock_import_fail):
-                result = writer_module._check_ruamel()
-                # Verify the function correctly detected unavailability
-                assert result is False
-                assert writer_module._RUAMEL_AVAILABLE is False
-                assert writer_module._RUAMEL_CHECKED is True
-
-        finally:
-            # Restore original state
-            writer_module._RUAMEL_CHECKED = original_checked
-            writer_module._RUAMEL_AVAILABLE = original_available
+        assert result1 is True
+        assert result2 is True
 
 
 # =============================================================================
@@ -455,23 +421,6 @@ class TestPyYAMLFallback:
 
         assert "development_status" in data
         assert data["development_status"]["epic-1"] == "done"
-
-    def test_pyyaml_logs_warning_when_comments_requested(
-        self,
-        sample_status: SprintStatus,
-        tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
-    ):
-        """Warning logged when comments requested but ruamel unavailable."""
-        target = tmp_path / "sprint-status.yaml"
-
-        # Mock has_ruamel to return False
-        with patch("bmad_assist.sprint.writer.has_ruamel", return_value=False):
-            with caplog.at_level("WARNING"):
-                write_sprint_status(sample_status, target, preserve_comments=True)
-
-            # Should warn about missing ruamel
-            assert any("ruamel.yaml not available" in r.message for r in caplog.records)
 
 
 # =============================================================================
@@ -1022,3 +971,197 @@ class TestEdgeCases:
 
         parsed = parse_sprint_status(target)
         assert long_key in parsed.entries
+
+
+# =============================================================================
+# Test: Epic ID Extraction (_extract_epic_id)
+# =============================================================================
+
+
+class TestExtractEpicId:
+    """Tests for _extract_epic_id() helper function."""
+
+    def test_extract_numeric_epic_from_story(self):
+        """Extract numeric epic ID from story key."""
+        assert _extract_epic_id("12-3-setup") == 12
+        assert _extract_epic_id("1-1-start") == 1
+        assert _extract_epic_id("123-45-long-name") == 123
+
+    def test_extract_numeric_epic_from_short_key(self):
+        """Extract numeric epic ID from short key (no slug)."""
+        assert _extract_epic_id("12-1") == 12
+        assert _extract_epic_id("1-1") == 1
+
+    def test_extract_string_epic_from_story(self):
+        """Extract string epic ID from module story key."""
+        assert _extract_epic_id("testarch-1-config") == "testarch"
+        assert _extract_epic_id("guardian-2-setup") == "guardian"
+
+    def test_extract_epic_from_meta_key(self):
+        """Extract epic ID from epic meta key."""
+        assert _extract_epic_id("epic-12") == 12
+        assert _extract_epic_id("epic-testarch") == "testarch"
+
+    def test_extract_epic_from_retrospective_key(self):
+        """Extract epic ID from retrospective key."""
+        assert _extract_epic_id("epic-12-retrospective") == 12
+        assert _extract_epic_id("epic-testarch-retrospective") == "testarch"
+
+    def test_standalone_returns_none(self):
+        """Standalone entries return None (no epic)."""
+        assert _extract_epic_id("standalone-01-refactor") is None
+
+    def test_invalid_key_returns_none(self):
+        """Invalid keys return None."""
+        assert _extract_epic_id("invalid") is None
+        assert _extract_epic_id("") is None
+        assert _extract_epic_id("not-a-valid-pattern") is None
+
+
+# =============================================================================
+# Test: Epic Separator Comments (_add_epic_comments)
+# =============================================================================
+
+
+class TestAddEpicComments:
+    """Tests for _add_epic_comments() helper function."""
+
+    def test_adds_epic_comment_before_first_entry(self):
+        """Epic comment added before first entry of each epic."""
+        if not has_ruamel():
+            pytest.skip("ruamel.yaml not available")
+
+        from ruamel.yaml.comments import CommentedMap
+
+        dev_status = CommentedMap()
+        dev_status["epic-12"] = "done"
+        dev_status["12-1-setup"] = "done"
+        dev_status["12-2-feature"] = "done"
+
+        _add_epic_comments(dev_status)
+
+        # Check that comment was set before epic-12
+        # ruamel stores comments in .ca (comment attribute)
+        assert dev_status.ca.items.get("epic-12") is not None
+
+    def test_separate_comments_for_different_epics(self):
+        """Each epic gets its own separator comment."""
+        if not has_ruamel():
+            pytest.skip("ruamel.yaml not available")
+
+        from ruamel.yaml.comments import CommentedMap
+
+        dev_status = CommentedMap()
+        dev_status["epic-1"] = "done"
+        dev_status["1-1-setup"] = "done"
+        dev_status["epic-12"] = "done"
+        dev_status["12-1-start"] = "done"
+
+        _add_epic_comments(dev_status)
+
+        # Both epics should have comments
+        assert dev_status.ca.items.get("epic-1") is not None
+        assert dev_status.ca.items.get("epic-12") is not None
+
+    def test_no_duplicate_comments_for_same_epic(self):
+        """Only first entry of epic gets the comment."""
+        if not has_ruamel():
+            pytest.skip("ruamel.yaml not available")
+
+        from ruamel.yaml.comments import CommentedMap
+
+        dev_status = CommentedMap()
+        dev_status["epic-12"] = "done"
+        dev_status["12-1-setup"] = "done"
+        dev_status["12-2-feature"] = "done"
+
+        _add_epic_comments(dev_status)
+
+        # Stories within epic should NOT have epic comments
+        # (Only the first entry of the epic gets the comment)
+        story_comment = dev_status.ca.items.get("12-1-setup")
+        if story_comment:
+            # If there's a comment entry, check it's not an epic comment
+            # The before comment is at index 1 in the tuple
+            before_comment = story_comment[1] if len(story_comment) > 1 else None
+            # Before comment should be None or empty for non-first entries
+            assert before_comment is None or str(before_comment).strip() == ""
+
+    def test_epic_comments_in_written_file(
+        self,
+        tmp_path: Path,
+    ):
+        """Epic separator comments appear in written file."""
+        if not has_ruamel():
+            pytest.skip("ruamel.yaml not available")
+
+        meta = SprintStatusMetadata(
+            generated=datetime.now(UTC).replace(tzinfo=None),
+            project="epic-comments-test",
+        )
+        entries = {
+            "epic-12": SprintStatusEntry(
+                key="epic-12",
+                status="done",
+                entry_type=EntryType.EPIC_META,
+            ),
+            "12-1-setup": SprintStatusEntry(
+                key="12-1-setup",
+                status="done",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+            "epic-20": SprintStatusEntry(
+                key="epic-20",
+                status="in-progress",
+                entry_type=EntryType.EPIC_META,
+            ),
+            "20-1-start": SprintStatusEntry(
+                key="20-1-start",
+                status="in-progress",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+        }
+        status = SprintStatus(metadata=meta, entries=entries)
+
+        target = tmp_path / "epic-comments.yaml"
+        write_sprint_status(status, target, preserve_comments=True)
+
+        content = target.read_text(encoding="utf-8")
+
+        # Should have epic separator comments
+        assert "# Epic 12" in content
+        assert "# Epic 20" in content
+
+    def test_string_epic_comments(
+        self,
+        tmp_path: Path,
+    ):
+        """String epic IDs get correct separator comments."""
+        if not has_ruamel():
+            pytest.skip("ruamel.yaml not available")
+
+        meta = SprintStatusMetadata(
+            generated=datetime.now(UTC).replace(tzinfo=None),
+            project="string-epic-test",
+        )
+        entries = {
+            "epic-testarch": SprintStatusEntry(
+                key="epic-testarch",
+                status="done",
+                entry_type=EntryType.EPIC_META,
+            ),
+            "testarch-1-config": SprintStatusEntry(
+                key="testarch-1-config",
+                status="done",
+                entry_type=EntryType.MODULE_STORY,
+            ),
+        }
+        status = SprintStatus(metadata=meta, entries=entries)
+
+        target = tmp_path / "string-epic.yaml"
+        write_sprint_status(status, target, preserve_comments=True)
+
+        content = target.read_text(encoding="utf-8")
+
+        # Should have string epic separator comment
+        assert "# Epic testarch" in content

@@ -33,20 +33,13 @@ class TestGetNextPhase:
         result = get_next_phase(Phase.DEV_STORY)
         assert result == Phase.CODE_REVIEW
 
-    def test_get_next_phase_returns_next_for_code_review_synthesis(self) -> None:
-        """AC7: CODE_REVIEW_SYNTHESIS -> TEST_REVIEW (with testarch) or RETROSPECTIVE (without)."""
-        from unittest.mock import patch
-
+    def test_get_next_phase_returns_none_for_code_review_synthesis(self) -> None:
+        """AC7: CODE_REVIEW_SYNTHESIS is last in DEFAULT_LOOP_CONFIG.story, returns None."""
         from bmad_assist.core.loop import Phase, get_next_phase
 
-        # Without testarch: skip TEST_REVIEW
+        # CODE_REVIEW_SYNTHESIS is the last phase in the default story sequence
         result = get_next_phase(Phase.CODE_REVIEW_SYNTHESIS)
-        assert result == Phase.RETROSPECTIVE
-
-        # With testarch enabled: TEST_REVIEW is next
-        with patch("bmad_assist.core.loop.guardian._is_testarch_enabled", return_value=True):
-            result = get_next_phase(Phase.CODE_REVIEW_SYNTHESIS)
-            assert result == Phase.TEST_REVIEW
+        assert result is None
 
     def test_get_next_phase_returns_none_for_retrospective(self) -> None:
         """AC7: RETROSPECTIVE returns None (last phase)."""
@@ -55,20 +48,21 @@ class TestGetNextPhase:
         result = get_next_phase(Phase.RETROSPECTIVE)
         assert result is None
 
-    def test_get_next_phase_all_phases_in_sequence(self, monkeypatch) -> None:
-        """AC7: All phases advance correctly in PHASE_ORDER (with QA + testarch enabled)."""
-        from unittest.mock import patch
+    def test_get_next_phase_all_phases_in_default_config(self) -> None:
+        """AC7: All phases in DEFAULT_LOOP_CONFIG.story advance correctly."""
+        from bmad_assist.core.config import DEFAULT_LOOP_CONFIG
+        from bmad_assist.core.loop import Phase, get_next_phase
 
-        from bmad_assist.core.loop import PHASE_ORDER, Phase, get_next_phase
+        story_phases = DEFAULT_LOOP_CONFIG.story
+        # Test all phases except the last one advance to next
+        for i, phase_str in enumerate(story_phases[:-1]):
+            phase = Phase(phase_str)
+            expected = Phase(story_phases[i + 1])
+            assert get_next_phase(phase) == expected, f"Failed for {phase}"
 
-        # Enable QA phases for full PHASE_ORDER test
-        monkeypatch.setenv("BMAD_QA_ENABLED", "1")
-
-        # Enable testarch for ATDD and TEST_REVIEW phases
-        with patch("bmad_assist.core.loop.guardian._is_testarch_enabled", return_value=True):
-            for i, phase in enumerate(PHASE_ORDER[:-1]):  # Skip last (QA_PLAN_EXECUTE)
-                expected = PHASE_ORDER[i + 1]
-                assert get_next_phase(phase) == expected, f"Failed for {phase}"
+        # Last phase (CODE_REVIEW_SYNTHESIS) returns None
+        last_phase = Phase(story_phases[-1])
+        assert get_next_phase(last_phase) is None
 
     def test_get_next_phase_without_qa_stops_at_retrospective(self) -> None:
         """RETROSPECTIVE is last phase when QA is disabled (default)."""
@@ -78,18 +72,21 @@ class TestGetNextPhase:
         result = get_next_phase(Phase.RETROSPECTIVE)
         assert result is None
 
-    def test_get_next_phase_skips_testarch_when_disabled(self) -> None:
-        """ATDD and TEST_REVIEW are skipped when testarch is disabled."""
+    def test_get_next_phase_uses_default_loop_config(self) -> None:
+        """get_next_phase uses DEFAULT_LOOP_CONFIG.story by default."""
+        from bmad_assist.core.config import DEFAULT_LOOP_CONFIG
         from bmad_assist.core.loop import Phase, get_next_phase
 
-        # Testarch is disabled by default (config.testarch is None)
-        # VALIDATE_STORY_SYNTHESIS -> should skip ATDD -> DEV_STORY
+        # VALIDATE_STORY_SYNTHESIS -> DEV_STORY (as per DEFAULT_LOOP_CONFIG)
         result = get_next_phase(Phase.VALIDATE_STORY_SYNTHESIS)
         assert result == Phase.DEV_STORY
 
-        # CODE_REVIEW_SYNTHESIS -> should skip TEST_REVIEW -> RETROSPECTIVE
+        # CODE_REVIEW_SYNTHESIS is last in story sequence -> None
         result = get_next_phase(Phase.CODE_REVIEW_SYNTHESIS)
-        assert result == Phase.RETROSPECTIVE
+        assert result is None
+
+        # Verify this matches DEFAULT_LOOP_CONFIG.story
+        assert DEFAULT_LOOP_CONFIG.story[-1] == "code_review_synthesis"
 
 
 class TestGuardianCheckAnomaly:

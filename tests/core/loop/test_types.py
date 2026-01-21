@@ -19,40 +19,37 @@ class TestPhaseReExports:
 
         assert LoopPhase is StatePhase  # Identity, not equality
 
-    def test_phase_order_is_same_object_as_state(self) -> None:
-        """AC1: PHASE_ORDER is imported, not recreated."""
-        from bmad_assist.core.loop import PHASE_ORDER as LoopOrder
-        from bmad_assist.core.state import PHASE_ORDER as StateOrder
+    def test_default_loop_config_is_singleton(self) -> None:
+        """AC1: DEFAULT_LOOP_CONFIG is a singleton constant."""
+        from bmad_assist.core.config import DEFAULT_LOOP_CONFIG as config1
+        from bmad_assist.core.config import DEFAULT_LOOP_CONFIG as config2
 
-        assert LoopOrder is StateOrder  # Identity, not equality
+        assert config1 is config2  # Identity, not equality
 
-    def test_phase_order_length_matches_phase_enum(self) -> None:
-        """AC7: PHASE_ORDER contains all phases (11 total including QA phases)."""
-        from bmad_assist.core.loop import PHASE_ORDER, Phase
+    def test_default_loop_config_story_phases(self) -> None:
+        """AC7: DEFAULT_LOOP_CONFIG.story contains 6 phases."""
+        from bmad_assist.core.config import DEFAULT_LOOP_CONFIG
 
-        # 11 phases: 9 standard + 2 QA (experimental)
-        assert len(PHASE_ORDER) == len(Phase) == 11
+        # 6 phases in story sequence
+        assert len(DEFAULT_LOOP_CONFIG.story) == 6
 
-    def test_phase_order_first_is_create_story(self) -> None:
-        """AC7: First phase is CREATE_STORY."""
-        from bmad_assist.core.loop import PHASE_ORDER, Phase
+    def test_default_loop_config_first_is_create_story(self) -> None:
+        """AC7: First phase is create_story."""
+        from bmad_assist.core.config import DEFAULT_LOOP_CONFIG
 
-        assert PHASE_ORDER[0] == Phase.CREATE_STORY
+        assert DEFAULT_LOOP_CONFIG.story[0] == "create_story"
 
-    def test_phase_order_last_is_qa_plan_execute(self) -> None:
-        """Last phase is QA_PLAN_EXECUTE (experimental QA phases)."""
-        from bmad_assist.core.loop import PHASE_ORDER, Phase
+    def test_default_loop_config_last_is_code_review_synthesis(self) -> None:
+        """Last story phase is code_review_synthesis."""
+        from bmad_assist.core.config import DEFAULT_LOOP_CONFIG
 
-        assert PHASE_ORDER[-1] == Phase.QA_PLAN_EXECUTE
+        assert DEFAULT_LOOP_CONFIG.story[-1] == "code_review_synthesis"
 
-    def test_retrospective_is_last_non_qa_phase(self) -> None:
-        """RETROSPECTIVE is last phase when QA disabled (default workflow)."""
-        from bmad_assist.core.loop import PHASE_ORDER, Phase
+    def test_default_loop_config_epic_teardown_has_retrospective(self) -> None:
+        """epic_teardown contains retrospective."""
+        from bmad_assist.core.config import DEFAULT_LOOP_CONFIG
 
-        # RETROSPECTIVE is at index 8 (position 9 of 11)
-        retro_idx = PHASE_ORDER.index(Phase.RETROSPECTIVE)
-        assert retro_idx == 8
-        assert PHASE_ORDER[retro_idx + 1] == Phase.QA_PLAN_GENERATE
+        assert "retrospective" in DEFAULT_LOOP_CONFIG.epic_teardown
 
 
 class TestPhaseResult:

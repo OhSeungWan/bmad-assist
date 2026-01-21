@@ -90,3 +90,571 @@ input:focus {
 .transition-height {
     transition: height 0.2s ease-in-out;
 }
+
+/* ==========================================
+   Shiki Syntax Highlighting (Story 23.3)
+   ========================================== */
+
+/* Shiki code block container - matches dark-plus theme */
+.shiki {
+    background-color: #1e1e1e !important;  /* VSCode dark-plus bg */
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    margin: 0.5rem 0;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+/* Ensure proper scrolling for long lines */
+.shiki code {
+    display: block;
+    white-space: pre;
+    background: transparent !important;
+    padding: 0 !important;
+}
+
+/* Fallback styling when Shiki unavailable */
+.shiki-fallback {
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    margin: 0.5rem 0;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--foreground);
+}
+
+.shiki-fallback code {
+    display: block;
+    white-space: pre;
+    background: transparent;
+}
+
+/* Pending state (before async highlight completes) */
+/* Uses same background as .shiki to prevent visual flash (Story 23.3 - synthesis fix) */
+.shiki-pending {
+    background-color: #1e1e1e !important;  /* Match Shiki dark-plus bg */
+    opacity: 0.85;
+}
+
+/* Unsupported language styling */
+.shiki-unsupported {
+    background-color: var(--card);
+}
+
+/* Loading state while fetching grammar (Story 23.4 - AC7) */
+.shiki-loading {
+    position: relative;
+    min-height: 3rem;  /* Prevent layout shift during load */
+}
+
+.shiki-loading::after {
+    content: '';
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid var(--muted-foreground);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: shiki-spin 0.8s linear infinite;
+}
+
+@keyframes shiki-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Smooth transition when highlighting completes */
+.shiki-loading code,
+.shiki-pending code {
+    transition: opacity 0.15s ease-in-out;
+}
+
+/* Language indicator badge (optional) */
+.shiki[data-lang]::before {
+    content: attr(data-lang);
+    position: absolute;
+    top: 0.25rem;
+    right: 0.5rem;
+    font-size: 0.65rem;
+    color: var(--muted-foreground);
+    text-transform: uppercase;
+    opacity: 0.5;
+}
+
+/* Relative positioning for language badge */
+.shiki {
+    position: relative;
+}
+
+/* Markdown content container */
+.markdown-content {
+    line-height: 1.6;
+    word-wrap: break-word;
+}
+
+/* Markdown headings */
+.markdown-content h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.25rem;
+}
+
+.markdown-content h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.markdown-content h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-top: 0.75rem;
+    margin-bottom: 0.25rem;
+}
+
+/* Markdown text formatting */
+.markdown-content strong,
+.markdown-content b {
+    font-weight: 700;
+}
+
+.markdown-content em,
+.markdown-content i {
+    font-style: italic;
+}
+
+/* Markdown lists */
+.markdown-content ul {
+    list-style-type: disc;
+    margin-left: 1.5rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.markdown-content ol {
+    list-style-type: decimal;
+    margin-left: 1.5rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.markdown-content li {
+    margin-bottom: 0.25rem;
+}
+
+.markdown-content li > ul,
+.markdown-content li > ol {
+    margin-top: 0.25rem;
+    margin-bottom: 0;
+}
+
+/* Markdown blockquote */
+.markdown-content blockquote {
+    border-left: 3px solid var(--border);
+    padding-left: 1rem;
+    margin-left: 0;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+    color: var(--muted-foreground);
+    font-style: italic;
+}
+
+/* Markdown tables */
+.markdown-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.markdown-content th,
+.markdown-content td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+}
+
+.markdown-content th {
+    background-color: var(--muted);
+    font-weight: 600;
+}
+
+.markdown-content tr:nth-child(even) {
+    background-color: color-mix(in srgb, var(--muted) 50%, transparent);
+}
+
+/* Markdown inline code */
+.markdown-content code:not(pre code) {
+    background-color: var(--muted);
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.875em;
+}
+
+/* Markdown links */
+.markdown-content a {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+.markdown-content a:hover {
+    opacity: 0.8;
+}
+
+/* Markdown horizontal rule */
+.markdown-content hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 1rem 0;
+}
+
+/* Markdown paragraphs */
+.markdown-content p {
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+/* First element shouldn't have top margin */
+.markdown-content > *:first-child {
+    margin-top: 0;
+}
+
+/* Last element shouldn't have bottom margin */
+.markdown-content > *:last-child {
+    margin-bottom: 0;
+}
+
+/* ==========================================
+   Prompt Browser Collapsible Sections (Story 23.5)
+   ========================================== */
+
+/* Section container */
+.prompt-section {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+/* Nested file sections within context */
+.prompt-file-section {
+    border-top: 1px solid var(--border);
+}
+
+.prompt-file-section:first-child {
+    border-top: none;
+}
+
+/* Section header - clickable */
+.prompt-section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--muted);
+    cursor: pointer;
+    font-size: 0.875rem;
+    user-select: none;
+    transition: background-color 0.15s ease-in-out;
+}
+
+.prompt-section-header:hover {
+    background: var(--accent);
+}
+
+.prompt-section-header:focus {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+}
+
+/* Expanded state visual indicator */
+.prompt-section-header.expanded {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+}
+
+/* Chevron rotation animation */
+.prompt-section-header .chevron {
+    transition: transform 0.15s ease-in-out;
+    flex-shrink: 0;
+}
+
+.prompt-section-header.expanded .chevron {
+    transform: rotate(90deg);
+}
+
+/* Section content area - Story 24.4: Monospace font for all prompt content */
+.prompt-section-content {
+    padding: 0.75rem;
+    background: transparent;
+    max-height: 400px;
+    overflow: auto;
+    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+}
+
+/* File content wrapper - transparent to inherit parent background */
+.file-content-wrapper {
+    background: transparent;
+    padding: 0.75rem;
+}
+
+/* File content code container */
+.file-content-code {
+    max-height: 350px;
+    overflow: auto;
+}
+
+/* Override monospace font for rendered markdown in prompt browser */
+.prompt-section-content .markdown-content {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Restore monospace for code blocks within markdown */
+.prompt-section-content .markdown-content pre,
+.prompt-section-content .markdown-content code {
+    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+}
+
+/* Override shiki styles within prompt browser */
+.prompt-section .shiki {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background-color: transparent !important;
+}
+
+/* Loading state for file content */
+.prompt-section .shiki-loading::after {
+    top: 0.5rem;
+    right: 0.5rem;
+}
+
+/* ==========================================
+   CDATA Indicator (Story 23.6)
+   ========================================== */
+
+/* CDATA indicator - subtle by default, visible on hover */
+.cdata-indicator {
+    opacity: 0.5;
+    transition: opacity 0.15s ease-in-out;
+    display: inline-flex;
+    align-items: center;
+}
+
+.cdata-indicator:hover {
+    opacity: 1.0;
+}
+
+.cdata-indicator i,
+.cdata-indicator svg {
+    color: var(--muted-foreground);
+}
+
+/* XML content container */
+.xml-content {
+    overflow-x: auto;
+}
+
+.xml-content .shiki {
+    margin: 0;
+}
+
+/* ==========================================
+   Variables Panel (Story 23.7)
+   ========================================== */
+
+/* View toggle buttons container */
+.variables-view-toggle {
+    display: flex;
+    gap: 2px;
+    background: var(--muted);
+    border-radius: var(--radius);
+    padding: 2px;
+}
+
+.variables-view-toggle button {
+    padding: 0.25rem 0.5rem;
+    border-radius: calc(var(--radius) - 2px);
+    transition: background-color 0.1s, color 0.1s;
+    color: var(--muted-foreground);
+}
+
+.variables-view-toggle button:hover:not(.active) {
+    background: var(--accent);
+    color: var(--foreground);
+}
+
+.variables-view-toggle button.active {
+    background: var(--primary);
+    color: var(--primary-foreground);
+}
+
+/* Rendered view container */
+.variables-rendered-view {
+    display: grid;
+    gap: 1rem;
+}
+
+/* Category groups */
+.variables-category {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.75rem;
+}
+
+.variables-category:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+/* Category header */
+.variables-category-header {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--muted-foreground);
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Multi-column grid for variables */
+.variables-grid {
+    display: grid;
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+    gap: 0.5rem 1rem;
+}
+
+@media (min-width: 640px) {
+    .variables-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1024px) {
+    .variables-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+/* Variable item (name = value) */
+.variable-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+    font-size: 0.875rem;
+}
+
+/* Variable name */
+.variable-name {
+    color: var(--chart-3);
+    flex-shrink: 0;
+}
+
+/* Variable value */
+.variable-value {
+    color: var(--foreground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+}
+
+/* Tooltip cursor for shortened paths */
+.variable-value.cursor-help {
+    cursor: help;
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+}
+
+/* ==========================================
+   Phase Status Animations
+   ========================================== */
+
+/* Pulsing animation for active/in-progress phases */
+@keyframes phase-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.phase-pulse {
+    animation: phase-pulse 1.5s ease-in-out infinite;
+}
+
+/* Bright status colors for tree icons (higher lightness than theme defaults) */
+:root {
+    --status-green: oklch(0.78 0.16 155);    /* Bright green */
+    --status-blue: oklch(0.72 0.18 255);     /* Bright blue */
+    --status-yellow: oklch(0.85 0.18 95);    /* Yellow-leaning (1/3 from yellow to orange) */
+    --status-red: oklch(0.72 0.20 25);       /* Bright red */
+}
+
+/* Phase status colors */
+.phase-completed { color: var(--status-green); }  /* Green */
+.phase-error { color: var(--status-red); }  /* Red */
+.phase-in-progress { color: var(--status-blue); }  /* Blue */
+.phase-paused { color: var(--status-yellow); }  /* Yellow (run stopped) */
+.phase-pending { color: var(--muted-foreground); }  /* Gray */
+
+/* Epic/Story status colors (same as phase but for tree icons) */
+.status-done { color: var(--status-green); }  /* Green */
+.status-error { color: var(--status-red); }  /* Red */
+.status-active { color: var(--status-blue); }  /* Blue (running) */
+.status-paused { color: var(--status-yellow); }  /* Yellow (stopped) */
+.status-pending { color: var(--muted-foreground); }  /* Gray */
+
+/* ==========================================
+   Epic Metrics Browser (Story 24.7)
+   ========================================== */
+
+/* Timeline bar chart container */
+.metrics-timeline {
+    min-height: 2rem;
+}
+
+/* Individual timeline segment */
+.metrics-segment {
+    min-width: 4px;
+    transition: opacity 0.15s ease;
+}
+
+.metrics-segment:hover {
+    opacity: 0.8;
+}
+
+/* Hover tooltip for segments */
+.metrics-tooltip {
+    white-space: nowrap;
+    max-width: 300px;
+}
+
+/* Accordion button focus state */
+.metrics-accordion button:focus {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+}
+
+/* Tabular numbers for numeric alignment */
+.tabular-nums {
+    font-variant-numeric: tabular-nums;
+}

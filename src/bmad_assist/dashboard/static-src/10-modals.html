@@ -172,13 +172,13 @@
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0"
-         @keydown.escape.window="if (contentModal.show && !busyModal.show) contentModal.show = false"
+         @keydown.escape.window="if (contentModal.show && !busyModal.show) { contentModal.show = false; contentModal.browser = null; _cancelPendingShikiHighlights(); }"
          @keydown.tab="if (contentModal.show && !busyModal.show) trapFocus($event, 'contentModalContent')"
          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
          data-testid="content-modal">
 
         <!-- Modal Content -->
-        <div class="card shadow-xl w-4/5 max-h-[80vh] flex flex-col"
+        <div class="card shadow-xl p-0 gap-0 overflow-hidden w-4/5 max-h-[80vh] flex flex-col"
              x-show="contentModal.show"
              x-transition:enter="transition ease-out duration-200"
              x-transition:enter-start="opacity-0 scale-95"
@@ -190,20 +190,39 @@
              role="dialog"
              aria-modal="true"
              aria-labelledby="content-modal-title"
-             @click.outside="contentModal.show = false">
+             @click.outside="contentModal.show = false; contentModal.browser = null; _cancelPendingShikiHighlights();">
 
             <!-- Header -->
-            <div class="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div class="flex items-center justify-between px-4 py-2 border-b border-border">
                 <h2 id="content-modal-title" x-text="contentModal.title" class="text-lg font-semibold"></h2>
                 <div class="flex items-center gap-2">
-                    <button @click="copyToClipboard(contentModal.content)"
+                    <!-- Story 24.5: Raw/Rendered toggle (only shown when browser state is set) -->
+                    <template x-if="contentModal.browser">
+                        <div class="flex items-center border border-border rounded overflow-hidden mr-2"
+                             data-testid="view-toggle">
+                            <button @click="contentModal.browser.view = 'rendered'"
+                                    class="px-3 py-1 text-xs"
+                                    :class="contentModal.browser.view === 'rendered' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted'"
+                                    data-testid="view-rendered-btn">
+                                Rendered
+                            </button>
+                            <button @click="contentModal.browser.view = 'raw'"
+                                    class="px-3 py-1 text-xs"
+                                    :class="contentModal.browser.view === 'raw' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted'"
+                                    data-testid="view-raw-btn">
+                                Raw
+                            </button>
+                        </div>
+                    </template>
+                    <!-- Story 24.5: Copy button uses copyRawContent when browser state exists -->
+                    <button @click="contentModal.browser ? window.contentBrowserComponent().copyRawContent(contentModal.content, showToast) : copyToClipboard(contentModal.content)"
                             class="btn-sm-icon-ghost"
                             data-testid="copy-content-btn"
-                            title="Copy to clipboard"
+                            :title="contentModal.browser ? 'Copies raw content' : 'Copy to clipboard'"
                             aria-label="Copy content to clipboard">
                         <i data-lucide="clipboard" class="w-4 h-4"></i>
                     </button>
-                    <button @click="contentModal.show = false"
+                    <button @click="contentModal.show = false; contentModal.browser = null; _cancelPendingShikiHighlights();"
                             class="btn-sm-icon-ghost"
                             data-testid="close-modal-btn">
                         <i data-lucide="x" class="w-4 h-4"></i>

@@ -304,6 +304,11 @@ def run(
         "-f",
         help="Force restart if story is already 'done'. Without this flag, prompts to skip to next incomplete story (or auto-skips in --no-interactive mode).",
     ),
+    phase_override: str | None = typer.Option(
+        None,
+        "--phase",
+        help="Override starting phase (requires --epic and --story). Values: create_story, validate_story, validate_story_synthesis, dev_story, code_review, code_review_synthesis, retrospective.",
+    ),
     qa_enabled: bool = typer.Option(
         False,
         "--qa",
@@ -451,6 +456,11 @@ def run(
             _error("--story requires --epic")
             raise typer.Exit(code=EXIT_CONFIG_ERROR)
 
+        # Validate: --phase requires both --epic and --story
+        if phase_override and (not epic or not story):
+            _error("--phase requires both --epic and --story")
+            raise typer.Exit(code=EXIT_CONFIG_ERROR)
+
         # Apply start point override if --epic specified
         if epic:
             # Use project_knowledge from paths singleton for BMAD files
@@ -466,6 +476,21 @@ def run(
                 stories_by_epic,
                 force,
             )
+
+        # Apply phase override if --phase specified (overrides status-derived phase)
+        if phase_override:
+            try:
+                override_phase = Phase(phase_override)
+            except ValueError:
+                valid_phases = [p.value for p in Phase]
+                _error(f"Invalid phase '{phase_override}'. Valid values: {', '.join(valid_phases)}")
+                raise typer.Exit(code=EXIT_CONFIG_ERROR)
+
+            state_path = get_state_path(loaded_config, project_root=project_path)
+            state = load_state(state_path)
+            update_position(state, phase=override_phase)
+            save_state(state, state_path)
+            console.print(f"[dim]Phase override: starting from {override_phase.value}[/dim]")
 
         # Handle debug vars mode - display variables and exit without LLM
         if debug_vars:

@@ -58,16 +58,18 @@ class Discrepancy:
 
 
 def _get_sprint_status_path(project_root: Path) -> Path:
-    """Get sprint-status.yaml path following BMAD v6 convention.
+    """Get sprint-status.yaml path using paths singleton.
 
     Args:
-        project_root: Project root directory.
+        project_root: Project root directory (kept for backward compatibility).
 
     Returns:
         Path to sprint-status.yaml in implementation artifacts.
 
     """
-    return project_root / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml"
+    from bmad_assist.core.paths import get_paths
+
+    return get_paths().sprint_status_file
 
 
 def _setup_sprint_context(project: str) -> tuple[Path, Path, bool]:
@@ -87,9 +89,31 @@ def _setup_sprint_context(project: str) -> tuple[Path, Path, bool]:
         typer.Exit: If project path is invalid.
 
     """
+    from bmad_assist.core.paths import get_paths, init_paths
+
     project_root = _validate_project_path(project)
-    sprint_path = _get_sprint_status_path(project_root)
-    legacy_path = project_root / "docs" / "sprint-artifacts" / "sprint-status.yaml"
+
+    # Initialize paths singleton if not already done
+    try:
+        get_paths()
+    except RuntimeError:
+        # Load config to get external paths if configured
+        try:
+            config = load_config_with_project(project_path=project_root)
+            paths_config = {}
+            if config.paths:
+                if config.paths.output_folder:
+                    paths_config["output_folder"] = config.paths.output_folder
+                if config.paths.project_knowledge:
+                    paths_config["project_knowledge"] = config.paths.project_knowledge
+            init_paths(project_root, paths_config)
+        except ConfigError:
+            # No config - use defaults
+            init_paths(project_root, {})
+
+    paths = get_paths()
+    sprint_path = paths.sprint_status_file
+    legacy_path = paths.legacy_sprint_artifacts / "sprint-status.yaml"
 
     # If only legacy location exists, use it
     is_legacy_only = False
@@ -324,6 +348,16 @@ def sprint_repair(
             console.print()
             _display_changes_table(reconciliation.changes)
     else:
+        # Check if we need confirmation before overwriting
+        from bmad_assist.core.loop.interactive import is_non_interactive
+
+        if sprint_path.exists() and not is_non_interactive():
+            console.print(f"\n[yellow]Warning:[/yellow] This will overwrite {sprint_path}")
+            console.print("[dim]You can restore using BMAD workflow: /bmad:bmm:workflows:sprint-planning[/dim]")
+            if not typer.confirm("Continue?", default=False):
+                console.print("[dim]Aborted.[/dim]")
+                raise typer.Exit(code=EXIT_SUCCESS)
+
         # Actually perform repair
         # Note: repair_sprint_status also detects legacy-only internally, but we pass the flag
         effective_auto_exclude = not include_legacy and not is_legacy_only

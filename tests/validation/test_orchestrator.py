@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from bmad_assist.core.config import (
+    BenchmarkingConfig,
     Config,
     MasterProviderConfig,
     MultiProviderConfig,
@@ -57,6 +58,7 @@ def validation_config(tmp_path: Path) -> Config:
             ],
         ),
         timeout=300,
+        benchmarking=BenchmarkingConfig(enabled=False),
     )
 
 
@@ -69,6 +71,7 @@ def minimal_config() -> Config:
             multi=[],
         ),
         timeout=300,
+        benchmarking=BenchmarkingConfig(enabled=False),
     )
 
 
@@ -589,12 +592,14 @@ class TestInterHandlerDataPassing:
         ]
 
         session_id = save_validations_for_synthesis(original, tmp_path)
-        loaded = load_validations_for_synthesis(session_id, tmp_path)
+        # Story 22.8: Now returns tuple (validations, failed_validators)
+        loaded, failed = load_validations_for_synthesis(session_id, tmp_path)
 
         assert len(loaded) == 2
         assert loaded[0].validator_id == "Validator A"
         assert loaded[0].content == "Content A"
         assert loaded[1].validator_id == "Validator B"
+        assert failed == []  # No failed validators in this test
 
     def test_load_validations_not_found(self, tmp_path: Path) -> None:
         """load_validations_for_synthesis raises ValidationError if not found."""
@@ -962,3 +967,233 @@ class TestStory22_8ValidationSynthesisSaving:
                 f"Expected {result.validation_count} reports for successful validators, got {len(validation_files)}"
             )
             assert len(result.failed_validators) > 0, "Should have at least 1 failed validator"
+
+
+class TestStory22_8FailedValidatorsInCache:
+    """Story 22.8 AC #4: failed_validators passed through cache for synthesis context."""
+
+    def test_save_validations_with_failed_validators(self, tmp_path: Path) -> None:
+        """save_validations_for_synthesis persists failed_validators in cache."""
+        import json
+
+        from bmad_assist.validation import AnonymizedValidation
+        from bmad_assist.validation.orchestrator import save_validations_for_synthesis
+
+        validations = [
+            AnonymizedValidation(
+                validator_id="Validator A",
+                content="Test content",
+                original_ref="ref-1",
+            ),
+        ]
+
+        session_id = save_validations_for_synthesis(
+            validations,
+            tmp_path,
+            failed_validators=["claude-haiku", "gemini-flash"],
+        )
+
+        # Verify cache file contains failed_validators
+        cache_file = tmp_path / ".bmad-assist" / "cache" / f"validations-{session_id}.json"
+        with open(cache_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        assert "failed_validators" in data
+        assert data["failed_validators"] == ["claude-haiku", "gemini-flash"]
+
+    def test_save_validations_empty_failed_validators(self, tmp_path: Path) -> None:
+        """save_validations_for_synthesis handles empty failed_validators list (omits from cache)."""
+        import json
+
+        from bmad_assist.validation import AnonymizedValidation
+        from bmad_assist.validation.orchestrator import save_validations_for_synthesis
+
+        validations = [
+            AnonymizedValidation(
+                validator_id="Validator A",
+                content="Test content",
+                original_ref="ref-1",
+            ),
+        ]
+
+        session_id = save_validations_for_synthesis(
+            validations,
+            tmp_path,
+            failed_validators=[],  # Empty list - treated same as None
+        )
+
+        cache_file = tmp_path / ".bmad-assist" / "cache" / f"validations-{session_id}.json"
+        with open(cache_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        # Empty list is omitted (same as None) for cleaner JSON
+        assert "failed_validators" not in data
+
+    def test_load_validations_returns_failed_validators(self, tmp_path: Path) -> None:
+        """load_validations_for_synthesis returns tuple with failed_validators (AC #4)."""
+        from bmad_assist.validation import AnonymizedValidation
+        from bmad_assist.validation.orchestrator import (
+            load_validations_for_synthesis,
+            save_validations_for_synthesis,
+        )
+
+        original = [
+            AnonymizedValidation(
+                validator_id="Validator A",
+                content="Content A",
+                original_ref="ref-a",
+            ),
+        ]
+
+        session_id = save_validations_for_synthesis(
+            original,
+            tmp_path,
+            failed_validators=["failed-provider-1", "failed-provider-2"],
+        )
+
+        # Load returns tuple: (validations, failed_validators)
+        loaded_validations, loaded_failed = load_validations_for_synthesis(
+            session_id, tmp_path
+        )
+
+        assert len(loaded_validations) == 1
+        assert loaded_validations[0].validator_id == "Validator A"
+        assert loaded_failed == ["failed-provider-1", "failed-provider-2"]
+
+    def test_load_validations_backward_compat_no_failed_validators(
+        self, tmp_path: Path
+    ) -> None:
+        """load_validations_for_synthesis returns empty list for old cache files without failed_validators."""
+        import json
+
+        from bmad_assist.validation.orchestrator import load_validations_for_synthesis
+
+        # Create old-format cache file (without failed_validators)
+        cache_dir = tmp_path / ".bmad-assist" / "cache"
+        cache_dir.mkdir(parents=True)
+
+        session_id = "legacy-session-123"
+        old_format_data = {
+            "validations": [
+                {
+                    "validator_id": "Validator A",
+                    "content": "Legacy content",
+                    "original_ref": "ref-legacy",
+                }
+            ]
+            # Note: no 'failed_validators' key
+        }
+
+        cache_file = cache_dir / f"validations-{session_id}.json"
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump(old_format_data, f)
+
+        # Load should return empty list for failed_validators (backward compat)
+        loaded_validations, loaded_failed = load_validations_for_synthesis(
+            session_id, tmp_path
+        )
+
+        assert len(loaded_validations) == 1
+        assert loaded_validations[0].validator_id == "Validator A"
+        assert loaded_failed == []  # Empty list for backward compatibility
+
+    def test_save_load_round_trip_with_failed_validators(self, tmp_path: Path) -> None:
+        """Complete round-trip test for failed_validators through cache."""
+        from bmad_assist.validation import AnonymizedValidation
+        from bmad_assist.validation.orchestrator import (
+            load_validations_for_synthesis,
+            save_validations_for_synthesis,
+        )
+
+        original = [
+            AnonymizedValidation(
+                validator_id="Validator A",
+                content="Content A",
+                original_ref="ref-a",
+            ),
+            AnonymizedValidation(
+                validator_id="Validator B",
+                content="Content B",
+                original_ref="ref-b",
+            ),
+        ]
+        failed = ["timeout-validator", "error-validator"]
+
+        session_id = save_validations_for_synthesis(
+            original, tmp_path, failed_validators=failed
+        )
+        loaded_validations, loaded_failed = load_validations_for_synthesis(
+            session_id, tmp_path
+        )
+
+        # Validate round-trip
+        assert len(loaded_validations) == 2
+        assert loaded_validations[0].validator_id == "Validator A"
+        assert loaded_validations[1].validator_id == "Validator B"
+        assert loaded_failed == ["timeout-validator", "error-validator"]
+
+
+class TestStory22_8SessionIdInValidationReports:
+    """Story 22.8 AC #3: session_id passed to individual validation reports."""
+
+    def test_orchestrator_passes_session_id_to_reports(
+        self,
+        validation_config: Config,
+        project_with_story: Path,
+    ) -> None:
+        """Orchestrator passes session_id to save_validation_report (AC #3)."""
+        import frontmatter
+
+        from bmad_assist.validation.orchestrator import run_validation_phase
+
+        with (
+            patch("bmad_assist.validation.orchestrator.get_provider") as mock_get_provider,
+            patch("bmad_assist.validation.orchestrator.compile_workflow") as mock_compile,
+        ):
+            mock_provider = MagicMock(spec=BaseProvider)
+            mock_provider.provider_name = "claude"
+            mock_provider.invoke.return_value = ProviderResult(
+                stdout="## Validation Issues\n\n1. Test issue",
+                stderr="",
+                exit_code=0,
+                duration_ms=5000,
+                model="claude-sonnet-4",
+                command=("claude", "--print"),
+            )
+            mock_get_provider.return_value = mock_provider
+
+            mock_compiled = MagicMock()
+            mock_compiled.context = "<compiled-workflow>test</compiled-workflow>"
+            mock_compile.return_value = mock_compiled
+
+            result = asyncio.run(
+                run_validation_phase(
+                    config=validation_config,
+                    project_path=project_with_story,
+                    epic_num=22,
+                    story_num=8,
+                )
+            )
+
+            # Verify validation reports have session_id in frontmatter
+            validations_dir = (
+                project_with_story
+                / "_bmad-output"
+                / "implementation-artifacts"
+                / "story-validations"
+            )
+            validation_files = list(validations_dir.glob("validation-22-8-*.md"))
+            assert len(validation_files) >= 1
+
+            # Check at least one report has session_id matching result.session_id
+            found_session_id = False
+            for vf in validation_files:
+                with open(vf, "r", encoding="utf-8") as f:
+                    post = frontmatter.load(f)
+                if post.metadata.get("session_id") == result.session_id:
+                    found_session_id = True
+                    break
+
+            assert found_session_id, (
+                f"Expected session_id={result.session_id} in validation report frontmatter"
+            )

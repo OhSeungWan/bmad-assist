@@ -216,11 +216,15 @@ class TestGenerateEntriesFromEpic:
             path="/path/to/epic.md",
         )
         entries = _generate_entries_from_epic(epic)
-        assert len(entries) == 1
+        # 1 meta + 1 retrospective (no stories)
+        assert len(entries) == 2
         assert entries[0].key == "epic-12"
         assert entries[0].entry_type == EntryType.EPIC_META
         assert entries[0].status == "backlog"
         assert entries[0].source == "epic"
+        # Retrospective entry at the end
+        assert entries[-1].key == "epic-12-retrospective"
+        assert entries[-1].entry_type == EntryType.RETROSPECTIVE
 
     def test_generates_story_entries(self):
         """Generate entries for each story in epic."""
@@ -236,10 +240,12 @@ class TestGenerateEntriesFromEpic:
             path="/path/to/epic.md",
         )
         entries = _generate_entries_from_epic(epic)
-        assert len(entries) == 3  # 1 meta + 2 stories
+        # 1 meta + 2 stories + 1 retrospective
+        assert len(entries) == 4
         assert entries[0].entry_type == EntryType.EPIC_META
         assert entries[1].key == "12-1-first-story"
         assert entries[2].key == "12-2-second-story"
+        assert entries[-1].key == "epic-12-retrospective"
 
     def test_story_entry_type_is_epic_story(self):
         """Story entry_type is EPIC_STORY for regular epics."""
@@ -313,8 +319,8 @@ class TestGenerateEntriesFromEpic:
         )
         with caplog.at_level(logging.WARNING):
             entries = _generate_entries_from_epic(epic)
-        # 1 meta + 2 valid stories
-        assert len(entries) == 3
+        # 1 meta + 2 valid stories + 1 retrospective
+        assert len(entries) == 4
         assert any("Empty story number" in record.message for record in caplog.records)
 
     def test_returns_empty_for_none_epic_num(self, caplog):
@@ -344,6 +350,42 @@ class TestGenerateEntriesFromEpic:
         entries = _generate_entries_from_epic(epic)
         for entry in entries:
             assert entry.source == "epic"
+
+    def test_generates_retrospective_entry(self):
+        """AC: Retrospective entry generated for each epic."""
+        stories = [EpicStory(number="12.1", title="Story")]
+        epic = EpicDocument(
+            epic_num=12,
+            title="Test Epic",
+            status=None,
+            stories=stories,
+            path="/path/to/epic.md",
+        )
+        entries = _generate_entries_from_epic(epic)
+        # Should have: epic-12 (meta), 12-1-story (story), epic-12-retrospective (retro)
+        assert len(entries) == 3
+        assert entries[0].key == "epic-12"
+        assert entries[0].entry_type == EntryType.EPIC_META
+        assert entries[1].key == "12-1-story"
+        assert entries[1].entry_type == EntryType.EPIC_STORY
+        assert entries[2].key == "epic-12-retrospective"
+        assert entries[2].entry_type == EntryType.RETROSPECTIVE
+        assert entries[2].status == "backlog"
+
+    def test_retrospective_entry_for_string_epic(self):
+        """Retrospective entry generated for string epic IDs."""
+        stories = [EpicStory(number="T.1", title="Config")]
+        epic = EpicDocument(
+            epic_num="testarch",
+            title="Testarch Module",
+            status=None,
+            stories=stories,
+            path="/path/to/epic.md",
+        )
+        entries = _generate_entries_from_epic(epic, is_module=True)
+        retro_entry = entries[-1]
+        assert retro_entry.key == "epic-testarch-retrospective"
+        assert retro_entry.entry_type == EntryType.RETROSPECTIVE
 
     def test_string_epic_id_meta_entry(self):
         """Epic meta entry with string epic ID."""
@@ -556,11 +598,13 @@ Config story.
 
         result = generate_from_epics(tmp_path)
         assert result.files_processed == 1
-        assert len(result.entries) == 3  # 1 meta + 2 stories
+        # 1 meta + 2 stories + 1 retrospective
+        assert len(result.entries) == 4
         keys = [e.key for e in result.entries]
         assert "epic-1" in keys
         assert "1-1-setup" in keys
         assert "1-2-config" in keys
+        assert "epic-1-retrospective" in keys
 
     def test_duplicate_detection(self, tmp_path, caplog):
         """AC7: Duplicate keys detected and skipped."""

@@ -63,15 +63,40 @@ class ProjectPaths:
         self._config = config or {}
 
     def _resolve_path(self, template: str) -> Path:
-        """Resolve a path template by replacing {project-root} placeholder.
+        """Resolve path template to absolute path.
+
+        Handles:
+        - {project-root}/relative/path -> resolved relative to project
+        - /absolute/external/path -> used as-is (external location)
+        - ../relative/path -> resolved relative to project_root
+        - empty string -> returns project_root (fallback)
 
         Args:
-            template: Path template string, may contain {project-root}.
+            template: Path template string.
 
         Returns:
-            Resolved absolute Path object.
+            Resolved absolute Path.
 
         """
+        # Handle empty/whitespace template - fallback to project root
+        if not template or not template.strip():
+            logger.warning("Empty path template, falling back to project_root")
+            return self.project_root
+
+        # If template is already absolute (no placeholder), use as-is
+        if not template.startswith("{project-root}") and Path(template).is_absolute():
+            resolved = Path(template)
+            logger.debug("External absolute path detected: %s", resolved)
+            return resolved.resolve()
+
+        # Handle relative paths without {project-root} placeholder (e.g., "../shared-docs")
+        if not template.startswith("{project-root}"):
+            # Treat as relative to project_root
+            resolved = self.project_root / template
+            logger.debug("Relative path resolved to: %s", resolved)
+            return resolved.resolve()
+
+        # Standard case: resolve {project-root} placeholder
         resolved = template.replace("{project-root}", str(self.project_root))
         return Path(resolved).resolve()
 
@@ -172,6 +197,11 @@ class ProjectPaths:
         """Directory for epic retrospective reports."""
         return self.implementation_artifacts / "retrospectives"
 
+    @cached_property
+    def legacy_sprint_artifacts(self) -> Path:
+        """Legacy sprint artifacts directory (docs/sprint-artifacts/)."""
+        return self.project_knowledge / "sprint-artifacts"
+
     # =========================================================================
     # Project Knowledge (reference documentation)
     # =========================================================================
@@ -223,6 +253,39 @@ class ProjectPaths:
     # =========================================================================
     # Helper Methods
     # =========================================================================
+
+    def get_sprint_status_search_locations(self) -> list[Path]:
+        """Get all locations to search for sprint-status.yaml.
+
+        Used for error messages to show user all checked locations.
+        Returns deduplicated list of resolved paths.
+        """
+        candidates = [
+            self.sprint_status_file,  # New: implementation-artifacts/
+            self.legacy_sprint_artifacts / "sprint-status.yaml",  # Legacy
+            self.project_knowledge / "sprint-status.yaml",  # Legacy (direct)
+        ]
+        # Deduplicate while preserving order, return resolved paths for consistency
+        seen: set[Path] = set()
+        result: list[Path] = []
+        for path in candidates:
+            resolved = path.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                result.append(resolved)
+        return result
+
+    def find_sprint_status(self) -> Path | None:
+        """Find sprint-status.yaml, checking new location then legacy.
+
+        Returns:
+            Path to existing sprint-status.yaml, or None if not found.
+        """
+        for path in self.get_sprint_status_search_locations():
+            if path.exists():
+                logger.debug("Found sprint-status at: %s", path)
+                return path
+        return None
 
     def get_benchmark_month_dir(self, year: int, month: int) -> Path:
         """Get benchmark directory for a specific month.
@@ -287,8 +350,8 @@ class ProjectPaths:
     def ensure_directories(self) -> None:
         """Create all output directories if they don't exist.
 
-        This should be called once at startup to ensure all directories
-        are ready for use.
+        Raises:
+            PermissionError: If external path cannot be created (with clear message).
         """
         directories = [
             self.output_folder,
@@ -303,10 +366,19 @@ class ProjectPaths:
             self.bmad_assist_dir,
             self.patches_dir,
             self.cache_dir,
+            # NOTE: project_knowledge intentionally NOT included
+            # It should exist (external docs) or be created by user
         ]
         for directory in directories:
-            directory.mkdir(parents=True, exist_ok=True)
-            logger.debug("Ensured directory exists: %s", directory)
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+                logger.debug("Ensured directory exists: %s", directory)
+            except PermissionError as e:
+                raise PermissionError(
+                    f"Cannot create directory '{directory}'. "
+                    f"If this is an external path, ensure it exists and is writable. "
+                    f"Original error: {e}"
+                ) from e
 
     def __repr__(self) -> str:
         """Return string representation for debugging."""

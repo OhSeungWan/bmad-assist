@@ -107,20 +107,22 @@ class ValidateStoryHandler(BaseHandler):
 
             # Save validations for synthesis handler to retrieve
             # Use session_id from mapping to maintain traceability
+            # Story 22.8 AC#4: Pass failed_validators for synthesis context
             save_validations_for_synthesis(
                 result.anonymized_validations,
                 self.project_path,
                 session_id=result.session_id,  # Use mapping session_id
+                failed_validators=result.failed_validators,
             )
 
             # Save evaluation records for benchmarking (Story 13.4)
             if result.evaluation_records:
-                from bmad_assist.benchmarking.storage import save_evaluation_record
+                from bmad_assist.benchmarking.storage import get_benchmark_base_dir, save_evaluation_record
 
-                # CRITICAL: Use project_path, not get_paths() singleton!
+                # CRITICAL: Use centralized path utility, not get_paths() singleton!
                 # get_paths() is initialized for CLI working directory, but records
                 # must be saved to the TARGET project directory.
-                base_dir = self.project_path / "_bmad-output" / "implementation-artifacts"
+                base_dir = get_benchmark_base_dir(self.project_path)
                 for record in result.evaluation_records:
                     try:
                         record_path = save_evaluation_record(record, base_dir)

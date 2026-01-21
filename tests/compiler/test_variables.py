@@ -1068,14 +1068,14 @@ class TestSprintStatusResolution:
 
         assert resolved["sprint_status"] == "none"
 
-    def test_sprint_status_error_when_both_exist(self, tmp_path: Path) -> None:
-        """sprint_status raises VariableError when file exists in both locations."""
+    def test_sprint_status_priority_when_both_exist(self, tmp_path: Path) -> None:
+        """sprint_status uses priority order when file exists in multiple locations."""
         # Create project structure with both files
         (tmp_path / "docs" / "sprint-artifacts").mkdir(parents=True)
-        (tmp_path / "docs" / "sprint-status.yaml").write_text("status: docs\n")
-        (tmp_path / "docs" / "sprint-artifacts" / "sprint-status.yaml").write_text(
-            "status: artifacts\n"
-        )
+        docs_file = tmp_path / "docs" / "sprint-status.yaml"
+        artifacts_file = tmp_path / "docs" / "sprint-artifacts" / "sprint-status.yaml"
+        docs_file.write_text("status: docs\n")
+        artifacts_file.write_text("status: artifacts\n")
 
         workflow_ir = WorkflowIR(
             name="test",
@@ -1092,12 +1092,9 @@ class TestSprintStatusResolution:
         )
         context.workflow_ir = workflow_ir
 
-        with pytest.raises(VariableError) as exc_info:
-            resolve_variables(context, {})
-
-        error_msg = str(exc_info.value).lower()
-        assert "ambiguous" in error_msg
-        assert "sprint-status.yaml" in error_msg
+        # Should use first found by priority (docs/sprint-status.yaml)
+        resolved = resolve_variables(context, {})
+        assert resolved["sprint_status"] == str(docs_file)
 
 
 # ==============================================================================

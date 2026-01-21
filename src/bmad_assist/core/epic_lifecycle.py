@@ -119,6 +119,8 @@ def _check_retro_exists(epic_id: EpicId, project_path: Path) -> bool:
         True if retrospective is completed (file exists OR status is done).
 
     """
+    from bmad_assist.core.paths import get_paths
+
     # Check 1: Retrospective file exists
     paths = get_paths()
     retro_pattern = f"retro-epic-{epic_id}-*.md"
@@ -131,9 +133,7 @@ def _check_retro_exists(epic_id: EpicId, project_path: Path) -> bool:
     try:
         from bmad_assist.sprint.parser import parse_sprint_status
 
-        sprint_status_path = (
-            project_path / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml"
-        )
+        sprint_status_path = paths.sprint_status_file
         if sprint_status_path.exists():
             sprint_status = parse_sprint_status(sprint_status_path)
             retro_key = f"epic-{epic_id}-retrospective"

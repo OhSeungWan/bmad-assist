@@ -75,10 +75,10 @@ def check_pause_flag(project_path: Path) -> bool:
 
 
 def cleanup_stale_pause_flags(project_path: Path) -> None:
-    """Remove stale pause.flag from previous crashed session (AC #7).
+    """Remove stale pause.flag and stop.flag from previous crashed session (AC #6, #7).
 
     This should be called on main loop startup BEFORE the loop begins.
-    If a stale pause.flag is detected, it is removed with a WARNING log
+    If stale flags are detected, they are removed with a WARNING log
     and the run proceeds normally (not paused).
 
     This handles the crash scenario:
@@ -88,11 +88,18 @@ def cleanup_stale_pause_flags(project_path: Path) -> None:
     4. On restart, stale pause.flag would cause immediate pause
     5. Cleanup removes flag with WARNING, allowing normal startup
 
+    Also cleans stop.flag for the case where:
+    1. User clicks Stop while paused
+    2. stop.flag is created
+    3. Subprocess crashes before detecting stop.flag
+    4. On restart, stale stop.flag could cause unexpected termination
+
     Args:
         project_path: Project root directory.
 
     """
     pause_flag = project_path / ".bmad-assist" / "pause.flag"
+    stop_flag = project_path / ".bmad-assist" / "stop.flag"
 
     if pause_flag.exists():
         logger.warning(
@@ -103,6 +110,16 @@ def cleanup_stale_pause_flags(project_path: Path) -> None:
             pause_flag.unlink()
         except OSError as e:
             logger.warning("Failed to remove stale pause flag: %s", e)
+
+    # AC #6: Also clean stale stop.flag
+    if stop_flag.exists():
+        logger.warning(
+            "Removed stale stop flag from previous crashed session."
+        )
+        try:
+            stop_flag.unlink()
+        except OSError as e:
+            logger.warning("Failed to remove stale stop flag: %s", e)
 
 
 # =============================================================================

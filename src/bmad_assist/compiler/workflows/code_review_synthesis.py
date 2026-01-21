@@ -138,8 +138,21 @@ class CodeReviewSynthesisCompiler:
         Returns:
             Path to the workflow directory containing workflow.yaml.
 
+        Raises:
+            CompilerError: If workflow directory not found.
+
         """
-        return context.project_root / _WORKFLOW_RELATIVE_PATH
+        from bmad_assist.compiler.workflow_discovery import (
+            discover_workflow_dir,
+            get_workflow_not_found_message,
+        )
+
+        workflow_dir = discover_workflow_dir(self.workflow_name, context.project_root)
+        if workflow_dir is None:
+            raise CompilerError(
+                get_workflow_not_found_message(self.workflow_name, context.project_root)
+            )
+        return workflow_dir
 
     def validate_context(self, context: CompilerContext) -> None:
         """Validate context before compilation.
@@ -187,12 +200,13 @@ class CodeReviewSynthesisCompiler:
                 "  Suggestion: Run code-review workflow with multiple LLM providers"
             )
 
-        workflow_dir = context.project_root / _WORKFLOW_RELATIVE_PATH
+        # Workflow directory is validated by get_workflow_dir via discovery
+        workflow_dir = self.get_workflow_dir(context)
         if not workflow_dir.exists():
             raise CompilerError(
                 f"Workflow directory not found: {workflow_dir}\n"
                 f"  Why it's needed: Contains workflow.yaml and instructions.xml for compilation\n"
-                f"  How to fix: Ensure BMAD is properly installed and Story 14.8 is complete"
+                f"  How to fix: Reinstall bmad-assist or ensure BMAD is properly installed"
             )
 
     def _build_synthesis_context(
@@ -289,9 +303,10 @@ class CodeReviewSynthesisCompiler:
 
         story_path = story_matches[0]
 
-        # Check for empty file
+        # Check for empty file and capture mtime for debugging
         try:
-            if story_path.stat().st_size == 0:
+            stat = story_path.stat()
+            if stat.st_size == 0:
                 raise CompilerError(
                     f"Story file is empty: {story_path}\n\n"
                     f"The story file exists but contains no content (0 bytes).\n\n"
@@ -315,7 +330,13 @@ class CodeReviewSynthesisCompiler:
             )
 
         files[str(story_path)] = story_content
-        logger.debug("Added story file to synthesis context: %s", story_path)
+        # Log mtime at compile time for debugging content freshness (Story 22.4 AC3)
+        logger.debug(
+            "Added story file to synthesis context: %s (mtime=%d, size=%d bytes)",
+            story_path,
+            int(stat.st_mtime),
+            stat.st_size,
+        )
 
         # Count files for logging (excluding virtual paths starting with [)
         file_count = len([k for k in files if not k.startswith("[")])
@@ -369,6 +390,9 @@ Your mission:
 
 4. APPLY source code fixes
    - You have WRITE PERMISSION to modify SOURCE CODE files
+   - CRITICAL: Before using Edit tool, ALWAYS Read the target file first
+   - Use EXACT content from Read tool output as old_string, NOT content from this prompt
+   - If Read output is truncated, use offset/limit parameters to locate the target section
    - Apply fixes for verified issues
    - Do NOT modify the story file (only Dev Agent Record if needed)
    - Document what you changed and why

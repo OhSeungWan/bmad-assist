@@ -998,39 +998,23 @@ class TestRuamelYamlDetection:
         result = has_ruamel_yaml()
         assert isinstance(result, bool)
 
-    def test_has_ruamel_yaml_caches_result(self) -> None:
-        """has_ruamel_yaml caches the result after first check."""
+    def test_has_ruamel_yaml_always_returns_true(self) -> None:
+        """has_ruamel_yaml always returns True since ruamel.yaml is now required."""
         from bmad_assist.core import config_editor
 
-        # Reset the cache for testing
-        original_checked = config_editor._RUAMEL_CHECKED
-        original_available = config_editor._RUAMEL_AVAILABLE
+        # Multiple calls should consistently return True
+        result1 = config_editor.has_ruamel_yaml()
+        result2 = config_editor.has_ruamel_yaml()
 
-        try:
-            config_editor._RUAMEL_CHECKED = False
-            config_editor._RUAMEL_AVAILABLE = False
+        assert result1 is True
+        assert result2 is True
 
-            # First call
-            result1 = config_editor.has_ruamel_yaml()
-
-            # Check that it's now cached
-            assert config_editor._RUAMEL_CHECKED is True
-
-            # Second call should use cache
-            result2 = config_editor.has_ruamel_yaml()
-
-            assert result1 == result2
-        finally:
-            # Restore original state
-            config_editor._RUAMEL_CHECKED = original_checked
-            config_editor._RUAMEL_AVAILABLE = original_available
-
-    def test_has_ruamel_yaml_available_in_test_env(self) -> None:
-        """ruamel.yaml should be available in test environment."""
+    def test_has_ruamel_yaml_required_dependency(self) -> None:
+        """ruamel.yaml is now a required dependency, not optional."""
         from bmad_assist.core.config_editor import has_ruamel_yaml
 
-        # This test verifies that ruamel.yaml is properly installed
-        # as a dev dependency
+        # This test verifies ruamel.yaml is properly installed
+        # as a required dependency (moved from optional-dependencies)
         assert has_ruamel_yaml() is True
 
 
@@ -1346,104 +1330,47 @@ providers:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Atomic write failure cleans up temp file and preserves original."""
-        from bmad_assist.core import config_editor as config_editor_module
-
-        # Simulate ruamel unavailable to use PyYAML path
-        original_checked = config_editor_module._RUAMEL_CHECKED
-        original_available = config_editor_module._RUAMEL_AVAILABLE
-
-        try:
-            config_editor_module._RUAMEL_CHECKED = True
-            config_editor_module._RUAMEL_AVAILABLE = False
-
-            config_path = tmp_path / "config.yaml"
-            config_path.write_text("""\
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("""\
 providers:
   master:
     provider: claude
     model: opus
 """)
 
-            editor = ConfigEditor(global_path=config_path)
-            editor.load()
+        editor = ConfigEditor(global_path=config_path)
+        editor.load()
 
-            original_content = config_path.read_text()
+        original_content = config_path.read_text()
 
-            # Make write fail by raising an exception during dump
-            def failing_dump(*args: Any, **kwargs: Any) -> None:
-                raise OSError("Simulated write failure")
+        # Make write fail by raising an exception during ruamel dump
+        from ruamel.yaml import YAML
 
-            editor.update("global", "timeout", 999)
+        def failing_dump(self: Any, data: Any, stream: Any) -> None:
+            raise OSError("Simulated write failure")
 
-            # Patch the yaml.dump to fail
-            monkeypatch.setattr(yaml, "dump", failing_dump)
+        editor.update("global", "timeout", 999)
 
-            # Save should raise
-            with pytest.raises(OSError):
-                editor.save("global")
+        # Patch ruamel.yaml dump to fail (monkeypatch auto-restores after test)
+        monkeypatch.setattr(YAML, "dump", failing_dump)
 
-            # Original file should be unchanged
-            assert config_path.read_text() == original_content
-
-            # No temp file should remain
-            temp_files = list(tmp_path.glob("*.tmp*"))
-            assert len(temp_files) == 0
-
-        finally:
-            config_editor_module._RUAMEL_CHECKED = original_checked
-            config_editor_module._RUAMEL_AVAILABLE = original_available
-
-
-class TestCommentPreservationFallback:
-    """Tests for PyYAML fallback behavior."""
-
-    def test_fallback_when_ruamel_unavailable(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Falls back to PyYAML when ruamel unavailable."""
-        from bmad_assist.core import config_editor
-
-        # Simulate ruamel unavailable
-        original_checked = config_editor._RUAMEL_CHECKED
-        original_available = config_editor._RUAMEL_AVAILABLE
-
-        try:
-            config_editor._RUAMEL_CHECKED = True
-            config_editor._RUAMEL_AVAILABLE = False
-
-            config_path = tmp_path / "config.yaml"
-            config_path.write_text("""\
-providers:
-  master:
-    provider: claude  # This comment will be lost
-    model: opus
-""")
-
-            editor = ConfigEditor(global_path=config_path)
-            editor.load()
-
-            # CommentedMap should be None
-            assert editor._global_commented is None
-            assert editor.comments_preserved("global") is False
-
-            editor.update("global", "timeout", 999)
+        # Save should raise
+        with pytest.raises(OSError):
             editor.save("global")
 
-            # File should be saved, but comments lost
-            loaded = yaml.safe_load(config_path.read_text())
-            assert loaded["timeout"] == 999
+        # Original file should be unchanged
+        assert config_path.read_text() == original_content
 
-        finally:
-            config_editor._RUAMEL_CHECKED = original_checked
-            config_editor._RUAMEL_AVAILABLE = original_available
+        # No temp file should remain
+        temp_files = list(tmp_path.glob("*.tmp*"))
+        assert len(temp_files) == 0
 
-    def test_backup_rotation_still_works_with_ruamel(self, tmp_path: Path) -> None:
-        """Backup rotation works with ruamel.yaml path."""
-        from bmad_assist.core.config_editor import has_ruamel_yaml
 
-        if not has_ruamel_yaml():
-            pytest.skip("ruamel.yaml not available")
+class TestCommentPreservationWithRuamel:
+    """Tests for comment preservation with ruamel.yaml (now required)."""
 
+    def test_backup_rotation_works_with_ruamel(self, tmp_path: Path) -> None:
+        """Backup rotation works with ruamel.yaml."""
         config_path = tmp_path / "config.yaml"
         config_path.write_text("""\
 providers:

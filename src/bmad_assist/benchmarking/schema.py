@@ -206,8 +206,13 @@ class EvaluatorInfo(BaseModel):
     @field_validator("role_id")
     @classmethod
     def validate_role_id(cls, v: str | None) -> str | None:
-        """Validate role_id is single lowercase letter a-z or None."""
-        if v is not None and (len(v) != 1 or not v.islower()):
+        """Validate role_id is single lowercase letter a-z or None.
+
+        Note: Uses explicit ASCII range check ("a" <= v <= "z") instead of
+        v.islower() because islower() accepts Unicode lowercase letters
+        (ä, é, ñ, etc.) which violates the ASCII-only requirement.
+        """
+        if v is not None and (len(v) != 1 or not ("a" <= v <= "z")):
             raise ValueError("role_id must be single lowercase letter a-z")
         return v
 

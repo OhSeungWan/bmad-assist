@@ -38,6 +38,9 @@ from bmad_assist.testarch.config import TestarchConfig
 
 logger = logging.getLogger(__name__)
 
+# Maximum parent directory levels to search for loop config
+MAX_LOOP_CONFIG_PARENT_DEPTH: int = 10
+
 # Constants for global configuration
 GLOBAL_CONFIG_PATH: Path = Path.home() / ".bmad-assist" / "config.yaml"
 PROJECT_CONFIG_NAME: str = "bmad-assist.yaml"
@@ -533,6 +536,80 @@ class QAConfig(BaseModel):
     playwright: PlaywrightConfig = Field(default_factory=PlaywrightConfig)
 
 
+class LoopConfig(BaseModel):
+    """Development loop phase configuration.
+
+    Defines the phases that run at different scopes in the development loop.
+    This is the declarative configuration for workflow ordering.
+
+    All phase names use snake_case to match Phase enum values exactly
+    (e.g., "create_story", NOT "create-story").
+
+    Attributes:
+        epic_setup: Phases to run once at the start of each epic
+            (before first story's CREATE_STORY). Example: ["testarch_setup"]
+        story: Phases to run for each story in sequence.
+            Standard: ["create_story", "validate_story", "validate_story_synthesis",
+                      "dev_story", "code_review", "code_review_synthesis"]
+        epic_teardown: Phases to run once at the end of each epic
+            (after last story's CODE_REVIEW_SYNTHESIS). Example: ["retrospective"]
+
+    Example:
+        >>> config = LoopConfig(
+        ...     epic_setup=[],
+        ...     story=["create_story", "dev_story"],
+        ...     epic_teardown=["retrospective"]
+        ... )
+        >>> "create_story" in config.story
+        True
+
+    Raises:
+        ValueError: If story list is empty (must have at least one phase).
+
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    epic_setup: list[str] = Field(
+        default_factory=list,
+        description="Phases to run once at the start of each epic",
+    )
+    story: list[str] = Field(
+        default_factory=list,
+        description="Phases to run for each story in sequence",
+    )
+    epic_teardown: list[str] = Field(
+        default_factory=list,
+        description="Phases to run once at the end of each epic",
+    )
+
+    @model_validator(mode="after")
+    def validate_non_empty_story(self) -> Self:
+        """Validate that story list is non-empty.
+
+        An empty story list would cause the loop to have nothing to execute,
+        which is always an error in the loop configuration.
+        """
+        if not self.story:
+            raise ValueError("LoopConfig.story must contain at least one phase")
+        return self
+
+
+# Default loop configuration when no loop config found in any config file
+DEFAULT_LOOP_CONFIG: LoopConfig = LoopConfig(
+    epic_setup=[],
+    story=[
+        "create_story",
+        "validate_story",
+        "validate_story_synthesis",
+        "dev_story",
+        "code_review",
+        "code_review_synthesis",
+    ],
+    epic_teardown=["retrospective"],
+)
+
+
 class SprintConfig(BaseModel):
     """Sprint-status management configuration.
 
@@ -656,6 +733,10 @@ class Config(BaseModel):
     qa: QAConfig | None = Field(
         default=None,
         description="QA execution configuration (optional)",
+    )
+    loop: LoopConfig | None = Field(
+        default=None,
+        description="Loop phase configuration (optional, uses DEFAULT_LOOP_CONFIG if not set)",
     )
     workflow_variant: str = Field(
         default="default",
@@ -1439,6 +1520,184 @@ def reload_config(project_path: Path | None = None) -> Config:
     # Clear schema cache to ensure fresh schema reflects new config
     get_config_schema.cache_clear()
 
+    # Reset loop config singleton so it gets reloaded on next access
+    # This is needed because loop config may be defined in the config files
+    global _loop_config
+    _loop_config = None
+
     logger.info("Configuration reloaded")
 
     return _config
+
+
+# =============================================================================
+# Loop Config Loading (Configurable Loop Architecture)
+# =============================================================================
+
+# Module-level singleton for loop configuration
+_loop_config: LoopConfig | None = None
+
+
+def _try_load_loop_config_from_yaml(path: Path) -> LoopConfig | None:
+    """Attempt to load loop config from a YAML file.
+
+    Returns None if file doesn't exist, doesn't contain 'loop' key,
+    or validation fails. Logs warnings on validation failures.
+
+    Args:
+        path: Path to YAML file (bmad-assist.yaml or config.yaml).
+
+    Returns:
+        LoopConfig if found and valid, None otherwise.
+
+    """
+    if not path.exists() or not path.is_file():
+        return None
+
+    try:
+        data = _load_yaml_file(path)
+    except ConfigError as e:
+        logger.warning("Failed to parse %s for loop config: %s", path, e)
+        return None
+
+    loop_data = data.get("loop")
+    if loop_data is None:
+        return None
+
+    if not isinstance(loop_data, dict):
+        logger.warning("Invalid loop config in %s: expected dict, got %s", path, type(loop_data).__name__)
+        return None
+
+    try:
+        config = LoopConfig.model_validate(loop_data)
+        logger.debug("Loaded loop config from %s", path)
+        return config
+    except ValidationError as e:
+        logger.warning("Loop config validation failed in %s: %s", path, e)
+        return None
+
+
+def load_loop_config(project_path: Path | None = None) -> LoopConfig:
+    """Load loop configuration with fallback chain.
+
+    Searches for loop config in the following order:
+    1. {project_path}/bmad-assist.yaml → check for 'loop:' key
+    2. Parent directories (up to 10 levels) → check for 'loop:' key
+    3. ~/.bmad-assist/config.yaml → check for 'loop:' key
+    4. DEFAULT_LOOP_CONFIG constant
+
+    Each file is only used if it contains a valid 'loop:' key with valid LoopConfig.
+    Invalid YAML or validation errors log warnings and continue to next fallback.
+
+    Detects symlink cycles by tracking visited directories (resolved paths).
+
+    Args:
+        project_path: Path to project directory. If None, uses current working directory.
+
+    Returns:
+        LoopConfig instance from first valid source, or DEFAULT_LOOP_CONFIG.
+
+    Example:
+        >>> config = load_loop_config(Path("/my/project"))
+        >>> "create_story" in config.story
+        True
+
+    """
+    resolved_project = Path.cwd() if project_path is None else Path(project_path).expanduser().resolve()
+    visited: set[Path] = set()
+
+    # Step 1: Check project-level bmad-assist.yaml
+    if resolved_project.is_dir():
+        project_config_path = resolved_project / PROJECT_CONFIG_NAME
+        config = _try_load_loop_config_from_yaml(project_config_path)
+        if config is not None:
+            return config
+        visited.add(resolved_project.resolve())
+
+    # Step 2: Search parent directories (up to MAX_LOOP_CONFIG_PARENT_DEPTH levels)
+    current = resolved_project.parent.resolve() if resolved_project.is_dir() else resolved_project.resolve()
+    depth = 0
+
+    while depth < MAX_LOOP_CONFIG_PARENT_DEPTH:
+        # Detect symlink cycle
+        if current in visited:
+            logger.warning("Symlink cycle detected at %s, stopping parent search", current)
+            break
+
+        visited.add(current)
+
+        # Stop at filesystem root
+        if current == current.parent:
+            break
+
+        parent_config_path = current / PROJECT_CONFIG_NAME
+        config = _try_load_loop_config_from_yaml(parent_config_path)
+        if config is not None:
+            return config
+
+        current = current.parent.resolve()
+        depth += 1
+
+    if depth >= MAX_LOOP_CONFIG_PARENT_DEPTH:
+        logger.debug("Parent search stopped at max depth %d", MAX_LOOP_CONFIG_PARENT_DEPTH)
+
+    # Step 3: Check global config (~/.bmad-assist/config.yaml)
+    global_config_path = GLOBAL_CONFIG_PATH
+    config = _try_load_loop_config_from_yaml(global_config_path)
+    if config is not None:
+        return config
+
+    # Step 4: Use default
+    logger.debug("No loop config found, using DEFAULT_LOOP_CONFIG")
+    return DEFAULT_LOOP_CONFIG
+
+
+def get_loop_config() -> LoopConfig:
+    """Get the loaded loop configuration singleton.
+
+    For CLI use only - loads and caches loop config on first call.
+    Dashboard should call load_loop_config() directly for hot-reload.
+
+    Returns:
+        The cached LoopConfig instance.
+
+    Note:
+        If config hasn't been loaded yet, loads from current working directory.
+        To load from a specific project path, call load_loop_config() first.
+
+    Example:
+        >>> config = get_loop_config()
+        >>> "create_story" in config.story
+        True
+
+    """
+    global _loop_config
+
+    if _loop_config is None:
+        _loop_config = load_loop_config()
+
+    return _loop_config
+
+
+def _reset_loop_config() -> None:
+    """Reset loop config singleton for testing purposes only.
+
+    This function should only be used in tests to ensure clean state
+    between test cases.
+    """
+    global _loop_config
+    _loop_config = None
+
+
+def set_loop_config(config: LoopConfig) -> None:
+    """Set loop config singleton explicitly.
+
+    Used by runner.py to set loop config at startup, ensuring
+    all components use the same config instance.
+
+    Args:
+        config: LoopConfig instance to set as singleton.
+
+    """
+    global _loop_config
+    _loop_config = config

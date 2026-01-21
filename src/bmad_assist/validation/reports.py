@@ -19,9 +19,7 @@ Extraction:
 
 """
 
-import contextlib
 import logging
-import os
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -37,6 +35,7 @@ from bmad_assist.core.extraction import (
     VALIDATION_MARKERS,
     extract_report,
 )
+from bmad_assist.core.io import atomic_write as _atomic_write
 from bmad_assist.core.types import EpicId
 
 if TYPE_CHECKING:
@@ -410,37 +409,6 @@ def _parse_synthesis_metadata(
         return None
 
 
-def _atomic_write(path: Path, content: str) -> None:
-    """Write content to path atomically using temp file + os.replace.
-
-    Uses PID in temp filename to prevent collisions when multiple
-    processes write simultaneously.
-
-    Args:
-        path: Target file path.
-        content: Content to write.
-
-    Raises:
-        OSError: If write fails.
-
-    """
-    # Ensure parent directory exists
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Use PID to prevent temp file collisions in concurrent writes
-    temp_path = path.parent / f".{path.name}.{os.getpid()}.tmp"
-    try:
-        with open(temp_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        os.replace(temp_path, path)
-    except OSError:
-        # Cleanup temp file if it exists, ignoring errors
-        with contextlib.suppress(OSError):
-            if temp_path.exists():
-                temp_path.unlink()
-        raise
-
-
 def _format_timestamp_filename(dt: datetime) -> str:
     """Format datetime for filename using unified format.
 
@@ -484,6 +452,7 @@ def save_validation_report(
     validations_dir: Path,
     anonymized_id: str | None = None,
     role_id: str | None = None,
+    session_id: str | None = None,
 ) -> Path:
     """Save a validation report with YAML frontmatter.
 
@@ -501,6 +470,8 @@ def save_validation_report(
         role_id: Single letter identifier (a, b, c...) for filename.
             If not provided, falls back to extracting from anonymized_id
             or using sanitized provider name.
+        session_id: Anonymization session ID for traceability (Story 22.8).
+            Links this report to the validation mapping file.
 
     Returns:
         Path to saved report file.
@@ -525,7 +496,7 @@ def save_validation_report(
 
     # Build YAML frontmatter with both role_id and anonymized_id
     validator_label = anonymized_id or output.provider
-    frontmatter_data = {
+    frontmatter_data: dict[str, Any] = {
         "type": "validation",
         "role_id": file_role_id,
         "validator_id": validator_label,
@@ -536,6 +507,10 @@ def save_validation_report(
         "duration_ms": output.duration_ms,
         "token_count": output.token_count,
     }
+
+    # Story 22.8 AC#3: Add session_id for linking reports to synthesis mapping
+    if session_id:
+        frontmatter_data["session_id"] = session_id
 
     # Build content with frontmatter
     post = frontmatter.Post(output.content, **frontmatter_data)
@@ -720,6 +695,7 @@ def save_synthesis_report(
     duration_ms: int,
     validations_dir: Path,
     run_timestamp: datetime | None = None,
+    failed_validators: list[str] | None = None,
 ) -> Path:
     """Save a synthesis report with YAML frontmatter.
 
@@ -736,6 +712,7 @@ def save_synthesis_report(
         duration_ms: Execution duration in milliseconds.
         validations_dir: Path to story-validations directory.
         run_timestamp: Unified timestamp for this validation run. If None, uses now().
+        failed_validators: List of validators that failed/timed out (Story 22.8 AC#4).
 
     Returns:
         Path to saved report file.
@@ -752,7 +729,7 @@ def save_synthesis_report(
     content = _deduplicate_synthesis_content(content)
 
     # Build YAML frontmatter
-    frontmatter_data = {
+    frontmatter_data: dict[str, Any] = {
         "type": "synthesis",
         "master_validator_id": master_validator_id,
         "timestamp": timestamp.isoformat(),
@@ -762,6 +739,10 @@ def save_synthesis_report(
         "duration_ms": duration_ms,
         "session_id": session_id,
     }
+
+    # Story 22.8 AC#4: Add failed_validators for traceability
+    if failed_validators:
+        frontmatter_data["failed_validators"] = failed_validators
 
     # Build content with frontmatter
     post = frontmatter.Post(content, **frontmatter_data)

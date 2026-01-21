@@ -53,23 +53,41 @@ class TestKnownWorkflows:
         """Test KNOWN_WORKFLOWS contains custom workflows like test-design."""
         assert "test-design" in KNOWN_WORKFLOWS
 
-    def test_known_workflows_all_expected(self) -> None:
-        """Test KNOWN_WORKFLOWS contains exactly expected workflows."""
-        expected = {
+    def test_known_workflows_contains_all_kebab_case(self) -> None:
+        """Test KNOWN_WORKFLOWS contains all kebab-case workflows (legacy)."""
+        expected_kebab = {
             "create-story",
             "validate-story",
             "validate-story-synthesis",
-            "atdd",
             "dev-story",
             "code-review",
             "code-review-synthesis",
             "test-review",
-            "retrospective",
             "qa-plan-generate",
             "qa-plan-execute",
             "test-design",
         }
-        assert KNOWN_WORKFLOWS == expected
+        # All kebab-case should be in KNOWN_WORKFLOWS
+        assert expected_kebab.issubset(KNOWN_WORKFLOWS)
+
+    def test_known_workflows_contains_all_snake_case(self) -> None:
+        """Test KNOWN_WORKFLOWS contains all snake_case workflows (LoopConfig convention)."""
+        expected_snake = {
+            "create_story",
+            "validate_story",
+            "validate_story_synthesis",
+            "atdd",
+            "dev_story",
+            "code_review",
+            "code_review_synthesis",
+            "test_review",
+            "retrospective",
+            "qa_plan_generate",
+            "qa_plan_execute",
+            "test_design",
+        }
+        # All snake_case should be in KNOWN_WORKFLOWS
+        assert expected_snake.issubset(KNOWN_WORKFLOWS)
 
 
 class TestNamePattern:

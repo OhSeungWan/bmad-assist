@@ -30,6 +30,7 @@ from bmad_assist.compiler.output import generate_output
 from bmad_assist.compiler.shared_utils import (
     apply_post_process,
     context_snapshot,
+    get_stories_dir,
     load_workflow_template,
     safe_read_file,
 )
@@ -106,8 +107,21 @@ class QaPlanGenerateCompiler:
         Returns:
             Path to the workflow directory containing workflow.yaml.
 
+        Raises:
+            CompilerError: If workflow directory not found.
+
         """
-        return context.project_root / _WORKFLOW_RELATIVE_PATH
+        from bmad_assist.compiler.workflow_discovery import (
+            discover_workflow_dir,
+            get_workflow_not_found_message,
+        )
+
+        workflow_dir = discover_workflow_dir(self.workflow_name, context.project_root)
+        if workflow_dir is None:
+            raise CompilerError(
+                get_workflow_not_found_message(self.workflow_name, context.project_root)
+            )
+        return workflow_dir
 
     def validate_context(self, context: CompilerContext) -> None:
         """Validate context before compilation.
@@ -127,12 +141,13 @@ class QaPlanGenerateCompiler:
                 "  Suggestion: Provide epic_num via -e/--epic option"
             )
 
-        workflow_dir = context.project_root / _WORKFLOW_RELATIVE_PATH
+        # Workflow directory is validated by get_workflow_dir via discovery
+        workflow_dir = self.get_workflow_dir(context)
         if not workflow_dir.exists():
             raise CompilerError(
                 f"Workflow directory not found: {workflow_dir}\n"
                 f"  Why it's needed: Contains workflow.yaml and instructions.md\n"
-                f"  How to fix: Ensure BMAD qa-plan-generate workflow is installed"
+                f"  How to fix: Reinstall bmad-assist or ensure BMAD is properly installed"
             )
 
     def compile(self, context: CompilerContext) -> CompiledWorkflow:
@@ -163,7 +178,7 @@ class QaPlanGenerateCompiler:
                 "workflow_ir not set in context. This is a bug - core.py should have loaded it."
             )
 
-        workflow_dir = context.project_root / _WORKFLOW_RELATIVE_PATH
+        workflow_dir = self.get_workflow_dir(context)
 
         with context_snapshot(context):
             if logger.isEnabledFor(logging.DEBUG):
@@ -388,7 +403,7 @@ class QaPlanGenerateCompiler:
 
         """
         stories: dict[str, str] = {}
-        stories_dir = context.output_folder / "implementation-artifacts" / "stories"
+        stories_dir = get_stories_dir(context)
 
         if not stories_dir.exists():
             logger.debug("Stories directory not found: %s", stories_dir)

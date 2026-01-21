@@ -84,8 +84,8 @@ class TestResumeEndpoint:
         assert "not paused" in result["message"].lower()
 
     @pytest.mark.asyncio
-    async def test_resume_broadcasts_sse_event(self, tmp_path: Path) -> None:
-        """Test that resume broadcasts LOOP_RESUMED SSE event."""
+    async def test_resume_broadcasts_output_message(self, tmp_path: Path) -> None:
+        """Test that resume broadcasts output message (SSE event is emitted by subprocess)."""
         server = DashboardServer(project_root=tmp_path)
 
         # Setup: loop running and paused
@@ -94,17 +94,15 @@ class TestResumeEndpoint:
         server._run_id = "test-run-123"
 
         # Mock SSE broadcaster
-        server.sse_broadcaster.broadcast_event = AsyncMock()  # type: ignore[method-assign]
+        server.sse_broadcaster.broadcast_output = AsyncMock()  # type: ignore[method-assign]
 
         # Execute resume
         await server.resume_loop()
 
-        # Verify: SSE event broadcast
-        server.sse_broadcaster.broadcast_event.assert_called_once()
-        call_args = server.sse_broadcaster.broadcast_event.call_args
-        assert call_args[0][0] == "LOOP_RESUMED"
-        assert "timestamp" in call_args[0][1]
-        assert call_args[0][1]["run_id"] == "test-run-123"
+        # Verify: Output message broadcast (LOOP_RESUMED event is emitted by subprocess, not server)
+        server.sse_broadcaster.broadcast_output.assert_called_once()
+        call_args = server.sse_broadcaster.broadcast_output.call_args
+        assert "Resumed" in call_args[0][0]
 
     @pytest.mark.asyncio
     async def test_stop_while_paused_cleans_pause_flag(self, tmp_path: Path) -> None:
@@ -178,6 +176,24 @@ class TestPauseFlagDetection:
 
         # Verify: flag removed
         assert not pause_flag.exists()
+
+    def test_cleanup_stale_stop_flag_on_startup(self, tmp_path: Path) -> None:
+        """Test that stale stop.flag is also removed on startup (AC #6)."""
+        from bmad_assist.core.loop.pause import cleanup_stale_pause_flags
+
+        # Create stale stop flag (from crashed session during stop)
+        stop_flag = tmp_path / ".bmad-assist" / "stop.flag"
+        stop_flag.parent.mkdir(parents=True, exist_ok=True)
+        stop_flag.touch()
+
+        # Verify flag exists
+        assert stop_flag.exists()
+
+        # Cleanup (no exception raised, just warning log)
+        cleanup_stale_pause_flags(tmp_path)
+
+        # Verify: flag removed
+        assert not stop_flag.exists()
 
 
 class TestWaitForResume:
@@ -363,10 +379,11 @@ class TestPauseResumeIntegration:
         assert pause_result["status"] == "pause_requested"
         assert server._pause_requested is True
 
-        # Verify pause flag file created
+        # Verify pause flag file created by pause_loop()
         pause_flag = tmp_path / ".bmad-assist" / "pause.flag"
-        # Note: pause_loop() in server.py doesn't create the flag file directly
-        # The flag is created by the main loop subprocess when it detects pause_requested
+        # Note: pause_loop() in server.py creates pause.flag directly via touch()
+        # (see server.py:293-295). The subprocess detects this flag.
+        assert pause_flag.exists()
 
         # Resume
         resume_result = await server.resume_loop()
@@ -407,28 +424,39 @@ class TestPauseResumeIntegration:
 
 
 class TestSSEPauseResumeEvents:
-    """Tests for SSE pause/resume event broadcasting."""
+    """Tests for SSE pause/resume event broadcasting.
+
+    Note: LOOP_PAUSED and LOOP_RESUMED events are emitted by the subprocess
+    (runner.py:1084, runner.py:1105), not by the dashboard server. The server
+    receives these events via stdout parsing and broadcasts them to clients.
+    """
 
     @pytest.mark.asyncio
-    async def test_pause_broadcasts_loop_paused_event(self, tmp_path: Path) -> None:
-        """Test that pause completion broadcasts LOOP_PAUSED event (AC #1, #5)."""
+    async def test_dashboard_broadcasts_received_loop_paused_event(self, tmp_path: Path) -> None:
+        """Test that dashboard broadcasts LOOP_PAUSED event received from subprocess (AC #2)."""
         server = DashboardServer(project_root=tmp_path)
-
-        # Setup
-        server._loop_running = True
-        server._pause_requested = True
         server._run_id = "test-run-123"
 
         # Mock SSE broadcaster
         server.sse_broadcaster.broadcast_event = AsyncMock()  # type: ignore[method-assign]
 
-        # This would be called by _run_workflow_loop when pause completes
-        # For now, we test the resume event which is already implemented
+        # Simulate subprocess emitting LOOP_PAUSED via stdout marker
+        from bmad_assist.core.loop.dashboard_events import DASHBOARD_EVENT_MARKER
+        import json
 
-        # Resume broadcasts LOOP_RESUMED
-        await server.resume_loop()
+        event_data = {
+            "type": "LOOP_PAUSED",
+            "timestamp": "2026-01-19T03:00:00Z",
+            "run_id": "test-run-123",
+            "sequence_id": 1,
+            "data": {"current_phase": "DEV_STORY"},
+        }
+        marker_line = f"{DASHBOARD_EVENT_MARKER}{json.dumps(event_data)}"
 
-        # Verify broadcast
+        # Handle the event (simulates stdout parsing in _run_workflow_loop)
+        await server._handle_dashboard_event(marker_line)
+
+        # Verify: event was broadcast
         server.sse_broadcaster.broadcast_event.assert_called_once()
         call_args = server.sse_broadcaster.broadcast_event.call_args
-        assert call_args[0][0] == "LOOP_RESUMED"
+        assert call_args[0][0] == "LOOP_PAUSED"

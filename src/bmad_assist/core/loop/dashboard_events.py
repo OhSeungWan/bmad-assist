@@ -217,14 +217,16 @@ def generate_run_id() -> str:
 # =============================================================================
 
 
-def parse_story_id(story_id: str) -> tuple[int, int]:
+def parse_story_id(story_id: str) -> tuple[EpicId, int]:
     """Parse story ID into epic_num and story_num.
 
+    Supports both numeric and string epic IDs (e.g., "22.9" or "testarch.1").
+
     Args:
-        story_id: Story ID in format "epic.story" (e.g., "22.9").
+        story_id: Story ID in format "epic.story" (e.g., "22.9" or "testarch.1").
 
     Returns:
-        Tuple of (epic_num, story_num).
+        Tuple of (epic_num, story_num) where epic_num can be int or str.
 
     Raises:
         ValueError: If story_id format is invalid.
@@ -232,27 +234,36 @@ def parse_story_id(story_id: str) -> tuple[int, int]:
     Examples:
         >>> parse_story_id("22.9")
         (22, 9)
-        >>> parse_story_id("1.10")
-        (1, 10)
+        >>> parse_story_id("testarch.1")
+        ('testarch', 1)
 
     """
     parts = story_id.split(".")
     if len(parts) != 2:
         raise ValueError(f"Invalid story_id format: {story_id} (expected 'epic.story')")
 
+    # Parse story_num (must be numeric)
+    try:
+        story_num = int(parts[1])
+    except ValueError as e:
+        raise ValueError(f"Invalid story_id format: {story_id} (story_num must be numeric)") from e
+
+    # Parse epic_num (can be int or str)
+    epic_num: EpicId
     try:
         epic_num = int(parts[0])
-        story_num = int(parts[1])
-        return epic_num, story_num
-    except ValueError as e:
-        raise ValueError(f"Invalid story_id format: {story_id} (numeric parts required)") from e
+    except ValueError:
+        # String epic ID (e.g., "testarch")
+        epic_num = parts[0]
+
+    return epic_num, story_num
 
 
-def story_id_from_parts(epic_num: int, story_num: int, title: str) -> str:
+def story_id_from_parts(epic_num: EpicId, story_num: int, title: str) -> str:
     """Generate story_id from epic_num, story_num, and title.
 
     Args:
-        epic_num: Epic number.
+        epic_num: Epic number or string ID (e.g., 22 or "testarch").
         story_num: Story number.
         title: Story title (will be slugified).
 
@@ -262,6 +273,8 @@ def story_id_from_parts(epic_num: int, story_num: int, title: str) -> str:
     Examples:
         >>> story_id_from_parts(22, 9, "SSE Sidebar Tree Updates")
         '22-9-sse-sidebar-tree-updates'
+        >>> story_id_from_parts("testarch", 1, "Config Schema")
+        'testarch-1-config-schema'
 
     """
     # Slugify title: lowercase, replace spaces/hyphens with single hyphen
@@ -344,6 +357,90 @@ def emit_loop_resumed(
 
 
 # =============================================================================
+# Story 22.11: Validator progress and phase complete events
+# =============================================================================
+
+
+def emit_validator_progress(
+    run_id: str,
+    sequence_id: int,
+    validator_id: str,
+    status: Literal["completed", "timeout", "failed"],
+    duration_ms: int | None = None,
+) -> None:
+    """Emit validator_progress event when individual validator completes (Story 22.11).
+
+    This event is emitted during Multi-LLM validation to track individual
+    validator completion without closing the SSE stream. The frontend can use
+    this to update a progress indicator.
+
+    Args:
+        run_id: Run identifier.
+        sequence_id: Monotonic sequence number.
+        validator_id: Identifier for the validator (e.g., "validator-a", "claude-haiku").
+        status: Completion status (completed, timeout, failed).
+        duration_ms: Time taken in milliseconds (optional).
+
+    Example output:
+        DASHBOARD_EVENT:{"type":"validator_progress","timestamp":"2026-01-15T08:00:00Z",...}
+
+    """
+    event_data = {
+        "type": "validator_progress",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "run_id": run_id,
+        "sequence_id": sequence_id,
+        "data": {
+            "validator_id": validator_id,
+            "status": status,
+            "duration_ms": duration_ms,
+        },
+    }
+    _emit_dashboard_event(event_data)
+
+
+def emit_phase_complete(
+    run_id: str,
+    sequence_id: int,
+    phase_name: str,
+    success: bool,
+    validator_count: int,
+    failed_count: int,
+) -> None:
+    """Emit phase_complete event when workflow phase completes (Story 22.11).
+
+    This event is emitted after all validators complete to signal phase
+    completion with summary statistics. The frontend can use this to update
+    the terminal status and phase status in the sidebar.
+
+    Args:
+        run_id: Run identifier.
+        sequence_id: Monotonic sequence number.
+        phase_name: Name of the completed phase (e.g., "VALIDATE_STORY").
+        success: Whether the phase completed successfully.
+        validator_count: Total number of validators that ran.
+        failed_count: Number of validators that failed or timed out.
+
+    Example output:
+        DASHBOARD_EVENT:{"type":"phase_complete","timestamp":"2026-01-15T08:00:00Z",...}
+
+    """
+    event_data = {
+        "type": "phase_complete",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "run_id": run_id,
+        "sequence_id": sequence_id,
+        "data": {
+            "phase_name": phase_name,
+            "success": success,
+            "validator_count": validator_count,
+            "failed_count": failed_count,
+        },
+    }
+    _emit_dashboard_event(event_data)
+
+
+# =============================================================================
 # Re-export for convenience
 # =============================================================================
 
@@ -363,4 +460,7 @@ __all__ = [
     # Story 22.10: Pause/resume events
     "emit_loop_paused",
     "emit_loop_resumed",
+    # Story 22.11: Validator progress and phase complete events
+    "emit_validator_progress",
+    "emit_phase_complete",
 ]

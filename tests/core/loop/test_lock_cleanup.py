@@ -51,13 +51,15 @@ class TestIsPidAlive:
         assert _is_pid_alive(99999999) is False
 
     def test_is_pid_alive_returns_false_for_invalid_pid(self, tmp_path: Path) -> None:
-        """AC: _is_pid_alive returns False for invalid PIDs."""
+        """AC: _is_pid_alive returns False for invalid PIDs (negative, zero)."""
         from bmad_assist.core.loop.runner import _is_pid_alive
 
-        # Use a very high PID that is unlikely to exist
-        # Negative PIDs might be treated as valid by some systems
-        # PID 0 behavior varies by system
-        assert _is_pid_alive(99999999) is False
+        # Negative PIDs have special meaning in os.kill() and should be rejected
+        assert _is_pid_alive(-1) is False
+        assert _is_pid_alive(-99999) is False
+
+        # PID 0 refers to the caller's process group and should be rejected
+        assert _is_pid_alive(0) is False
 
 
 class TestReadLockFile:

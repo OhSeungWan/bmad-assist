@@ -182,13 +182,28 @@ def validate_resume_state(
     from datetime import UTC, datetime
 
     from bmad_assist.core.exceptions import ParserError
+    from bmad_assist.core.paths import get_paths
     from bmad_assist.sprint.parser import parse_sprint_status
 
     stories_skipped: list[str] = []
     epics_skipped: list[EpicId] = []
 
-    # Find sprint-status location
-    sprint_path = project_path / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml"
+    # Find sprint-status location (uses paths singleton for external paths support)
+    try:
+        sprint_path = get_paths().sprint_status_file
+    except RuntimeError:
+        # Fallback for tests or early startup when singleton not initialized
+        # Check multiple locations for consistency with state_reader.py
+        fallback_candidates = [
+            project_path / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml",  # New
+            project_path / "docs" / "sprint-artifacts" / "sprint-status.yaml",  # Legacy
+            project_path / "docs" / "sprint-status.yaml",  # Legacy (direct)
+        ]
+        # Use first existing, or default to new location
+        sprint_path = next(
+            (p for p in fallback_candidates if p.exists()),
+            fallback_candidates[0],  # Default to new location
+        )
 
     # If no sprint-status exists, nothing to validate against
     if not sprint_path.exists():

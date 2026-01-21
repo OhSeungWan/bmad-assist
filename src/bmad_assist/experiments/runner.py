@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -29,6 +30,7 @@ from pathlib import Path
 import yaml
 
 from bmad_assist.core.config import Config, ProviderConfig
+from bmad_assist.core.io import BMAD_ORIGINAL_CWD_ENV
 from bmad_assist.core.exceptions import ConfigError, IsolationError
 from bmad_assist.core.loop.dispatch import execute_phase, init_handlers
 from bmad_assist.core.loop.interactive import set_non_interactive
@@ -52,10 +54,10 @@ from bmad_assist.experiments.patchset import PatchSetManifest, PatchSetRegistry
 logger = logging.getLogger(__name__)
 
 # Epic-level phases that don't have a story ID
+# Note: synthesis phases (validate-story-synthesis, code-review-synthesis) are NOT epic-level -
+# they run per-story as defined in loop template sequence
 EPIC_LEVEL_PHASES: frozenset[str] = frozenset(
     {
-        "validate-story-synthesis",
-        "code-review-synthesis",
         "retrospective",
     }
 )
@@ -935,6 +937,11 @@ class ExperimentRunner:
         # Apply patches by copying to snapshot's patch directory
         # The compiler auto-discovers patches from .bmad-assist/patches/
         self._apply_patches(workflow, patchset, snapshot_path)
+
+        # Set BMAD_ORIGINAL_CWD to project root so patch discovery finds patches
+        # in the main project when they're not in the isolated fixture snapshot
+        if self._project_root:
+            os.environ[BMAD_ORIGINAL_CWD_ENV] = str(self._project_root)
 
         # Execute phase using existing handler (dispatches via state.current_phase)
         result = execute_phase(state)

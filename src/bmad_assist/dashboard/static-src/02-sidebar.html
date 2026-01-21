@@ -39,7 +39,7 @@
                 <div id="tree-content">
                     <template x-if="stories.epics">
                         <div>
-                            <template x-for="epic in stories.epics" :key="epic.id">
+                            <template x-for="epic in stories.epics" :key="`${epic.id}-${epic.status}`">
                                 <div class="group/epic">
                                     <!-- Epic -->
                                     <div class="flex items-center gap-1.5 py-0.5 cursor-pointer hover:bg-white/10 rounded-sm transition-colors"
@@ -50,7 +50,9 @@
                                          @contextmenu.prevent="showContextMenu($event, 'epic', epic)">
                                         <i :data-lucide="expandedEpics.includes(epic.id) ? 'chevron-down' : 'chevron-right'"
                                            class="w-3 h-3 text-muted-foreground flex-shrink-0 opacity-60 group-hover/epic:opacity-100 transition-opacity"></i>
-                                        <i :data-lucide="getEpicStatusIcon(epic.status)" :class="getStatusTextColor(epic.status)" class="w-3 h-3 flex-shrink-0 opacity-60 group-hover/epic:opacity-100 transition-opacity"></i>
+                                        <span :class="getEpicStatusColor(epic)" class="flex-shrink-0 opacity-60 group-hover/epic:opacity-100 transition-opacity">
+                                            <i :data-lucide="getEpicStatusIcon(epic.status)" class="w-3 h-3"></i>
+                                        </span>
                                         <span class="font-medium tabular-nums" x-text="'Epic ' + epic.id"></span>
                                         <span x-text="epic.title" class="truncate flex-1 text-muted-foreground"></span>
                                         <span class="badge-secondary text-xs" x-text="getEpicProgress(epic).split(' ')[0]"></span>
@@ -63,7 +65,7 @@
 
                                     <!-- Stories -->
                                     <div x-show="expandedEpics.includes(epic.id)" x-transition class="ml-4">
-                                        <template x-for="story in epic.stories" :key="story.id">
+                                        <template x-for="story in epic.stories" :key="`${story.id}-${story.status}`">
                                             <div class="group/story">
                                                 <div class="flex items-center gap-1.5 px-2 py-0.5 cursor-pointer hover:bg-white/10 rounded-sm transition-colors"
                                                      data-testid="story-node"
@@ -73,7 +75,9 @@
                                                      @contextmenu.prevent="showContextMenu($event, 'story', story, epic)">
                                                     <i :data-lucide="expandedStories.includes(`${epic.id}-${story.id}`) ? 'chevron-down' : 'chevron-right'"
                                                        class="w-3 h-3 text-muted-foreground flex-shrink-0 opacity-60 group-hover/story:opacity-100 transition-opacity"></i>
-                                                    <i :data-lucide="getStatusIcon(story.status)" :class="getStatusTextColor(story.status)" class="w-3 h-3 flex-shrink-0 opacity-60 group-hover/story:opacity-100 transition-opacity"></i>
+                                                    <span :class="getStoryStatusColor(story.status)" class="flex-shrink-0 opacity-60 group-hover/story:opacity-100 transition-opacity">
+                                                        <i :data-lucide="getStatusIcon(story.status)" class="w-3 h-3"></i>
+                                                    </span>
                                                     <span x-text="`${epic.id}.${story.id}`" class="tabular-nums text-muted-foreground w-6"></span>
                                                     <span x-text="story.title" class="truncate flex-1"></span>
                                                     <button class="opacity-0 group-hover/story:opacity-100 p-0.5 hover:bg-muted rounded"
@@ -85,14 +89,16 @@
 
                                                 <!-- Phases -->
                                                 <div x-show="expandedStories.includes(`${epic.id}-${story.id}`)" x-transition class="ml-7 text-xs">
-                                                    <template x-for="phase in story.phases" :key="phase.name">
+                                                    <template x-for="phase in story.phases" :key="`${phase.id}-${phase.status}`">
                                                         <div class="group/phase flex items-center gap-1.5 px-2 py-0.5 cursor-pointer hover:bg-white/10 rounded-sm transition-colors"
                                                              data-testid="phase-node"
-                                                             :data-phase="phase.name"
-                                                             :class="{'bg-primary/10 ring-1 ring-primary/50': selectedItem.type === 'phase' && selectedItem.phase?.name === phase.name && selectedItem.story?.id === story.id && selectedItem.epic?.id === epic.id}"
+                                                             :data-phase="phase.id"
+                                                             :class="{'bg-primary/10 ring-1 ring-primary/50': selectedItem.type === 'phase' && selectedItem.phase?.id === phase.id && selectedItem.story?.id === story.id && selectedItem.epic?.id === epic.id}"
                                                              @click="selectItem('phase', epic, story, phase)"
                                                              @contextmenu.prevent="showContextMenu($event, 'phase', phase, epic, story)">
-                                                            <i :data-lucide="getPhaseIcon(phase.status)" :class="getPhaseTextColor(phase.status)" class="w-3 h-3 opacity-60 group-hover/phase:opacity-100 transition-opacity"></i>
+                                                            <span :class="getPhaseTextColor(phase.status)" class="opacity-60 group-hover/phase:opacity-100 transition-opacity">
+                                                                <i :data-lucide="getPhaseIcon(phase.status)" class="w-3 h-3"></i>
+                                                            </span>
                                                             <span x-text="phase.name" class="text-muted-foreground"></span>
                                                             <button class="opacity-0 group-hover/phase:opacity-100 p-0.5 hover:bg-muted rounded ml-auto"
                                                                     data-testid="kebab-button"
@@ -144,7 +150,9 @@
                         <h3 class="font-semibold text-foreground">Epic <span x-text="selectedItem.epic?.id" class="tabular-nums"></span></h3>
                         <p x-text="selectedItem.epic?.title" class="text-sm text-muted-foreground truncate"></p>
                         <div class="mt-2 flex items-center gap-2">
-                            <i :data-lucide="getEpicStatusIcon(selectedItem.epic?.status)" :class="getStatusTextColor(selectedItem.epic?.status)" class="w-4 h-4"></i>
+                            <span :class="getEpicStatusColor(selectedItem.epic)">
+                                <i :data-lucide="getEpicStatusIcon(selectedItem.epic?.status)" class="w-4 h-4"></i>
+                            </span>
                             <span x-text="selectedItem.epic?.status" class="text-xs text-muted-foreground"></span>
                         </div>
                         <div class="mt-1 text-xs text-muted-foreground">
@@ -160,7 +168,9 @@
                         </h3>
                         <p x-text="selectedItem.story?.title" class="text-sm text-muted-foreground truncate"></p>
                         <div class="mt-2 flex items-center gap-2">
-                            <i :data-lucide="getStatusIcon(selectedItem.story?.status)" :class="getStatusTextColor(selectedItem.story?.status)" class="w-4 h-4"></i>
+                            <span :class="getStoryStatusColor(selectedItem.story?.status)">
+                                <i :data-lucide="getStatusIcon(selectedItem.story?.status)" class="w-4 h-4"></i>
+                            </span>
                             <span x-text="selectedItem.story?.status" class="text-xs text-muted-foreground"></span>
                         </div>
                         <div class="mt-1 text-xs text-muted-foreground">
@@ -173,7 +183,9 @@
                     <div>
                         <h3 class="font-semibold text-foreground" x-text="selectedItem.phase?.name"></h3>
                         <div class="mt-2 flex items-center gap-2">
-                            <i :data-lucide="getPhaseIcon(selectedItem.phase?.status)" :class="getPhaseTextColor(selectedItem.phase?.status)" class="w-4 h-4"></i>
+                            <span :class="getPhaseTextColor(selectedItem.phase?.status)">
+                                <i :data-lucide="getPhaseIcon(selectedItem.phase?.status)" class="w-4 h-4"></i>
+                            </span>
                             <span x-text="selectedItem.phase?.status" class="text-xs text-muted-foreground"></span>
                         </div>
                         <div class="mt-1 text-xs text-muted-foreground">

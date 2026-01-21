@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from bmad_assist.compiler.patching.discovery import (
+    determine_patch_source_level,
     discover_patch,
     load_defaults,
     load_patch,
@@ -445,3 +446,107 @@ class TestLoadPatchWithDefaults:
             result = load_patch(patch_file)
 
         assert result.post_process is None
+
+
+class TestDeterminePatchSourceLevel:
+    """Tests for determine_patch_source_level function."""
+
+    def test_patch_in_project_returns_project_root(self, tmp_path: Path) -> None:
+        """Test that patch in project returns project_root for cache."""
+        project = tmp_path / "project"
+        patch_dir = project / ".bmad-assist" / "patches"
+        patch_dir.mkdir(parents=True)
+        patch_file = patch_dir / "test.patch.yaml"
+        patch_file.touch()
+
+        result = determine_patch_source_level(patch_file, project)
+
+        assert result == project
+
+    def test_patch_in_cwd_returns_cwd(self, tmp_path: Path) -> None:
+        """Test that patch in CWD returns CWD for cache."""
+        project = tmp_path / "project"
+        project.mkdir()
+        cwd = tmp_path / "cwd"
+        patch_dir = cwd / ".bmad-assist" / "patches"
+        patch_dir.mkdir(parents=True)
+        patch_file = patch_dir / "test.patch.yaml"
+        patch_file.touch()
+
+        result = determine_patch_source_level(patch_file, project, cwd=cwd)
+
+        assert result == cwd
+
+    def test_patch_in_global_returns_none(self, tmp_path: Path) -> None:
+        """Test that global patch returns None for cache (global cache)."""
+        project = tmp_path / "project"
+        project.mkdir()
+        home = tmp_path / "home"
+        patch_dir = home / ".bmad-assist" / "patches"
+        patch_dir.mkdir(parents=True)
+        patch_file = patch_dir / "test.patch.yaml"
+        patch_file.touch()
+
+        with patch("pathlib.Path.home", return_value=home):
+            result = determine_patch_source_level(patch_file, project)
+
+        assert result is None
+
+    def test_project_takes_priority_over_cwd(self, tmp_path: Path) -> None:
+        """Test that project patch location is detected even when cwd is set."""
+        project = tmp_path / "project"
+        patch_dir = project / ".bmad-assist" / "patches"
+        patch_dir.mkdir(parents=True)
+        patch_file = patch_dir / "test.patch.yaml"
+        patch_file.touch()
+
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+
+        result = determine_patch_source_level(patch_file, project, cwd=cwd)
+
+        assert result == project
+
+    def test_cwd_same_as_project_returns_project(self, tmp_path: Path) -> None:
+        """Test that when CWD equals project, project is returned."""
+        project = tmp_path / "project"
+        patch_dir = project / ".bmad-assist" / "patches"
+        patch_dir.mkdir(parents=True)
+        patch_file = patch_dir / "test.patch.yaml"
+        patch_file.touch()
+
+        # CWD is same as project
+        result = determine_patch_source_level(patch_file, project, cwd=project)
+
+        assert result == project
+
+    def test_unknown_source_defaults_to_project(self, tmp_path: Path) -> None:
+        """Test that unknown patch source defaults to project_root."""
+        project = tmp_path / "project"
+        project.mkdir()
+        # Patch in random location (not project, cwd, or home)
+        random_dir = tmp_path / "random" / "patches"
+        random_dir.mkdir(parents=True)
+        patch_file = random_dir / "test.patch.yaml"
+        patch_file.touch()
+
+        with patch("pathlib.Path.home", return_value=tmp_path / "home"):
+            result = determine_patch_source_level(patch_file, project)
+
+        assert result == project
+
+    def test_custom_patch_path_outside_standard_locations(self, tmp_path: Path) -> None:
+        """Test patch from custom path (via config) defaults to project."""
+        project = tmp_path / "project"
+        project.mkdir()
+        custom_dir = project / "custom-patches"
+        custom_dir.mkdir()
+        patch_file = custom_dir / "test.patch.yaml"
+        patch_file.touch()
+
+        with patch("pathlib.Path.home", return_value=tmp_path / "home"):
+            result = determine_patch_source_level(patch_file, project)
+
+        # Custom path inside project but not in .bmad-assist/patches
+        # Should default to project
+        assert result == project

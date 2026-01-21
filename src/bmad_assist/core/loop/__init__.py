@@ -13,7 +13,7 @@ this will be reduced to just run_loop and LoopExitReason.
 
 """
 
-# Re-export from state for backward compatibility (Phase, PHASE_ORDER, State, etc.)
+# Re-export from state for backward compatibility (Phase, State, etc.)
 # These are needed because tests patch bmad_assist.core.loop.load_state etc.
 # Dispatch
 from bmad_assist.core.loop.dispatch import (
@@ -84,7 +84,6 @@ from bmad_assist.core.loop.types import (
     PhaseResult,
 )
 from bmad_assist.core.state import (
-    PHASE_ORDER,
     STATE_DIR,
     STATE_FILENAME,
     Phase,
@@ -100,7 +99,6 @@ __all__ = [
     "LoopExitReason",
     # Re-exports from state
     "Phase",
-    "PHASE_ORDER",
     "State",
     "STATE_DIR",
     "STATE_FILENAME",

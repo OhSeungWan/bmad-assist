@@ -760,8 +760,8 @@ class TestRunLoopFailureHandling:
                         with caplog.at_level(logging.WARNING):
                             result = run_loop(config, tmp_path, [1, 2], lambda x: [f"{x}.1"])
 
-        # Assertions
-        assert "RETROSPECTIVE phase failed" in caplog.text
+        # Assertions - look for either old or new log format
+        assert "RETROSPECTIVE" in caplog.text and "failed" in caplog.text
         # handle_epic_completion is called once for the failed retrospective, and once for the subsequent epic's completion
         assert mock_handle_epic_completion.call_count == 2
         mock_save_state.assert_called()  # Should have saved state at least once

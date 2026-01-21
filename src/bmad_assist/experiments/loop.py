@@ -30,24 +30,59 @@ from bmad_assist.experiments.config import NAME_PATTERN
 
 logger = logging.getLogger(__name__)
 
-# Known workflows map to Phase enum values (kebab-case convention)
+# Known workflows - supports both snake_case (LoopConfig convention) and kebab-case (legacy)
 # Note: test-design is a CUSTOM workflow not in Phase enum - used for experimental ATDD loops
 KNOWN_WORKFLOWS: frozenset[str] = frozenset(
     {
-        "create-story",  # Phase.CREATE_STORY
-        "validate-story",  # Phase.VALIDATE_STORY
-        "validate-story-synthesis",  # Phase.VALIDATE_STORY_SYNTHESIS
-        "atdd",  # Phase.ATDD
-        "dev-story",  # Phase.DEV_STORY
-        "code-review",  # Phase.CODE_REVIEW
-        "code-review-synthesis",  # Phase.CODE_REVIEW_SYNTHESIS
-        "test-review",  # Phase.TEST_REVIEW
-        "retrospective",  # Phase.RETROSPECTIVE
-        "qa-plan-generate",  # Phase.QA_PLAN_GENERATE
-        "qa-plan-execute",  # Phase.QA_PLAN_EXECUTE
-        "test-design",  # CUSTOM: ATDD test planning (not a Phase enum value)
+        # snake_case (matches LoopConfig and Phase enum values)
+        "create_story",
+        "validate_story",
+        "validate_story_synthesis",
+        "atdd",
+        "dev_story",
+        "code_review",
+        "code_review_synthesis",
+        "test_review",
+        "retrospective",
+        "qa_plan_generate",
+        "qa_plan_execute",
+        # kebab-case (legacy, for backwards compatibility)
+        "create-story",
+        "validate-story",
+        "validate-story-synthesis",
+        "dev-story",
+        "code-review",
+        "code-review-synthesis",
+        "test-review",
+        "qa-plan-generate",
+        "qa-plan-execute",
+        # CUSTOM workflows (not a Phase enum value)
+        "test-design",  # ATDD test planning
+        "test_design",  # snake_case variant
     }
 )
+
+
+def normalize_workflow_name(workflow: str) -> str:
+    """Normalize workflow name to snake_case.
+
+    Converts kebab-case to snake_case for consistency with LoopConfig
+    and Phase enum values.
+
+    Args:
+        workflow: Workflow name in either convention.
+
+    Returns:
+        Normalized snake_case workflow name.
+
+    Example:
+        >>> normalize_workflow_name("create-story")
+        'create_story'
+        >>> normalize_workflow_name("dev_story")
+        'dev_story'
+
+    """
+    return workflow.replace("-", "_")
 
 
 class LoopStep(BaseModel):

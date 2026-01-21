@@ -33,41 +33,34 @@ from bmad_assist.benchmarking.schema import (
 logger = logging.getLogger(__name__)
 
 
-# Path constants for benchmark directory structure
-_BMAD_OUTPUT_DIR = "_bmad-output"
-_IMPLEMENTATION_ARTIFACTS_DIR = "implementation-artifacts"
-
-
 def get_benchmark_base_dir(project_path: Path) -> Path:
-    """Get the benchmark base directory for a project.
+    """Get base directory for benchmark storage.
 
-    Centralized path resolution to avoid hardcoded path strings across handlers.
-    (Story 22.6 synthesis - DRY improvement)
+    Returns the implementation-artifacts directory (base for benchmarks/).
+    Uses paths singleton when available.
 
     Args:
-        project_path: Root path to the project directory.
+        project_path: Root path to project directory (kept for backward compatibility).
 
     Returns:
-        Path to: {project_path}/_bmad-output/implementation-artifacts
-
-    Raises:
-        ValueError: If project_path is None or doesn't exist.
+        Path to implementation-artifacts directory (caller appends "benchmarks/").
 
     """
-    if not project_path:
-        raise ValueError("project_path cannot be None")
+    from bmad_assist.core.paths import get_paths
 
-    project_path = Path(project_path)
-    if not project_path.exists():
-        raise ValueError(f"project_path does not exist: {project_path}")
-
-    return project_path / _BMAD_OUTPUT_DIR / _IMPLEMENTATION_ARTIFACTS_DIR
+    try:
+        return get_paths().implementation_artifacts
+    except RuntimeError:
+        # Fallback for standalone scripts not using CLI
+        logger.debug("Paths singleton not initialized, using default")
+        return project_path / "_bmad-output" / "implementation-artifacts"
 
 
 __all__ = [
     "StorageError",
     "RecordFilters",
     "RecordSummary",
+    "get_benchmark_base_dir",
     "save_evaluation_record",
     "load_evaluation_record",
     "list_evaluation_records",

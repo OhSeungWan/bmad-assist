@@ -25,9 +25,40 @@ __all__ = [
     "get_timestamp",
     "get_run_prompts_dir",
     "init_run_prompts_dir",
+    "get_original_cwd",
 ]
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Original CWD for Subprocess Isolation
+# =============================================================================
+
+# Environment variable name for original CWD (set by dashboard subprocess)
+BMAD_ORIGINAL_CWD_ENV = "BMAD_ORIGINAL_CWD"
+
+
+def get_original_cwd() -> Path:
+    """Get the original working directory for patch/cache lookup.
+
+    When running as a subprocess (e.g., from dashboard server), the CWD
+    may be changed to the project directory. This function returns the
+    original CWD from the BMAD_ORIGINAL_CWD environment variable if set,
+    otherwise falls back to the current working directory.
+
+    This ensures patch discovery and cache lookup work correctly regardless
+    of whether bmad-assist is run directly or as a subprocess.
+
+    Returns:
+        Path to the original working directory.
+
+    """
+    original_cwd = os.environ.get(BMAD_ORIGINAL_CWD_ENV)
+    if original_cwd:
+        logger.debug("Using original CWD from env: %s", original_cwd)
+        return Path(original_cwd)
+    return Path.cwd()
 
 
 # =============================================================================
@@ -36,6 +67,9 @@ logger = logging.getLogger(__name__)
 
 # Thread-local storage for run context (per-bmad-assist-run isolation)
 _run_context: _threading.local = _threading.local()
+
+# Unknown phases sort last with sequence number 99
+UNKNOWN_PHASE_SEQ = 99
 
 
 def _get_run_dir() -> Path | None:
@@ -70,26 +104,26 @@ def _increment_prompt_counter() -> int:
 def _get_phase_sequence(phase_name: str) -> int:
     """Get 1-based sequence number for a phase name.
 
-    Maps phase_name (e.g., "create_story" or "create-story") to its position in PHASE_ORDER.
+    Maps phase_name (e.g., "create_story" or "create-story") to its position in LoopConfig.story.
     Returns 99 for unknown phases to sort them last.
 
     Args:
         phase_name: Phase name with underscores or hyphens (e.g., "create_story", "validate-story").
 
     Returns:
-        1-based sequence number (1-11 for known phases, 99 for unknown).
+        1-based sequence number (1-N for known phases, 99 for unknown).
 
     """
-    from .state import PHASE_ORDER, Phase
+    from .config import get_loop_config
 
     # Normalize: hyphens → underscores (workflow names use hyphens, Phase enum uses underscores)
     normalized = phase_name.replace("-", "_")
 
+    loop_config = get_loop_config()
     try:
-        phase = Phase(normalized)
-        return PHASE_ORDER.index(phase) + 1
-    except (ValueError, KeyError):
-        return 99
+        return loop_config.story.index(normalized) + 1
+    except ValueError:
+        return UNKNOWN_PHASE_SEQ
 
 
 def _extract_story_number(story_num: int | str) -> str:
@@ -302,13 +336,19 @@ def get_prompt_path(
         return None
 
     # First, try run-scoped directories (most recent run first)
+    # Use filename-based pattern to narrow search before reading file content
+    story_clean = _extract_story_number(story_num)
+    phase_normalized = phase_name.replace("-", "_")
+    # Pattern: prompt-{epic}-{story_clean}-*-{phase}-*.md
+    filename_pattern = f"prompt-{epic_num}-{story_clean}-*-{phase_normalized}-*.md"
+
     run_dirs = sorted(prompts_dir.glob("run-*/"), reverse=True)
     for run_dir in run_dirs:
         if not run_dir.is_dir():
             continue
-        # Search for prompt files in this run directory (most recent first)
-        for prompt_file in sorted(run_dir.glob("prompt-*.md"), reverse=True):
-            # Read only first ~2KB for metadata header check
+        # Search for prompt files matching the pattern (most recent first)
+        for prompt_file in sorted(run_dir.glob(filename_pattern), reverse=True):
+            # Verify with metadata header to confirm exact match
             try:
                 with open(prompt_file, encoding="utf-8") as f:
                     header_chunk = f.read(2048)
@@ -346,15 +386,34 @@ def _matches_metadata(
         phase_name: Phase name to match.
 
     Returns:
-        True if all metadata fields match, False otherwise.
+        True if all metadata fields match AND metadata marker is present, False otherwise.
 
     """
-    # Extract metadata lines from content
+    # Require BMAD metadata marker to prevent false positives from comments in content
+    if "<!-- BMAD Prompt Run Metadata -->" not in content:
+        return False
+
+    # Extract metadata lines from content (stop at first non-metadata content)
     lines = content.split("\n")
     metadata = {}
+    found_marker = False
     for line in lines:
         line = line.strip()
-        if line.startswith("<!--") and line.endswith("-->"):
+        if not line:
+            continue
+        # Allow XML declaration before metadata block
+        if line.startswith("<?xml") and line.endswith("?>"):
+            continue
+        if not line.startswith("<!--"):
+            # Stop parsing once we hit non-comment content after finding marker
+            if found_marker:
+                break
+            continue
+        if line.endswith("-->"):
+            # Check for metadata marker
+            if "BMAD Prompt Run Metadata" in line:
+                found_marker = True
+                continue
             # Extract key-value from comment: <!-- Epic: 22 --> -> ("Epic", "22")
             inner = line[4:-3].strip()  # Remove <!-- -->
             if ":" in inner:
@@ -410,7 +469,9 @@ def save_prompt(
 
     # Run-scoped mode: descriptive naming with phase sequence
     # Format: prompt-{epic}-{story}-{phase_seq:02d}-{phase_name}-{timestamp}.md
-    _increment_prompt_counter()
+    # NOTE: Counter is tracked internally but phase_seq provides file ordering
+    _increment_prompt_counter()  # Track for metrics, not used in filename
+
     # Normalize phase_name: hyphens → underscores for consistent naming
     phase_normalized = phase_name.replace("-", "_")
     phase_seq = _get_phase_sequence(phase_normalized)

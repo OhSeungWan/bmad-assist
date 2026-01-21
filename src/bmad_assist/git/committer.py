@@ -16,12 +16,14 @@ logger = logging.getLogger(__name__)
 # CREATE_STORY: Creates story documentation (commit after creation)
 # DEV_STORY: Modifies code (commit after implementation)
 # CODE_REVIEW_SYNTHESIS: Final story completion (commit after review)
+# RETROSPECTIVE: Epic retrospective report (commit after retrospective)
 # Validation phases excluded - their reports are outputs, not code changes
 COMMIT_PHASES: frozenset[Phase] = frozenset(
     {
         Phase.CREATE_STORY,
         Phase.DEV_STORY,
         Phase.CODE_REVIEW_SYNTHESIS,
+        Phase.RETROSPECTIVE,
     }
 )
 
@@ -30,6 +32,7 @@ PHASE_COMMIT_TYPES: dict[Phase, str] = {
     Phase.CREATE_STORY: "docs",
     Phase.DEV_STORY: "feat",
     Phase.CODE_REVIEW_SYNTHESIS: "refactor",
+    Phase.RETROSPECTIVE: "chore",
 }
 
 
@@ -206,16 +209,23 @@ def _generate_conventional_message(
 
     """
     commit_type = PHASE_COMMIT_TYPES.get(phase, "chore")
-    scope = f"story-{story_id}" if story_id else "bmad"
 
-    if phase == Phase.CREATE_STORY:
-        description = "create story file"
-    elif phase == Phase.DEV_STORY:
-        description = "implement story"
-    elif phase == Phase.CODE_REVIEW_SYNTHESIS:
-        description = "apply code review changes"
+    # RETROSPECTIVE uses epic-based scope; other phases use story-based scope
+    if phase == Phase.RETROSPECTIVE:
+        # Extract epic from story_id (e.g., "22.11" -> "22", "testarch.1" -> "testarch")
+        epic_id = story_id.split(".")[0] if story_id and "." in story_id else (story_id or "unknown")
+        scope = f"epic-{epic_id}"
+        description = f"archive epic {epic_id} retrospective"
     else:
-        description = f"complete {phase.value.replace('_', ' ')}"
+        scope = f"story-{story_id}" if story_id else "bmad"
+        if phase == Phase.CREATE_STORY:
+            description = "create story file"
+        elif phase == Phase.DEV_STORY:
+            description = "implement story"
+        elif phase == Phase.CODE_REVIEW_SYNTHESIS:
+            description = "apply code review changes"
+        else:
+            description = f"complete {phase.value.replace('_', ' ')}"
 
     message = f"{commit_type}({scope}): {description}"
 

@@ -151,11 +151,11 @@ class TestModuleExports:
 
         assert "Phase" in loop.__all__
 
-    def test_phase_order_exported_from_loop(self) -> None:
-        """PHASE_ORDER is in loop module's __all__."""
-        from bmad_assist.core import loop
+    def test_default_loop_config_importable_from_config(self) -> None:
+        """DEFAULT_LOOP_CONFIG is importable from config module."""
+        from bmad_assist.core.config import DEFAULT_LOOP_CONFIG
 
-        assert "PHASE_ORDER" in loop.__all__
+        assert hasattr(DEFAULT_LOOP_CONFIG, "story")
 
     def test_phase_result_exported_from_loop(self) -> None:
         """PhaseResult is in loop module's __all__."""

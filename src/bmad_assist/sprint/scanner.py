@@ -313,12 +313,24 @@ def _get_artifact_locations(project_root: Path) -> dict[str, list[Path]]:
     Legacy location is scanned first, new location last (takes precedence).
 
     Args:
-        project_root: Root path of the project.
+        project_root: Root path of the project (used as fallback).
 
     Returns:
         Dict mapping artifact type to list of directory paths.
 
     """
+    # Get paths with fallback for when singleton not initialized
+    try:
+        from bmad_assist.core.paths import get_paths
+
+        paths = get_paths()
+        legacy_base = paths.legacy_sprint_artifacts
+        new_base = paths.implementation_artifacts
+    except RuntimeError:
+        # Paths not initialized (e.g., in tests) - use project_root defaults
+        legacy_base = project_root / "docs" / "sprint-artifacts"
+        new_base = project_root / "_bmad-output" / "implementation-artifacts"
+
     locations: dict[str, list[Path]] = {
         "stories": [],
         "code_reviews": [],
@@ -326,8 +338,7 @@ def _get_artifact_locations(project_root: Path) -> dict[str, list[Path]]:
         "retrospectives": [],
     }
 
-    # Legacy location: docs/sprint-artifacts/
-    legacy_base = project_root / "docs" / "sprint-artifacts"
+    # Legacy location
     if legacy_base.exists():
         if (legacy_base / "stories").exists():
             locations["stories"].append(legacy_base / "stories")
@@ -338,8 +349,7 @@ def _get_artifact_locations(project_root: Path) -> dict[str, list[Path]]:
         if (legacy_base / "retrospectives").exists():
             locations["retrospectives"].append(legacy_base / "retrospectives")
 
-    # New location: _bmad-output/implementation-artifacts/
-    new_base = project_root / "_bmad-output" / "implementation-artifacts"
+    # New location
     if new_base.exists():
         # Stories can be in stories/ subdirectory OR directly in implementation-artifacts/
         if (new_base / "stories").exists():

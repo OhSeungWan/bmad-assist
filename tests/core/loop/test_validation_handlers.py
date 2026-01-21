@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from bmad_assist.core.config import (
+    BenchmarkingConfig,
     Config,
     MasterProviderConfig,
     MultiProviderConfig,
@@ -41,6 +42,7 @@ def validation_config(tmp_path: Path) -> Config:
             ],
         ),
         timeout=300,
+        benchmarking=BenchmarkingConfig(enabled=False),
     )
 
 

@@ -424,11 +424,15 @@ class TestPhaseInStateModel:
         assert hasattr(Phase, "TEST_REVIEW")
         assert Phase.TEST_REVIEW.value == "test_review"
 
-    def test_phase_order_includes_test_review(self) -> None:
-        """PHASE_ORDER includes TEST_REVIEW between CODE_REVIEW_SYNTHESIS and RETROSPECTIVE."""
-        from bmad_assist.core.state import PHASE_ORDER
+    def test_test_review_phase_is_valid(self) -> None:
+        """TEST_REVIEW phase is a valid Phase enum value.
 
-        assert Phase.TEST_REVIEW in PHASE_ORDER
-        idx = PHASE_ORDER.index(Phase.TEST_REVIEW)
-        assert PHASE_ORDER[idx - 1] == Phase.CODE_REVIEW_SYNTHESIS
-        assert PHASE_ORDER[idx + 1] == Phase.RETROSPECTIVE
+        Note: In configurable loop architecture, the phase sequence comes from LoopConfig.
+        TEST_REVIEW is a testarch phase and may not be in DEFAULT_LOOP_CONFIG.story,
+        but it should still be a valid Phase enum value.
+        """
+        from bmad_assist.core.state import Phase
+
+        # TEST_REVIEW is a valid Phase enum
+        assert Phase.TEST_REVIEW in Phase
+        assert Phase.TEST_REVIEW.value == "test_review"

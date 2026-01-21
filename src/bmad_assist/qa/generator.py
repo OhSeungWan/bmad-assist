@@ -298,7 +298,13 @@ def _build_qa_plan_prompt(
         trace_content = trace_path.read_text(encoding="utf-8")
 
     # Load stories for this epic - extract only test-relevant content (AC, UI, API)
-    stories_dir = project_path / "_bmad-output" / "implementation-artifacts" / "stories"
+    try:
+        from bmad_assist.core.paths import get_paths
+
+        stories_dir = get_paths().stories_dir
+    except RuntimeError:
+        # Fallback for standalone usage without initialized paths
+        stories_dir = project_path / "_bmad-output" / "implementation-artifacts"
     stories_content = ""
     if stories_dir.exists():
         story_files = sorted(stories_dir.glob(f"{epic_id}-*.md"))

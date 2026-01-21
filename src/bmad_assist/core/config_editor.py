@@ -5,28 +5,23 @@ the dashboard UI, tracking where each value comes from (default/global/project),
 and maintaining backup history.
 
 Comment Preservation:
-    When ruamel.yaml is available, ConfigEditor preserves YAML comments
-    during save operations by updating values in-place in the original
-    CommentedMap structure. When ruamel.yaml is unavailable, falls back
-    to PyYAML (comments will be lost).
+    ConfigEditor preserves YAML comments during save operations by updating
+    values in-place in the original CommentedMap structure using ruamel.yaml
+    (required dependency).
 
-    Use `has_ruamel_yaml()` to check availability, and
-    `editor.comments_preserved(scope)` to check if comments will be
+    Use `has_ruamel_yaml()` to check availability (always True since required),
+    and `editor.comments_preserved(scope)` to check if comments will be
     preserved for a specific save operation.
 
 Usage:
     from bmad_assist.core.config_editor import ConfigEditor, has_ruamel_yaml
-
-    # Check if comments will be preserved
-    if has_ruamel_yaml():
-        print("Comments will be preserved")
 
     # Context manager usage (recommended)
     with ConfigEditor(global_path, project_path) as editor:
         merged = editor.get_merged_with_provenance()
         editor.update("global", "benchmarking.enabled", False)
         editor.validate()  # Raises ConfigError if invalid
-        editor.save("global")  # Comments preserved if ruamel available
+        editor.save("global")  # Comments preserved via ruamel.yaml
 
     # Manual usage
     editor = ConfigEditor(global_path, project_path)
@@ -62,38 +57,29 @@ logger = logging.getLogger(__name__)
 MAX_BACKUPS = 5
 
 # =============================================================================
-# ruamel.yaml Detection (Story 17.3 - Task 1)
+# ruamel.yaml Verification (required dependency)
 # =============================================================================
 
-# Cache ruamel.yaml availability at module level
-_RUAMEL_AVAILABLE: bool = False
-_RUAMEL_CHECKED: bool = False
 
-# Track whether we've warned about PyYAML fallback (once per session)
-_PYYAML_FALLBACK_WARNED: bool = False
+def _verify_ruamel() -> None:
+    """Verify ruamel.yaml is installed (required dependency).
 
-
-def _check_ruamel() -> bool:
-    """Check if ruamel.yaml is available (internal, caches result).
-
-    Returns:
-        True if ruamel.yaml is installed and importable.
+    Raises:
+        ImportError: If ruamel.yaml is not available.
 
     """
-    global _RUAMEL_AVAILABLE, _RUAMEL_CHECKED
-    if _RUAMEL_CHECKED:
-        return _RUAMEL_AVAILABLE
     try:
         from ruamel.yaml import YAML  # noqa: F401
         from ruamel.yaml.comments import CommentedMap  # noqa: F401
+    except ImportError as e:
+        raise ImportError(
+            "ruamel.yaml is required for YAML comment preservation. "
+            "Install with: pip install 'ruamel.yaml>=0.18.0,<1.0.0'"
+        ) from e
 
-        _RUAMEL_AVAILABLE = True
-        logger.debug("ruamel.yaml available for config comment preservation")
-    except ImportError:
-        _RUAMEL_AVAILABLE = False
-        logger.debug("ruamel.yaml not available, will use PyYAML fallback for configs")
-    _RUAMEL_CHECKED = True
-    return _RUAMEL_AVAILABLE
+
+# Verify at module load time - fail fast if not available
+_verify_ruamel()
 
 
 def has_ruamel_yaml() -> bool:
@@ -103,17 +89,14 @@ def has_ruamel_yaml() -> bool:
     to inform the UI whether comments will be preserved during save.
 
     Returns:
-        True if ruamel.yaml is installed and importable.
+        True (always, since ruamel.yaml is now a required dependency).
 
-    Example:
-        >>> from bmad_assist.core.config_editor import has_ruamel_yaml
-        >>> if has_ruamel_yaml():
-        ...     print("Comments will be preserved")
-        ... else:
-        ...     print("Comments will be lost on write")
+    Note:
+        This function is kept for backwards compatibility.
+        Since ruamel.yaml is now required, it always returns True.
 
     """
-    return _check_ruamel()
+    return True
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -1040,6 +1023,9 @@ class ConfigEditor:
     def _save_with_pyyaml(self, path: Path, data: dict[str, Any]) -> None:
         """Save config using PyYAML (no comment preservation).
 
+        Note: This is used for new files where no CommentedMap exists.
+        Comments cannot be preserved for new files.
+
         Args:
             path: Target file path.
             data: Config data to write.
@@ -1048,16 +1034,6 @@ class ConfigEditor:
             OSError: If write fails.
 
         """
-        global _PYYAML_FALLBACK_WARNED
-
-        # Warn once per session when falling back to PyYAML
-        if has_ruamel_yaml() and not _PYYAML_FALLBACK_WARNED:
-            # ruamel available but no CommentedMap - new file case
-            pass
-        elif not has_ruamel_yaml() and not _PYYAML_FALLBACK_WARNED:
-            logger.warning("ruamel.yaml not available, config comments will be lost on write")
-            _PYYAML_FALLBACK_WARNED = True
-
         # Atomic write using temp file
         temp_path = Path(f"{path}.tmp.{os.getpid()}")
         try:

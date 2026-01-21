@@ -217,7 +217,7 @@ test.describe('AC 2: Kebab Icon Context Menu', () => {
 // =============================================================================
 
 test.describe('AC 3: Ready-for-dev Story Actions', () => {
-  test('should show Run dev-story, View prompt, Open story file for ready-for-dev story', async ({
+  test('should show Run dev-story, Open story file for ready-for-dev story', async ({
     page,
   }) => {
     // GIVEN: Dashboard with a ready-for-dev story
@@ -231,7 +231,8 @@ test.describe('AC 3: Ready-for-dev Story Actions', () => {
     await waitForContextMenu(page);
 
     await expect(page.locator('[data-testid="action-run-dev-story"]')).toBeVisible();
-    await expect(page.locator('[data-testid="action-view-prompt"]')).toBeVisible();
+    // Story 24.10: View prompt removed from story-level context menu (prompts are phase-specific)
+    await expect(page.locator('[data-testid="action-view-prompt"]')).not.toBeVisible();
     await expect(page.locator('[data-testid="action-open-file"]')).toBeVisible();
   });
 
@@ -254,7 +255,7 @@ test.describe('AC 3: Ready-for-dev Story Actions', () => {
 // =============================================================================
 
 test.describe('AC 4: Done Story Actions', () => {
-  test('should show View prompt, View review, Re-run for done story', async ({ page }) => {
+  test('should show View review, Re-run for done story', async ({ page }) => {
     // GIVEN: Dashboard with a done story
     await page.goto(BASE_URL);
 
@@ -264,7 +265,8 @@ test.describe('AC 4: Done Story Actions', () => {
     // THEN: Menu shows expected actions
     await waitForContextMenu(page);
 
-    await expect(page.locator('[data-testid="action-view-prompt"]')).toBeVisible();
+    // Story 24.10: View prompt removed from story-level context menu (prompts are phase-specific)
+    await expect(page.locator('[data-testid="action-view-prompt"]')).not.toBeVisible();
     await expect(page.locator('[data-testid="action-view-review"]')).toBeVisible();
     await expect(page.locator('[data-testid="action-re-run"]')).toBeVisible();
   });
@@ -355,7 +357,8 @@ test.describe('AC 6: Review Status Story Actions', () => {
 
     // THEN: Shows view actions only
     await waitForContextMenu(page);
-    await expect(page.locator('[data-testid="action-view-prompt"]')).toBeVisible();
+    // Story 24.10: View prompt removed from story-level context menu (prompts are phase-specific)
+    await expect(page.locator('[data-testid="action-view-prompt"]')).not.toBeVisible();
     await expect(page.locator('[data-testid="action-open-file"]')).toBeVisible();
     await expect(page.locator('[data-testid="action-view-review"]')).toBeVisible();
 

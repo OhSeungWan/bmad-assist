@@ -371,6 +371,51 @@ async def post_config_reload(request: Request) -> JSONResponse:
             )
 
 
+async def get_loop_config(request: Request) -> JSONResponse:
+    """GET /api/loop-config - Return current loop configuration.
+
+    Returns the resolved loop configuration with fallback chain applied.
+    Hot-reloads from config files on each request.
+
+    Query Parameters:
+        None
+
+    Returns:
+        JSON object with:
+        - epic_setup: list of phase IDs to run at epic start
+        - story: list of phase IDs to run for each story
+        - epic_teardown: list of phase IDs to run at epic end
+
+    Example Response:
+        {
+            "epic_setup": [],
+            "story": [
+                "create_story",
+                "validate_story",
+                "validate_story_synthesis",
+                "dev_story",
+                "code_review",
+                "code_review_synthesis"
+            ],
+            "epic_teardown": ["retrospective"]
+        }
+
+    """
+    from bmad_assist.core.config import load_loop_config
+
+    # Get project path from app state (set by DashboardServer)
+    server = request.app.state.server
+    loop_config = load_loop_config(server.project_root)
+
+    return JSONResponse(
+        {
+            "epic_setup": loop_config.epic_setup,
+            "story": loop_config.story,
+            "epic_teardown": loop_config.epic_teardown,
+        }
+    )
+
+
 routes = [
     Route("/api/config", get_config, methods=["GET"]),
     Route("/api/config/global", get_config_global, methods=["GET"]),
@@ -378,4 +423,5 @@ routes = [
     Route("/api/config/global", put_config_global, methods=["PUT"]),
     Route("/api/config/project", put_config_project, methods=["PUT"]),
     Route("/api/config/reload", post_config_reload, methods=["POST"]),
+    Route("/api/loop-config", get_loop_config, methods=["GET"]),
 ]

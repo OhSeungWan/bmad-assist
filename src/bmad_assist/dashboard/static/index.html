@@ -27,6 +27,9 @@
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/sse.js"></script>
 
+    <!-- Marked.js - Markdown parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js" integrity="sha384-b5hg04N6F0rvyz1a/GVoPPY0JcqGTARCmEuFCqwQKX3zq7LsxhV+n+6Ykh2pQOCH" crossorigin="anonymous"></script>
+
     <link rel="stylesheet" href="/css/index.css">
     <link rel="stylesheet" href="/css/styles.css">
 </head>
@@ -74,7 +77,7 @@
                 <div id="tree-content">
                     <template x-if="stories.epics">
                         <div>
-                            <template x-for="epic in stories.epics" :key="epic.id">
+                            <template x-for="epic in stories.epics" :key="`${epic.id}-${epic.status}`">
                                 <div class="group/epic">
                                     <!-- Epic -->
                                     <div class="flex items-center gap-1.5 py-0.5 cursor-pointer hover:bg-white/10 rounded-sm transition-colors"
@@ -85,7 +88,9 @@
                                          @contextmenu.prevent="showContextMenu($event, 'epic', epic)">
                                         <i :data-lucide="expandedEpics.includes(epic.id) ? 'chevron-down' : 'chevron-right'"
                                            class="w-3 h-3 text-muted-foreground flex-shrink-0 opacity-60 group-hover/epic:opacity-100 transition-opacity"></i>
-                                        <i :data-lucide="getEpicStatusIcon(epic.status)" :class="getStatusTextColor(epic.status)" class="w-3 h-3 flex-shrink-0 opacity-60 group-hover/epic:opacity-100 transition-opacity"></i>
+                                        <span :class="getEpicStatusColor(epic)" class="flex-shrink-0 opacity-60 group-hover/epic:opacity-100 transition-opacity">
+                                            <i :data-lucide="getEpicStatusIcon(epic.status)" class="w-3 h-3"></i>
+                                        </span>
                                         <span class="font-medium tabular-nums" x-text="'Epic ' + epic.id"></span>
                                         <span x-text="epic.title" class="truncate flex-1 text-muted-foreground"></span>
                                         <span class="badge-secondary text-xs" x-text="getEpicProgress(epic).split(' ')[0]"></span>
@@ -98,7 +103,7 @@
 
                                     <!-- Stories -->
                                     <div x-show="expandedEpics.includes(epic.id)" x-transition class="ml-4">
-                                        <template x-for="story in epic.stories" :key="story.id">
+                                        <template x-for="story in epic.stories" :key="`${story.id}-${story.status}`">
                                             <div class="group/story">
                                                 <div class="flex items-center gap-1.5 px-2 py-0.5 cursor-pointer hover:bg-white/10 rounded-sm transition-colors"
                                                      data-testid="story-node"
@@ -108,7 +113,9 @@
                                                      @contextmenu.prevent="showContextMenu($event, 'story', story, epic)">
                                                     <i :data-lucide="expandedStories.includes(`${epic.id}-${story.id}`) ? 'chevron-down' : 'chevron-right'"
                                                        class="w-3 h-3 text-muted-foreground flex-shrink-0 opacity-60 group-hover/story:opacity-100 transition-opacity"></i>
-                                                    <i :data-lucide="getStatusIcon(story.status)" :class="getStatusTextColor(story.status)" class="w-3 h-3 flex-shrink-0 opacity-60 group-hover/story:opacity-100 transition-opacity"></i>
+                                                    <span :class="getStoryStatusColor(story.status)" class="flex-shrink-0 opacity-60 group-hover/story:opacity-100 transition-opacity">
+                                                        <i :data-lucide="getStatusIcon(story.status)" class="w-3 h-3"></i>
+                                                    </span>
                                                     <span x-text="`${epic.id}.${story.id}`" class="tabular-nums text-muted-foreground w-6"></span>
                                                     <span x-text="story.title" class="truncate flex-1"></span>
                                                     <button class="opacity-0 group-hover/story:opacity-100 p-0.5 hover:bg-muted rounded"
@@ -120,14 +127,16 @@
 
                                                 <!-- Phases -->
                                                 <div x-show="expandedStories.includes(`${epic.id}-${story.id}`)" x-transition class="ml-7 text-xs">
-                                                    <template x-for="phase in story.phases" :key="phase.name">
+                                                    <template x-for="phase in story.phases" :key="`${phase.id}-${phase.status}`">
                                                         <div class="group/phase flex items-center gap-1.5 px-2 py-0.5 cursor-pointer hover:bg-white/10 rounded-sm transition-colors"
                                                              data-testid="phase-node"
-                                                             :data-phase="phase.name"
-                                                             :class="{'bg-primary/10 ring-1 ring-primary/50': selectedItem.type === 'phase' && selectedItem.phase?.name === phase.name && selectedItem.story?.id === story.id && selectedItem.epic?.id === epic.id}"
+                                                             :data-phase="phase.id"
+                                                             :class="{'bg-primary/10 ring-1 ring-primary/50': selectedItem.type === 'phase' && selectedItem.phase?.id === phase.id && selectedItem.story?.id === story.id && selectedItem.epic?.id === epic.id}"
                                                              @click="selectItem('phase', epic, story, phase)"
                                                              @contextmenu.prevent="showContextMenu($event, 'phase', phase, epic, story)">
-                                                            <i :data-lucide="getPhaseIcon(phase.status)" :class="getPhaseTextColor(phase.status)" class="w-3 h-3 opacity-60 group-hover/phase:opacity-100 transition-opacity"></i>
+                                                            <span :class="getPhaseTextColor(phase.status)" class="opacity-60 group-hover/phase:opacity-100 transition-opacity">
+                                                                <i :data-lucide="getPhaseIcon(phase.status)" class="w-3 h-3"></i>
+                                                            </span>
                                                             <span x-text="phase.name" class="text-muted-foreground"></span>
                                                             <button class="opacity-0 group-hover/phase:opacity-100 p-0.5 hover:bg-muted rounded ml-auto"
                                                                     data-testid="kebab-button"
@@ -179,7 +188,9 @@
                         <h3 class="font-semibold text-foreground">Epic <span x-text="selectedItem.epic?.id" class="tabular-nums"></span></h3>
                         <p x-text="selectedItem.epic?.title" class="text-sm text-muted-foreground truncate"></p>
                         <div class="mt-2 flex items-center gap-2">
-                            <i :data-lucide="getEpicStatusIcon(selectedItem.epic?.status)" :class="getStatusTextColor(selectedItem.epic?.status)" class="w-4 h-4"></i>
+                            <span :class="getEpicStatusColor(selectedItem.epic)">
+                                <i :data-lucide="getEpicStatusIcon(selectedItem.epic?.status)" class="w-4 h-4"></i>
+                            </span>
                             <span x-text="selectedItem.epic?.status" class="text-xs text-muted-foreground"></span>
                         </div>
                         <div class="mt-1 text-xs text-muted-foreground">
@@ -195,7 +206,9 @@
                         </h3>
                         <p x-text="selectedItem.story?.title" class="text-sm text-muted-foreground truncate"></p>
                         <div class="mt-2 flex items-center gap-2">
-                            <i :data-lucide="getStatusIcon(selectedItem.story?.status)" :class="getStatusTextColor(selectedItem.story?.status)" class="w-4 h-4"></i>
+                            <span :class="getStoryStatusColor(selectedItem.story?.status)">
+                                <i :data-lucide="getStatusIcon(selectedItem.story?.status)" class="w-4 h-4"></i>
+                            </span>
                             <span x-text="selectedItem.story?.status" class="text-xs text-muted-foreground"></span>
                         </div>
                         <div class="mt-1 text-xs text-muted-foreground">
@@ -208,7 +221,9 @@
                     <div>
                         <h3 class="font-semibold text-foreground" x-text="selectedItem.phase?.name"></h3>
                         <div class="mt-2 flex items-center gap-2">
-                            <i :data-lucide="getPhaseIcon(selectedItem.phase?.status)" :class="getPhaseTextColor(selectedItem.phase?.status)" class="w-4 h-4"></i>
+                            <span :class="getPhaseTextColor(selectedItem.phase?.status)">
+                                <i :data-lucide="getPhaseIcon(selectedItem.phase?.status)" class="w-4 h-4"></i>
+                            </span>
                             <span x-text="selectedItem.phase?.status" class="text-xs text-muted-foreground"></span>
                         </div>
                         <div class="mt-1 text-xs text-muted-foreground">
@@ -289,19 +304,38 @@
                  class="flex-1 flex flex-col bg-background overflow-hidden relative">
                 <!-- Tabs - Basecoat tabs -->
                 <div class="tabs w-full px-4 py-2 border-b border-border">
-                    <nav role="tablist" aria-orientation="horizontal">
-                        <template x-for="tab in ['All', 'Claude', 'Opus', 'Gemini', 'GLM']" :key="tab">
-                            <button type="button"
-                                    role="tab"
-                                    :aria-selected="activeTab === tab"
-                                    :tabindex="activeTab === tab ? 0 : -1"
-                                    @click="activeTab = tab; autoScroll = true; $nextTick(() => scrollToBottom())">
-                                <span x-text="tab"></span>
-                                <span x-show="getTabCount(tab) > 0"
-                                      class="badge-secondary ml-1"
-                                      x-text="`${getTabCount(tab)}`"></span>
-                            </button>
-                        </template>
+                    <nav role="tablist" aria-orientation="horizontal" class="flex items-center justify-between w-full">
+                        <div class="flex">
+                            <template x-for="tab in ['All', 'Claude', 'Opus', 'Gemini', 'GLM']" :key="tab">
+                                <button type="button"
+                                        role="tab"
+                                        :aria-selected="activeTab === tab"
+                                        :tabindex="activeTab === tab ? 0 : -1"
+                                        @click="activeTab = tab; autoScroll = true; $nextTick(() => scrollToBottom())">
+                                    <span x-text="tab"></span>
+                                    <span x-show="getTabCount(tab) > 0"
+                                          class="badge-secondary ml-1"
+                                          x-text="`${getTabCount(tab)}`"></span>
+                                </button>
+                            </template>
+                        </div>
+                        <!-- Story 22.11 Task 7: Validator progress indicator -->
+                        <div x-show="validatorProgress.total > 0"
+                             x-transition
+                             class="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span class="text-xs">Validators:</span>
+                            <div class="flex items-center gap-1">
+                                <span x-text="`${validatorProgress.completed + validatorProgress.failed}/${validatorProgress.total}`"
+                                      class="tabular-nums"></span>
+                                <span x-show="validatorProgress.failed > 0"
+                                      class="text-destructive"
+                                      x-text="`(${validatorProgress.failed} failed)`"></span>
+                            </div>
+                            <div class="w-16 h-1.5 bg-border rounded-full overflow-hidden">
+                                <div class="h-full bg-primary transition-all duration-300"
+                                     :style="`width: ${validatorProgressPercent}%`"></div>
+                            </div>
+                        </div>
                     </nav>
                 </div>
 
@@ -2695,7 +2729,7 @@
                 <button class="btn bg-destructive text-destructive-foreground hover:bg-destructive/80"
                         @click="stopLoop"
                         :disabled="!loopRunning">
-                    <i data-lucide="stop" class="w-4 h-4"></i> Stop
+                    <i data-lucide="square" class="w-4 h-4"></i> Stop
                 </button>
                 <button class="btn-outline"
                         @click="openExperiments()"
@@ -2886,13 +2920,13 @@
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0"
-         @keydown.escape.window="if (contentModal.show && !busyModal.show) contentModal.show = false"
+         @keydown.escape.window="if (contentModal.show && !busyModal.show) { contentModal.show = false; contentModal.browser = null; _cancelPendingShikiHighlights(); }"
          @keydown.tab="if (contentModal.show && !busyModal.show) trapFocus($event, 'contentModalContent')"
          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
          data-testid="content-modal">
 
         <!-- Modal Content -->
-        <div class="card shadow-xl w-4/5 max-h-[80vh] flex flex-col"
+        <div class="card shadow-xl p-0 gap-0 overflow-hidden w-4/5 max-h-[80vh] flex flex-col"
              x-show="contentModal.show"
              x-transition:enter="transition ease-out duration-200"
              x-transition:enter-start="opacity-0 scale-95"
@@ -2904,20 +2938,39 @@
              role="dialog"
              aria-modal="true"
              aria-labelledby="content-modal-title"
-             @click.outside="contentModal.show = false">
+             @click.outside="contentModal.show = false; contentModal.browser = null; _cancelPendingShikiHighlights();">
 
             <!-- Header -->
-            <div class="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div class="flex items-center justify-between px-4 py-2 border-b border-border">
                 <h2 id="content-modal-title" x-text="contentModal.title" class="text-lg font-semibold"></h2>
                 <div class="flex items-center gap-2">
-                    <button @click="copyToClipboard(contentModal.content)"
+                    <!-- Story 24.5: Raw/Rendered toggle (only shown when browser state is set) -->
+                    <template x-if="contentModal.browser">
+                        <div class="flex items-center border border-border rounded overflow-hidden mr-2"
+                             data-testid="view-toggle">
+                            <button @click="contentModal.browser.view = 'rendered'"
+                                    class="px-3 py-1 text-xs"
+                                    :class="contentModal.browser.view === 'rendered' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted'"
+                                    data-testid="view-rendered-btn">
+                                Rendered
+                            </button>
+                            <button @click="contentModal.browser.view = 'raw'"
+                                    class="px-3 py-1 text-xs"
+                                    :class="contentModal.browser.view === 'raw' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted'"
+                                    data-testid="view-raw-btn">
+                                Raw
+                            </button>
+                        </div>
+                    </template>
+                    <!-- Story 24.5: Copy button uses copyRawContent when browser state exists -->
+                    <button @click="contentModal.browser ? window.contentBrowserComponent().copyRawContent(contentModal.content, showToast) : copyToClipboard(contentModal.content)"
                             class="btn-sm-icon-ghost"
                             data-testid="copy-content-btn"
-                            title="Copy to clipboard"
+                            :title="contentModal.browser ? 'Copies raw content' : 'Copy to clipboard'"
                             aria-label="Copy content to clipboard">
                         <i data-lucide="clipboard" class="w-4 h-4"></i>
                     </button>
-                    <button @click="contentModal.show = false"
+                    <button @click="contentModal.show = false; contentModal.browser = null; _cancelPendingShikiHighlights();"
                             class="btn-sm-icon-ghost"
                             data-testid="close-modal-btn">
                         <i data-lucide="x" class="w-4 h-4"></i>
@@ -2925,14 +2978,508 @@
                 </div>
             </div>
 
-            <!-- Content -->
+            <!-- Content - conditional rendering based on type (Story 23.3) and browser state (Story 24.5) -->
             <div class="flex-1 overflow-auto p-4">
-                <pre class="text-sm whitespace-pre-wrap font-mono"><code x-text="contentModal.content"></code></pre>
+                <!-- Story 24.5: Browser-controlled content (Raw/Rendered toggle) -->
+                <template x-if="contentModal.type === 'markdown' && contentModal.browser">
+                    <div>
+                        <!-- Rendered mode -->
+                        <template x-if="contentModal.browser.view === 'rendered'">
+                            <div class="markdown-content text-sm"
+                                 x-html="formatMarkdownContent(contentModal.content)"
+                                 x-effect="$nextTick(() => { if (contentModal.show && contentModal.browser?.view === 'rendered') refreshIcons(); })">
+                            </div>
+                        </template>
+                        <!-- Raw mode -->
+                        <template x-if="contentModal.browser.view === 'raw'">
+                            <pre class="text-sm whitespace-pre-wrap font-mono"><code x-text="contentModal.content"></code></pre>
+                        </template>
+                    </div>
+                </template>
+                <!-- Non-browser content: Markdown (existing behavior, backwards compatible) -->
+                <template x-if="contentModal.type === 'markdown' && !contentModal.browser">
+                    <div class="markdown-content text-sm"
+                         x-html="formatMarkdownContent(contentModal.content)"
+                         x-effect="$nextTick(() => { if (contentModal.show && contentModal.type === 'markdown') refreshIcons(); })">
+                    </div>
+                </template>
+                <!-- Plain text/XML content (XSS-safe) -->
+                <template x-if="contentModal.type !== 'markdown'">
+                    <pre class="text-sm whitespace-pre-wrap font-mono"><code x-text="contentModal.content"></code></pre>
+                </template>
             </div>
         </div>
     </div>
 
-    <!-- Report List Modal (Story 16.9 - AC 4) -->
+    <!-- Epic Metrics Modal (Story 24.7) -->
+    <div x-show="metricsModal.show"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         @keydown.escape.window="if (metricsModal.show && !contentModal.show && !busyModal.show) closeEpicMetrics()"
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+         data-testid="metrics-modal">
+
+        <div class="card shadow-xl p-0 gap-0 overflow-hidden w-3/4 max-w-4xl max-h-[80vh] flex flex-col"
+             x-show="metricsModal.show"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 scale-95"
+             x-transition:enter-end="opacity-100 scale-100"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100 scale-100"
+             x-transition:leave-end="opacity-0 scale-95"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="metrics-modal-title"
+             @click.outside="closeEpicMetrics()">
+
+            <!-- Header -->
+            <div class="flex items-center justify-between px-4 py-2 border-b border-border">
+                <h2 id="metrics-modal-title" class="text-lg font-semibold flex items-center gap-2">
+                    <i data-lucide="bar-chart-2" class="w-5 h-5"></i>
+                    <span x-text="`Epic ${metricsModal.epicId} Metrics`"></span>
+                </h2>
+                <button @click="closeEpicMetrics()"
+                        class="btn-sm-icon-ghost"
+                        aria-label="Close metrics modal"
+                        data-testid="close-metrics-btn">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <!-- Content -->
+            <div class="flex-1 overflow-auto p-4 space-y-6">
+
+                <!-- Loading State -->
+                <div x-show="metricsModal.loading" class="flex items-center justify-center py-12">
+                    <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-primary"></i>
+                    <span class="ml-3 text-muted-foreground">Loading metrics...</span>
+                </div>
+
+                <!-- Metrics Content (shown when not loading and data exists) -->
+                <template x-if="!metricsModal.loading && metricsModal.data">
+                    <div class="space-y-6">
+                        <!-- Total Duration -->
+                        <div class="text-center">
+                            <span class="text-muted-foreground">Total:</span>
+                            <span class="text-2xl font-bold tabular-nums ml-2"
+                                  x-text="formatDuration(metricsModal.data?.total_duration_ms || 0)"></span>
+                        </div>
+
+                        <!-- Timeline Bar Chart -->
+                        <div class="metrics-timeline relative" data-testid="metrics-timeline">
+                            <div class="flex h-8 rounded overflow-hidden border border-border">
+                                <template x-for="(story, index) in (metricsModal.data?.stories || [])" :key="story.story_num">
+                                    <div class="metrics-segment relative cursor-pointer"
+                                         :class="getSegmentColor(index)"
+                                         :style="`width: ${getSegmentWidth(story.total_duration_ms, metricsModal.data.total_duration_ms)}%`"
+                                         @mouseenter="showSegmentTooltip($event, story)"
+                                         @mousemove="showSegmentTooltip($event, story)"
+                                         @mouseleave="hideSegmentTooltip()"
+                                         :data-testid="`segment-${story.story_num}`">
+                                        <!-- Story number label (shown if segment wide enough) -->
+                                        <span x-show="getSegmentWidth(story.total_duration_ms, metricsModal.data.total_duration_ms) > 8"
+                                              class="absolute inset-0 flex items-center justify-center text-xs text-white font-medium"
+                                              x-text="`${metricsModal.epicId}.${story.story_num}`"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- Stories Accordion -->
+                        <div class="metrics-accordion space-y-1" data-testid="metrics-accordion">
+                            <template x-for="story in (metricsModal.data?.stories || [])" :key="story.story_num">
+                                <div class="border border-border rounded">
+                                    <!-- Story Header -->
+                                    <button @click="toggleMetricsStory(story.story_num)"
+                                            @keydown.enter="toggleMetricsStory(story.story_num)"
+                                            @keydown.space.prevent="toggleMetricsStory(story.story_num)"
+                                            class="w-full flex items-center justify-between px-4 py-2 hover:bg-muted text-left"
+                                            :aria-expanded="isMetricsStoryExpanded(story.story_num)"
+                                            :data-testid="`accordion-${story.story_num}`">
+                                        <div class="flex items-center gap-2">
+                                            <i :data-lucide="isMetricsStoryExpanded(story.story_num) ? 'chevron-down' : 'chevron-right'"
+                                               class="w-4 h-4 transition-transform"></i>
+                                            <span x-text="`${metricsModal.epicId}.${story.story_num} ${story.title}`"></span>
+                                        </div>
+                                        <span class="tabular-nums text-muted-foreground" x-text="formatDuration(story.total_duration_ms)"></span>
+                                    </button>
+                                    <!-- Story Details (expanded) -->
+                                    <div x-show="isMetricsStoryExpanded(story.story_num)"
+                                         x-transition:enter="transition ease-out duration-150"
+                                         x-transition:enter-start="opacity-0"
+                                         x-transition:enter-end="opacity-100"
+                                         class="px-4 py-2 border-t border-border bg-muted/50">
+                                        <template x-for="(wdata, workflow) in (story.workflows || {})" :key="workflow">
+                                            <div class="flex justify-between py-1 text-sm">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-muted-foreground" x-text="workflow"></span>
+                                                    <span class="text-xs text-muted-foreground/60" x-text="`(${(wdata.roles || []).join(', ')})`"></span>
+                                                </div>
+                                                <span class="tabular-nums" x-text="formatDuration(wdata.duration_ms)"></span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Segment Tooltip (positioned fixed, outside modal card) -->
+        <div x-show="_hoveredSegment"
+             x-transition
+             class="metrics-tooltip fixed z-50 bg-popover border border-border px-3 py-2 rounded shadow-lg text-sm pointer-events-none"
+             :style="`left: ${_tooltipPosition.x}px; top: ${_tooltipPosition.y}px`"
+             data-testid="metrics-tooltip">
+            <span x-text="_hoveredSegment?.label || ''"></span>
+        </div>
+    </div>
+
+    <!-- Prompt Browser Modal (Story 23.5) -->
+    <div x-show="promptBrowser.show"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         @keydown.escape.window="if (promptBrowser.show && !contentModal.show && !busyModal.show) closePromptBrowser()"
+         class="fixed inset-0 z-40 flex items-center justify-center bg-black/50"
+         data-testid="prompt-browser-modal">
+
+        <div class="card shadow-xl p-0 gap-0 overflow-hidden w-4/5 max-h-[80vh] flex flex-col"
+             x-show="promptBrowser.show"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 scale-95"
+             x-transition:enter-end="opacity-100 scale-100"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100 scale-100"
+             x-transition:leave-end="opacity-0 scale-95"
+             role="dialog"
+             aria-modal="true"
+             @click.outside="closePromptBrowser()">
+
+            <!-- Header -->
+            <div class="flex items-center justify-between px-4 py-2 border-b border-border">
+                <h2 class="text-lg font-semibold flex items-center gap-2">
+                    <i data-lucide="file-code" class="w-5 h-5"></i>
+                    <span x-text="promptBrowser.title"></span>
+                </h2>
+                <div class="flex items-center gap-2">
+                    <button @click="copyToClipboard(promptBrowser.content)"
+                            class="btn-sm-icon-ghost"
+                            title="Copy raw XML"
+                            aria-label="Copy raw XML to clipboard">
+                        <i data-lucide="clipboard" class="w-4 h-4"></i>
+                    </button>
+                    <button @click="closePromptBrowser()"
+                            class="btn-sm-icon-ghost"
+                            data-testid="close-prompt-browser">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Content -->
+            <div class="flex-1 overflow-auto p-4">
+
+                <!-- Loading State -->
+                <div x-show="promptBrowser.loading" class="flex items-center justify-center py-12">
+                    <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-primary"></i>
+                    <span class="ml-3 text-muted-foreground">Parsing prompt structure...</span>
+                </div>
+
+                <!-- Error State -->
+                <div x-show="promptBrowser.parseError && !promptBrowser.loading" class="space-y-4">
+                    <div class="bg-destructive/10 border border-destructive/30 rounded p-4">
+                        <div class="flex items-center gap-2 text-destructive mb-2">
+                            <i data-lucide="alert-circle" class="w-5 h-5"></i>
+                            <span class="font-medium">Unable to parse prompt structure</span>
+                        </div>
+                        <p class="text-sm text-muted-foreground" x-text="promptBrowser.parseError"></p>
+                    </div>
+                    <button @click="contentModal.title = promptBrowser.title; contentModal.content = promptBrowser.content; contentModal.type = 'xml'; contentModal.show = true; closePromptBrowser();"
+                            class="btn-outline"
+                            data-testid="view-raw-xml">
+                        <i data-lucide="code" class="w-4 h-4 mr-2"></i>
+                        View Raw XML
+                    </button>
+                </div>
+
+                <!-- Parsed Content -->
+                <div x-show="promptBrowser.parsed && !promptBrowser.loading && !promptBrowser.parseError" class="space-y-3">
+
+                    <!-- Mission Section (collapsible, starts expanded) - Story 23.6: Content type detection, Story 24.4: Collapsible -->
+                    <div class="prompt-section" data-testid="section-mission">
+                        <div class="prompt-section-header"
+                             :class="{ 'expanded': isExpanded('mission') }"
+                             @click="toggleSection('mission')"
+                             @keydown.enter="toggleSection('mission')"
+                             @keydown.space.prevent="toggleSection('mission')"
+                             tabindex="0"
+                             role="button"
+                             :aria-expanded="isExpanded('mission')">
+                            <i :data-lucide="getChevronIcon('mission')" class="w-4 h-4 chevron"></i>
+                            <i data-lucide="target" class="w-4 h-4 text-primary"></i>
+                            <span class="font-medium">Mission</span>
+                        </div>
+                        <div x-show="isExpanded('mission')"
+                             x-transition:enter="transition ease-out duration-150"
+                             x-transition:enter-start="opacity-0"
+                             x-transition:enter-end="opacity-100"
+                             class="prompt-section-content">
+                            <!-- Mission content with cached type detection (typically markdown) -->
+                            <template x-if="promptBrowser.parsed?.missionContentType === 'markdown'">
+                                <div class="markdown-content text-sm"
+                                     x-html="renderMarkdownContent(promptBrowser.parsed?.mission || '', 'mission')"></div>
+                            </template>
+                            <template x-if="promptBrowser.parsed?.missionContentType !== 'markdown'">
+                                <pre class="text-sm whitespace-pre-wrap font-mono" x-text="promptBrowser.parsed?.mission || ''"></pre>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- File Index Section (collapsed by default) -->
+                    <template x-if="promptBrowser.parsed?.fileIndex?.length > 0">
+                        <div class="prompt-section" data-testid="section-file-index">
+                            <div class="prompt-section-header"
+                                 :class="{ 'expanded': isExpanded('file-index') }"
+                                 @click="toggleSection('file-index')"
+                                 @keydown.enter="toggleSection('file-index')"
+                                 @keydown.space.prevent="toggleSection('file-index')"
+                                 tabindex="0"
+                                 role="button"
+                                 :aria-expanded="isExpanded('file-index')">
+                                <i :data-lucide="getChevronIcon('file-index')" class="w-4 h-4 chevron"></i>
+                                <i data-lucide="list" class="w-4 h-4 text-muted-foreground"></i>
+                                <span>File Index</span>
+                                <span class="text-xs text-muted-foreground ml-auto" x-text="`${promptBrowser.parsed?.fileIndex?.length || 0} files`"></span>
+                            </div>
+                            <div x-show="isExpanded('file-index')"
+                                 x-transition:enter="transition ease-out duration-150"
+                                 x-transition:enter-start="opacity-0"
+                                 x-transition:enter-end="opacity-100"
+                                 class="prompt-section-content">
+                                <div class="space-y-1">
+                                    <template x-for="entry in promptBrowser.parsed?.fileIndex || []" :key="entry.id">
+                                        <div class="flex items-center gap-2 text-sm font-mono">
+                                            <span class="text-muted-foreground w-20 truncate" x-text="entry.id"></span>
+                                            <span x-text="entry.path"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Context Files Section -->
+                    <template x-if="promptBrowser.parsed?.context?.files?.length > 0">
+                        <div class="prompt-section" data-testid="section-context">
+                            <div class="prompt-section-header expanded">
+                                <i data-lucide="folder-open" class="w-4 h-4 text-accent"></i>
+                                <span class="font-medium">Context Files</span>
+                                <span class="text-xs text-muted-foreground ml-auto" x-text="`${promptBrowser.parsed?.context?.files?.length || 0} files`"></span>
+                            </div>
+                            <div class="prompt-section-content p-0">
+                                <div class="space-y-1">
+                                    <template x-for="(file, index) in promptBrowser.parsed?.context?.files || []" :key="file.id || index">
+                                        <div class="prompt-file-section"
+                                             :data-section-id="`file-${file.id || index}`">
+                                            <div class="prompt-section-header"
+                                                 :class="{ 'expanded': isExpanded(`file-${file.id || index}`) }"
+                                                 @click="toggleFileSection(`file-${file.id || index}`, file.content, getFileLanguage(file.path))"
+                                                 @keydown.enter="toggleFileSection(`file-${file.id || index}`, file.content, getFileLanguage(file.path))"
+                                                 @keydown.space.prevent="toggleFileSection(`file-${file.id || index}`, file.content, getFileLanguage(file.path))"
+                                                 tabindex="0"
+                                                 role="button"
+                                                 :aria-expanded="isExpanded(`file-${file.id || index}`)">
+                                                <i :data-lucide="getChevronIcon(`file-${file.id || index}`)" class="w-4 h-4 chevron"></i>
+                                                <i data-lucide="file" class="w-4 h-4 text-muted-foreground"></i>
+                                                <span class="text-sm font-mono truncate" x-text="getFilenameWithMapping(file.path)" :title="getPathWithMapping(file.path)"></span>
+                                                <!-- CDATA indicator (Story 23.6 AC1, Story 24.4: package icon) -->
+                                                <span x-show="file.hasCdata"
+                                                      class="cdata-indicator ml-1"
+                                                      title="Content wrapped in CDATA"
+                                                      x-effect="if (file.hasCdata) $nextTick(() => refreshIcons())">
+                                                    <i data-lucide="package" class="w-3 h-3"></i>
+                                                </span>
+                                                <span class="text-xs text-muted-foreground ml-auto opacity-60" x-text="estimateTokens(file.content)"></span>
+                                            </div>
+                                            <div x-show="isExpanded(`file-${file.id || index}`)"
+                                                 x-transition:enter="transition ease-out duration-150"
+                                                 x-transition:enter-start="opacity-0"
+                                                 x-transition:enter-end="opacity-100"
+                                                 class="prompt-section-content file-content-wrapper">
+                                                <div class="text-xs text-muted-foreground mb-2 font-mono truncate" x-text="getPathWithMapping(file.path)"></div>
+                                                <!-- Content type based rendering (Story 23.6 AC2-AC5) -->
+                                                <div class="file-content-code">
+                                                    <!-- Markdown content -->
+                                                    <template x-if="file.contentType === 'markdown'">
+                                                        <div class="markdown-content text-sm"
+                                                             x-html="renderMarkdownContent(file.content, `file-${file.id || index}`)"></div>
+                                                    </template>
+                                                    <!-- XML content -->
+                                                    <template x-if="file.contentType === 'xml'">
+                                                        <div class="xml-content"
+                                                             x-html="renderXmlContent(file.content, `file-${file.id || index}`)"></div>
+                                                    </template>
+                                                    <!-- Plain text fallback -->
+                                                    <template x-if="file.contentType === 'text' || !file.contentType">
+                                                        <pre class="shiki shiki-loading text-sm"><code x-text="file.content"></code></pre>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Variables Section (Story 23.7 - Enhanced with view toggle) -->
+                    <template x-if="promptBrowser.parsed?.variables?.length > 0">
+                        <div class="prompt-section" data-testid="section-variables">
+                            <div class="prompt-section-header"
+                                 :class="{ 'expanded': isExpanded('variables') }"
+                                 @click="toggleSection('variables')"
+                                 @keydown.enter="toggleSection('variables')"
+                                 @keydown.space.prevent="toggleSection('variables')"
+                                 tabindex="0"
+                                 role="button"
+                                 :aria-expanded="isExpanded('variables')">
+                                <i :data-lucide="getChevronIcon('variables')" class="w-4 h-4 chevron"></i>
+                                <i data-lucide="variable" class="w-4 h-4 text-chart-3"></i>
+                                <span>Variables</span>
+                                <span class="text-xs text-muted-foreground ml-auto mr-2" x-text="`${promptBrowser.parsed?.variables?.length || 0} vars`"></span>
+                                <!-- View toggle buttons (Story 23.7 AC1) -->
+                                <div class="variables-view-toggle" @click.stop data-testid="variables-view-toggle">
+                                    <button @click="variablesView = 'rendered'"
+                                            :class="{'active': variablesView === 'rendered'}"
+                                            class="flex items-center gap-1 px-2 py-0.5 text-xs rounded"
+                                            title="Rendered view"
+                                            data-testid="variables-view-rendered">
+                                        <i data-lucide="layout-grid" class="w-3 h-3"></i>
+                                    </button>
+                                    <button @click="variablesView = 'raw'"
+                                            :class="{'active': variablesView === 'raw'}"
+                                            class="flex items-center gap-1 px-2 py-0.5 text-xs rounded"
+                                            title="Raw XML"
+                                            data-testid="variables-view-raw">
+                                        <i data-lucide="code" class="w-3 h-3"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div x-show="isExpanded('variables')"
+                                 x-transition:enter="transition ease-out duration-150"
+                                 x-transition:enter-start="opacity-0"
+                                 x-transition:enter-end="opacity-100"
+                                 class="prompt-section-content">
+                                <!-- Rendered view (Story 23.7 AC2) -->
+                                <template x-if="variablesView === 'rendered'">
+                                    <div class="variables-rendered-view" data-testid="variables-rendered">
+                                        <template x-for="categoryName in getVariableCategoryOrder()" :key="categoryName">
+                                            <div class="variables-category">
+                                                <div class="variables-category-header" x-text="categoryName"></div>
+                                                <div class="variables-grid">
+                                                    <template x-for="v in getVariablesForCategory(categoryName)" :key="v.name">
+                                                        <div class="variable-item">
+                                                            <span class="variable-name" x-text="v.name"></span>
+                                                            <span class="text-muted-foreground">=</span>
+                                                            <!-- FIX: Show tooltip for all values (paths or long values get truncated at 200px) -->
+                                                            <span class="variable-value"
+                                                                  :class="{'cursor-help': isPathShortened(v) || (v.fullValue && v.fullValue.length > 30)}"
+                                                                  :title="v.fullValue"
+                                                                  x-text="v.displayValue"></span>
+                                                            <span x-show="v.fileId" class="text-xs text-muted-foreground opacity-60" x-text="`[${v.fileId}]`"></span>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                                <!-- Raw XML view (Story 23.7 AC4) -->
+                                <template x-if="variablesView === 'raw'">
+                                    <div class="xml-content" data-testid="variables-raw"
+                                         x-html="renderXmlContent(getVariablesRawXml(), 'variables-raw')"></div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Instructions Section (expanded by default) - Story 23.6: Content type detection, Story 24.4: Default via JS -->
+                    <div class="prompt-section" data-testid="section-instructions">
+                        <div class="prompt-section-header"
+                             :class="{ 'expanded': isExpanded('instructions') }"
+                             @click="toggleSection('instructions')"
+                             @keydown.enter="toggleSection('instructions')"
+                             @keydown.space.prevent="toggleSection('instructions')"
+                             tabindex="0"
+                             role="button"
+                             :aria-expanded="isExpanded('instructions')">
+                            <i :data-lucide="getChevronIcon('instructions')" class="w-4 h-4 chevron"></i>
+                            <i data-lucide="list-checks" class="w-4 h-4 text-primary"></i>
+                            <span class="font-medium">Instructions</span>
+                        </div>
+                        <div x-show="isExpanded('instructions')"
+                             x-transition:enter="transition ease-out duration-150"
+                             x-transition:enter-start="opacity-0"
+                             x-transition:enter-end="opacity-100"
+                             class="prompt-section-content">
+                            <!-- Instructions content with cached type detection (typically XML) -->
+                            <template x-if="promptBrowser.parsed?.instructionsContentType === 'xml'">
+                                <div class="xml-content"
+                                     x-html="renderXmlContent(promptBrowser.parsed?.instructions || '', 'instructions')"></div>
+                            </template>
+                            <template x-if="promptBrowser.parsed?.instructionsContentType !== 'xml'">
+                                <pre class="text-sm whitespace-pre-wrap font-mono overflow-x-auto" x-text="promptBrowser.parsed?.instructions || ''"></pre>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Output Template Section (collapsed by default) - Story 23.6: Content type detection -->
+                    <template x-if="promptBrowser.parsed?.output">
+                        <div class="prompt-section" data-testid="section-output">
+                            <div class="prompt-section-header"
+                                 :class="{ 'expanded': isExpanded('output') }"
+                                 @click="toggleSection('output')"
+                                 @keydown.enter="toggleSection('output')"
+                                 @keydown.space.prevent="toggleSection('output')"
+                                 tabindex="0"
+                                 role="button"
+                                 :aria-expanded="isExpanded('output')">
+                                <i :data-lucide="getChevronIcon('output')" class="w-4 h-4 chevron"></i>
+                                <i data-lucide="file-output" class="w-4 h-4 text-bp-warning"></i>
+                                <span>Output Template</span>
+                            </div>
+                            <div x-show="isExpanded('output')"
+                                 x-transition:enter="transition ease-out duration-150"
+                                 x-transition:enter-start="opacity-0"
+                                 x-transition:enter-end="opacity-100"
+                                 class="prompt-section-content">
+                                <!-- Output content with cached type detection (typically markdown) -->
+                                <template x-if="promptBrowser.parsed?.outputContentType === 'markdown'">
+                                    <div class="markdown-content text-sm"
+                                         x-html="renderMarkdownContent(promptBrowser.parsed?.output || '', 'output')"></div>
+                                </template>
+                                <template x-if="promptBrowser.parsed?.outputContentType !== 'markdown'">
+                                    <pre class="text-sm whitespace-pre-wrap font-mono" x-text="promptBrowser.parsed?.output || ''"></pre>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report List Modal (Story 16.9 - AC 4) - Updated for both Validation and Code Review -->
     <div x-show="reportModal.show"
          x-transition:enter="transition ease-out duration-200"
          x-transition:enter-start="opacity-0"
@@ -2944,7 +3491,7 @@
          class="fixed inset-0 z-40 flex items-center justify-center bg-black/50"
          data-testid="report-modal">
 
-        <div class="card shadow-xl w-96 max-h-[60vh] flex flex-col"
+        <div class="card shadow-xl p-0 gap-0 overflow-hidden w-[480px] max-h-[70vh] flex flex-col"
              x-show="reportModal.show"
              x-transition:enter="transition ease-out duration-200"
              x-transition:enter-start="opacity-0 scale-95"
@@ -2957,41 +3504,83 @@
              @click.outside="reportModal.show = false">
 
             <!-- Header -->
-            <div class="px-4 py-3 border-b border-border">
+            <div class="px-4 py-2 border-b border-border">
                 <h2 class="text-lg font-semibold flex items-center gap-2">
                     <i data-lucide="file-text" class="w-5 h-5"></i>
-                    Validation Reports
+                    Review Reports
                     <span class="text-muted-foreground text-sm" x-text="`${reportModal.epic}.${reportModal.story}`"></span>
                 </h2>
             </div>
 
             <!-- Report List -->
-            <div class="flex-1 overflow-auto p-2">
-                <!-- Synthesis (highlighted) -->
-                <template x-if="reportModal.synthesis">
-                    <button @click="loadReportContent(reportModal.synthesis)"
-                            class="w-full text-left px-3 py-2 rounded bg-primary/10 hover:bg-primary/20 mb-2 focus:ring-2 focus:ring-ring focus:outline-none flex items-center gap-2"
-                            data-testid="synthesis-report">
-                        <i data-lucide="edit" class="w-4 h-4 text-primary"></i>
-                        <span class="text-primary font-medium">Synthesis Report</span>
-                    </button>
-                </template>
+            <div class="flex-1 overflow-auto p-3 space-y-4">
 
-                <!-- Individual Reports -->
-                <template x-for="report in reportModal.reports" :key="report.path">
-                    <button @click="loadReportContent(report)"
-                            class="w-full text-left px-3 py-2 rounded hover:bg-secondary mb-1 focus:ring-2 focus:ring-ring focus:outline-none flex items-center gap-2"
-                            data-testid="report-item">
-                        <i data-lucide="file" class="w-4 h-4"></i>
-                        <span x-text="report.provider || report.name"></span>
-                    </button>
-                </template>
+                <!-- Validation Section -->
+                <div class="space-y-2">
+                    <h3 class="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <i data-lucide="check-circle" class="w-4 h-4 text-bp-warning"></i>
+                        Validation Reports
+                    </h3>
 
-                <!-- Empty State -->
-                <div x-show="reportModal.reports.length === 0 && !reportModal.synthesis"
-                     class="text-muted-foreground text-center py-4"
-                     data-testid="empty-reports">
-                    No validation reports found for <span x-text="`${reportModal.epic}.${reportModal.story}`"></span>
+                    <!-- Validation Synthesis -->
+                    <template x-if="reportModal.validation?.synthesis">
+                        <button @click="loadReportContent(reportModal.validation.synthesis)"
+                                class="w-full text-left px-3 py-2 rounded bg-bp-warning/10 hover:bg-bp-warning/20 focus:ring-2 focus:ring-ring focus:outline-none flex items-center gap-2"
+                                data-testid="validation-synthesis">
+                            <i data-lucide="edit" class="w-4 h-4 text-bp-warning"></i>
+                            <span class="text-bp-warning font-medium">Validation Synthesis</span>
+                        </button>
+                    </template>
+
+                    <!-- Validation Individual Reports (Story 24.8: Show mapped model names) -->
+                    <template x-for="report in (reportModal.validation?.reports || [])" :key="report.path">
+                        <button @click="loadReportContent(report)"
+                                class="w-full text-left px-3 py-2 rounded hover:bg-secondary focus:ring-2 focus:ring-ring focus:outline-none flex items-center gap-2"
+                                data-testid="validation-report-item">
+                            <i data-lucide="file" class="w-4 h-4"></i>
+                            <span x-text="getReportDisplayName(report)"></span>
+                        </button>
+                    </template>
+
+                    <!-- Validation Empty State -->
+                    <div x-show="(reportModal.validation?.reports || []).length === 0 && !reportModal.validation?.synthesis"
+                         class="text-muted-foreground text-center py-2 text-sm">
+                        No validation reports
+                    </div>
+                </div>
+
+                <!-- Code Review Section -->
+                <div class="space-y-2 pt-2 border-t border-border">
+                    <h3 class="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <i data-lucide="code" class="w-4 h-4 text-destructive"></i>
+                        Code Review Reports
+                    </h3>
+
+                    <!-- Code Review Synthesis -->
+                    <template x-if="reportModal.code_review?.synthesis">
+                        <button @click="loadReportContent(reportModal.code_review.synthesis)"
+                                class="w-full text-left px-3 py-2 rounded bg-destructive/10 hover:bg-destructive/20 focus:ring-2 focus:ring-ring focus:outline-none flex items-center gap-2"
+                                data-testid="code-review-synthesis">
+                            <i data-lucide="edit" class="w-4 h-4 text-destructive"></i>
+                            <span class="text-destructive font-medium">Code Review Synthesis</span>
+                        </button>
+                    </template>
+
+                    <!-- Code Review Individual Reports (Story 24.8: Show mapped model names) -->
+                    <template x-for="report in (reportModal.code_review?.reports || [])" :key="report.path">
+                        <button @click="loadReportContent(report)"
+                                class="w-full text-left px-3 py-2 rounded hover:bg-secondary focus:ring-2 focus:ring-ring focus:outline-none flex items-center gap-2"
+                                data-testid="code-review-report-item">
+                            <i data-lucide="file" class="w-4 h-4"></i>
+                            <span x-text="getReportDisplayName(report)"></span>
+                        </button>
+                    </template>
+
+                    <!-- Code Review Empty State -->
+                    <div x-show="(reportModal.code_review?.reports || []).length === 0 && !reportModal.code_review?.synthesis"
+                         class="text-muted-foreground text-center py-2 text-sm">
+                        No code review reports
+                    </div>
                 </div>
             </div>
 
@@ -3015,14 +3604,14 @@
          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
          data-testid="import-modal">
 
-        <div class="card shadow-xl w-[600px] max-h-[80vh] flex flex-col"
+        <div class="card shadow-xl p-0 gap-0 overflow-hidden w-[600px] max-h-[80vh] flex flex-col"
              x-show="importView.modalOpen"
              x-transition:enter="transition ease-out duration-200"
              x-transition:enter-start="opacity-0 scale-95"
              x-transition:enter-end="opacity-100 scale-100">
 
             <!-- Header -->
-            <div class="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div class="flex items-center justify-between px-4 py-2 border-b border-border">
                 <h2 class="text-lg font-semibold flex items-center gap-2">
                     <i data-lucide="file-up" class="w-5 h-5"></i>
                     Import Preview
@@ -3035,7 +3624,7 @@
             </div>
 
             <!-- Scope Selector (disabled while loading) -->
-            <div class="px-4 py-3 border-b border-border flex items-center gap-4">
+            <div class="px-4 py-2 border-b border-border flex items-center gap-4">
                 <span class="text-sm text-muted-foreground">Import to:</span>
                 <label class="flex items-center gap-2 cursor-pointer" :class="{'opacity-50': importView.loading}">
                     <input type="radio" value="global" x-model="importView.scope"
@@ -3175,7 +3764,7 @@
          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
          data-testid="run-trigger-modal">
 
-        <div class="card shadow-xl w-full max-w-md"
+        <div class="card shadow-xl p-0 gap-0 overflow-hidden w-full max-w-md"
              x-show="runTrigger.modalOpen"
              x-transition:enter="transition ease-out duration-200"
              x-transition:enter-start="opacity-0 scale-95"
@@ -3186,7 +3775,7 @@
              @click.outside="closeRunTriggerModal()">
 
             <!-- Header -->
-            <div class="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div class="flex items-center justify-between px-4 py-2 border-b border-border">
                 <h2 class="text-lg font-semibold flex items-center gap-2">
                     <i data-lucide="play-circle" class="w-5 h-5"></i>
                     Start Experiment Run
@@ -3296,7 +3885,7 @@
          class="fixed bottom-4 right-4 z-40 w-80"
          data-testid="active-experiment-progress">
 
-        <div class="card shadow-xl border border-border">
+        <div class="card shadow-xl p-0 gap-0 overflow-hidden border border-border">
             <!-- Header -->
             <div class="flex items-center justify-between px-3 py-2 border-b border-border bg-card">
                 <div class="flex items-center gap-2">
@@ -3350,6 +3939,24 @@
         </div>
     </div>
 
+    <!-- Component scripts (load before alpine-init.js orchestrator) -->
+    <script src="/js/utils.js"></script>
+    <!-- Shiki highlighter - ESM module for CDN imports (Story 23.3) -->
+    <script src="/js/shiki-highlighter.js" type="module"></script>
+    <script src="/js/components/tree-view.js"></script>
+    <script src="/js/components/terminal.js"></script>
+    <script src="/js/components/settings.js"></script>
+    <script src="/js/components/experiments.js"></script>
+    <script src="/js/components/context-menu.js"></script>
+    <script src="/js/components/modals.js"></script>
+    <!-- Shared content browser utilities (Story 24.1) - must load BEFORE prompt-browser.js which uses it -->
+    <script src="/js/components/content-browser.js"></script>
+    <!-- Epic metrics browser (Story 24.7) -->
+    <script src="/js/components/epic-metrics.js"></script>
+    <script src="/js/components/prompt-browser.js"></script>
+    <script src="/js/components/sse-connection.js"></script>
+    <script src="/js/components/loop-control.js"></script>
+    <!-- Orchestrator that combines all components -->
     <script src="/js/alpine-init.js"></script>
 </body>
 </html>

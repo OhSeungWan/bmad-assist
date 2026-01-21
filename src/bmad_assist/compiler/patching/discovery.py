@@ -33,6 +33,64 @@ DEFAULT_PATCH_DIR = ".bmad-assist/patches"
 DEFAULTS_FILENAME = "defaults.yaml"
 
 
+def determine_patch_source_level(
+    patch_path: Path,
+    project_root: Path,
+    cwd: Path | None = None,
+) -> Path | None:
+    """Determine which cache location corresponds to a patch's source.
+
+    Maps patch discovery location to appropriate cache location:
+    - Patch in project → cache in project
+    - Patch in CWD → cache in CWD
+    - Patch in home (global) → cache in home (None = global)
+
+    Args:
+        patch_path: Path to the discovered patch file.
+        project_root: Project root directory.
+        cwd: Current working directory (optional).
+
+    Returns:
+        Path for cache location (project_root or cwd), or None for global cache.
+
+    """
+    resolved_patch = patch_path.resolve()
+    resolved_project = project_root.resolve()
+    resolved_cwd = cwd.resolve() if cwd is not None else None
+
+    # Check if patch is under project
+    project_patches_dir = resolved_project / DEFAULT_PATCH_DIR
+    try:
+        if resolved_patch.is_relative_to(project_patches_dir):
+            logger.debug("Patch source: project (%s)", project_root)
+            return project_root
+    except ValueError as e:
+        logger.debug("Path comparison failed for project: %s", e)
+
+    # Check if patch is under CWD (if different from project)
+    if resolved_cwd is not None and resolved_cwd != resolved_project:
+        cwd_patches_dir = resolved_cwd / DEFAULT_PATCH_DIR
+        try:
+            if resolved_patch.is_relative_to(cwd_patches_dir):
+                logger.debug("Patch source: cwd (%s)", cwd)
+                return cwd
+        except ValueError as e:
+            logger.debug("Path comparison failed for cwd: %s", e)
+
+    # Check if patch is under home (global)
+    home_patches_dir = Path.home() / DEFAULT_PATCH_DIR
+    try:
+        if resolved_patch.is_relative_to(home_patches_dir):
+            logger.debug("Patch source: global (%s)", home_patches_dir)
+            return None
+    except ValueError as e:
+        logger.debug("Path comparison failed for global: %s", e)
+
+    # Fallback: unknown source, use project as default
+    logger.debug("Patch source: unknown (%s), defaulting to project (%s)", patch_path, project_root)
+    return project_root
+
+
 def discover_patch(
     workflow_name: str,
     project_root: Path,

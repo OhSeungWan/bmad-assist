@@ -43,8 +43,10 @@ class TestTraceCompilerWorkflowDir:
 
         workflow_dir = compiler.get_workflow_dir(context)
 
-        expected = tmp_path / "_bmad/bmm/workflows/testarch/trace"
-        assert workflow_dir == expected
+        # With bundled workflows, falls back to package path when BMAD not installed
+        bmad_path = tmp_path / "_bmad/bmm/workflows/testarch/trace"
+        bundled_path_suffix = "workflows/testarch-trace"
+        assert workflow_dir == bmad_path or str(workflow_dir).endswith(bundled_path_suffix)
 
 
 class TestTraceCompilerRequiredFiles:
@@ -305,7 +307,11 @@ class TestTraceCompilerErrorHandling:
     """Test error handling in TraceCompiler."""
 
     def test_compile_fails_with_missing_workflow_dir(self, tmp_path: Path) -> None:
-        """Test compile fails gracefully when workflow dir missing."""
+        """Test compile uses bundled fallback when workflow dir missing.
+
+        With bundled workflows, compile_workflow should NOT fail when
+        the BMAD directory doesn't exist - it falls back to bundled.
+        """
         context = CompilerContext(
             project_root=tmp_path,
             output_folder=tmp_path / "docs",
@@ -315,5 +321,6 @@ class TestTraceCompilerErrorHandling:
             "epic_num": "1",
         }
 
-        with pytest.raises(CompilerError):
-            compile_workflow("testarch-trace", context)
+        # Should NOT raise - uses bundled workflow as fallback
+        result = compile_workflow("testarch-trace", context)
+        assert result.workflow_name == "testarch-trace"

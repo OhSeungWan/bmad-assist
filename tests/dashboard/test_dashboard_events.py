@@ -6,16 +6,16 @@ Tests for stdout marker protocol and event emission functions.
 """
 
 import json
-import os
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from datetime import datetime
 
 import pytest
 
 from bmad_assist.core.loop.dashboard_events import (
     DASHBOARD_EVENT_MARKER,
+    emit_phase_complete,
     emit_story_status,
     emit_story_transition,
+    emit_validator_progress,
     emit_workflow_status,
     generate_run_id,
     parse_story_id,
@@ -173,8 +173,12 @@ class TestParseStoryId:
             parse_story_id("22.9.extra")  # Too many parts
 
     def test_parse_story_id_invalid_numeric(self) -> None:
-        """Test that non-numeric parts raise ValueError."""
-        with pytest.raises(ValueError, match="numeric parts required"):
+        """Test that non-numeric story_num raises ValueError.
+
+        Note: epic_num can now be a string (e.g., "testarch.1"), so only
+        story_num is required to be numeric.
+        """
+        with pytest.raises(ValueError, match="story_num must be numeric"):
             parse_story_id("abc.def")
 
 
@@ -228,3 +232,124 @@ class TestGenerateRunId:
 
         # Verify it can be parsed as datetime
         datetime.strptime(timestamp_str, "%Y%m%d-%H%M%S")
+
+
+class TestEmitValidatorProgress:
+    """Tests for emit_validator_progress function (Story 22.11)."""
+
+    def test_emit_validator_progress_prints_marker(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Test that emit_validator_progress prints DASHBOARD_EVENT marker."""
+        emit_validator_progress(
+            run_id="run-20260115-080000-a1b2c3d4",
+            sequence_id=5,
+            validator_id="validator-a",
+            status="completed",
+            duration_ms=45000,
+        )
+
+        captured = capsys.readouterr()
+        assert captured.out.startswith(DASHBOARD_EVENT_MARKER)
+
+        json_str = captured.out[len(DASHBOARD_EVENT_MARKER) :].strip()
+        data = json.loads(json_str)
+
+        assert data["type"] == "validator_progress"
+        assert data["data"]["validator_id"] == "validator-a"
+        assert data["data"]["status"] == "completed"
+        assert data["data"]["duration_ms"] == 45000
+
+    def test_emit_validator_progress_timeout(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Test emit_validator_progress with timeout status."""
+        emit_validator_progress(
+            run_id="run-20260115-080000-a1b2c3d4",
+            sequence_id=6,
+            validator_id="validator-b",
+            status="timeout",
+            duration_ms=300000,
+        )
+
+        captured = capsys.readouterr()
+        json_str = captured.out[len(DASHBOARD_EVENT_MARKER) :].strip()
+        data = json.loads(json_str)
+
+        assert data["data"]["status"] == "timeout"
+
+    def test_emit_validator_progress_no_duration(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Test emit_validator_progress without duration_ms."""
+        emit_validator_progress(
+            run_id="run-20260115-080000-a1b2c3d4",
+            sequence_id=7,
+            validator_id="validator-c",
+            status="failed",
+        )
+
+        captured = capsys.readouterr()
+        json_str = captured.out[len(DASHBOARD_EVENT_MARKER) :].strip()
+        data = json.loads(json_str)
+
+        assert data["data"]["status"] == "failed"
+        assert data["data"]["duration_ms"] is None
+
+
+class TestEmitPhaseComplete:
+    """Tests for emit_phase_complete function (Story 22.11)."""
+
+    def test_emit_phase_complete_success(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Test emit_phase_complete with successful phase."""
+        emit_phase_complete(
+            run_id="run-20260115-080000-a1b2c3d4",
+            sequence_id=10,
+            phase_name="VALIDATE_STORY",
+            success=True,
+            validator_count=6,
+            failed_count=0,
+        )
+
+        captured = capsys.readouterr()
+        assert captured.out.startswith(DASHBOARD_EVENT_MARKER)
+
+        json_str = captured.out[len(DASHBOARD_EVENT_MARKER) :].strip()
+        data = json.loads(json_str)
+
+        assert data["type"] == "phase_complete"
+        assert data["data"]["phase_name"] == "VALIDATE_STORY"
+        assert data["data"]["success"] is True
+        assert data["data"]["validator_count"] == 6
+        assert data["data"]["failed_count"] == 0
+
+    def test_emit_phase_complete_with_failures(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Test emit_phase_complete with some failed validators."""
+        emit_phase_complete(
+            run_id="run-20260115-080000-a1b2c3d4",
+            sequence_id=11,
+            phase_name="VALIDATE_STORY",
+            success=False,
+            validator_count=6,
+            failed_count=2,
+        )
+
+        captured = capsys.readouterr()
+        json_str = captured.out[len(DASHBOARD_EVENT_MARKER) :].strip()
+        data = json.loads(json_str)
+
+        assert data["data"]["success"] is False
+        assert data["data"]["failed_count"] == 2
+
+    def test_emit_phase_complete_includes_timestamp(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Test that phase_complete event includes ISO 8601 timestamp."""
+        emit_phase_complete(
+            run_id="run-20260115-080000-a1b2c3d4",
+            sequence_id=12,
+            phase_name="CODE_REVIEW",
+            success=True,
+            validator_count=3,
+            failed_count=0,
+        )
+
+        captured = capsys.readouterr()
+        json_str = captured.out[len(DASHBOARD_EVENT_MARKER) :].strip()
+        data = json.loads(json_str)
+
+        # Verify timestamp is present and valid ISO 8601
+        assert "timestamp" in data
+        datetime.fromisoformat(data["timestamp"].replace("Z", "+00:00"))

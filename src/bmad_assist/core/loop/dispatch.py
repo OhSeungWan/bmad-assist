@@ -44,14 +44,21 @@ def init_handlers(config: "Config", project_path: Path) -> None:
     Must be called once before get_handler() can return real handlers.
     Called from run_loop() at startup.
 
+    Validates that all phases in LoopConfig have registered handlers.
+    Raises ConfigError if any config phase is missing a handler.
+
     Args:
         config: Application configuration with provider settings.
         project_path: Path to the project root directory.
+
+    Raises:
+        ConfigError: If a phase in LoopConfig has no registered handler.
 
     """
     global _handler_instances, _handlers_initialized
 
     # Import here to avoid circular imports
+    from bmad_assist.core.config import ConfigError, get_loop_config
     from bmad_assist.core.loop.handlers import (
         CodeReviewHandler,
         CodeReviewSynthesisHandler,
@@ -81,6 +88,25 @@ def init_handlers(config: "Config", project_path: Path) -> None:
     _handlers_initialized = True
 
     logger.debug("Initialized %d phase handlers", len(_handler_instances))
+
+    # Validate that all phases in LoopConfig have handlers
+    loop_config = get_loop_config()
+    all_config_phases = loop_config.epic_setup + loop_config.story + loop_config.epic_teardown
+
+    for phase_name in all_config_phases:
+        try:
+            phase = Phase(phase_name)
+        except ValueError:
+            raise ConfigError(
+                f"Invalid phase '{phase_name}' in loop config - not a valid Phase enum value"
+            )
+
+        if phase not in _handler_instances:
+            raise ConfigError(
+                f"Phase '{phase_name}' in loop config has no registered handler"
+            )
+
+    logger.debug("Validated loop config: all %d phases have handlers", len(all_config_phases))
 
 
 def get_handler(phase: Phase) -> PhaseHandler:

@@ -4,19 +4,38 @@
                  class="flex-1 flex flex-col bg-background overflow-hidden relative">
                 <!-- Tabs - Basecoat tabs -->
                 <div class="tabs w-full px-4 py-2 border-b border-border">
-                    <nav role="tablist" aria-orientation="horizontal">
-                        <template x-for="tab in ['All', 'Claude', 'Opus', 'Gemini', 'GLM']" :key="tab">
-                            <button type="button"
-                                    role="tab"
-                                    :aria-selected="activeTab === tab"
-                                    :tabindex="activeTab === tab ? 0 : -1"
-                                    @click="activeTab = tab; autoScroll = true; $nextTick(() => scrollToBottom())">
-                                <span x-text="tab"></span>
-                                <span x-show="getTabCount(tab) > 0"
-                                      class="badge-secondary ml-1"
-                                      x-text="`${getTabCount(tab)}`"></span>
-                            </button>
-                        </template>
+                    <nav role="tablist" aria-orientation="horizontal" class="flex items-center justify-between w-full">
+                        <div class="flex">
+                            <template x-for="tab in ['All', 'Claude', 'Opus', 'Gemini', 'GLM']" :key="tab">
+                                <button type="button"
+                                        role="tab"
+                                        :aria-selected="activeTab === tab"
+                                        :tabindex="activeTab === tab ? 0 : -1"
+                                        @click="activeTab = tab; autoScroll = true; $nextTick(() => scrollToBottom())">
+                                    <span x-text="tab"></span>
+                                    <span x-show="getTabCount(tab) > 0"
+                                          class="badge-secondary ml-1"
+                                          x-text="`${getTabCount(tab)}`"></span>
+                                </button>
+                            </template>
+                        </div>
+                        <!-- Story 22.11 Task 7: Validator progress indicator -->
+                        <div x-show="validatorProgress.total > 0"
+                             x-transition
+                             class="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span class="text-xs">Validators:</span>
+                            <div class="flex items-center gap-1">
+                                <span x-text="`${validatorProgress.completed + validatorProgress.failed}/${validatorProgress.total}`"
+                                      class="tabular-nums"></span>
+                                <span x-show="validatorProgress.failed > 0"
+                                      class="text-destructive"
+                                      x-text="`(${validatorProgress.failed} failed)`"></span>
+                            </div>
+                            <div class="w-16 h-1.5 bg-border rounded-full overflow-hidden">
+                                <div class="h-full bg-primary transition-all duration-300"
+                                     :style="`width: ${validatorProgressPercent}%`"></div>
+                            </div>
+                        </div>
                     </nav>
                 </div>
 

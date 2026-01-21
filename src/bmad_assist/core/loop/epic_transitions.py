@@ -230,15 +230,33 @@ def advance_to_next_epic(
             continue
 
         # Check if ALL stories for this epic are already completed
-        # If so, skip directly to RETROSPECTIVE phase
+        # If so, skip directly to first epic_teardown phase (per ADR-006)
         incomplete_stories = [s for s in stories if s not in state.completed_stories]
 
         if not incomplete_stories:
-            # All stories done - go directly to RETROSPECTIVE
+            # All stories done - go directly to first teardown phase
+            # Get first teardown phase from loop config
+            from bmad_assist.core.config import get_loop_config
+
+            loop_config = get_loop_config()
+            if loop_config.epic_teardown:
+                first_teardown_phase = Phase(loop_config.epic_teardown[0])
+            else:
+                # No teardown phases configured - skip directly to CREATE_STORY of next epic
+                # This is an edge case where someone has empty epic_teardown
+                logger.info(
+                    "All stories in epic %s already completed, no teardown phases configured",
+                    next_epic,
+                )
+                # Continue searching for next epic with incomplete stories
+                candidate_epic = next_epic
+                continue
+
             last_story = stories[-1]
             logger.info(
-                "All stories in epic %s already completed, advancing to RETROSPECTIVE",
+                "All stories in epic %s already completed, advancing to %s",
                 next_epic,
+                first_teardown_phase.name,
             )
 
             now = datetime.now(UTC).replace(tzinfo=None)
@@ -246,7 +264,8 @@ def advance_to_next_epic(
                 update={
                     "current_epic": next_epic,
                     "current_story": last_story,
-                    "current_phase": Phase.RETROSPECTIVE,
+                    "current_phase": first_teardown_phase,
+                    "epic_setup_complete": False,  # Reset for new epic
                     "updated_at": now,
                 }
             )
@@ -267,6 +286,7 @@ def advance_to_next_epic(
             "current_epic": next_epic,
             "current_story": first_incomplete,
             "current_phase": Phase.CREATE_STORY,
+            "epic_setup_complete": False,  # Reset for new epic
             "updated_at": now,
         }
     )

@@ -142,12 +142,12 @@ class TestPromptCounter:
 
         # Save second prompt - dev_story is phase 05
         path2 = save_prompt(project_root, 22, 2, "dev_story", sample_prompt_content)
-        assert path2.name.startswith("prompt-22-2-05-dev_story-")
+        assert path2.name.startswith("prompt-22-2-04-dev_story-")
         assert path2.name.endswith(".md")
 
         # Save third prompt - code_review is phase 06
         path3 = save_prompt(project_root, 22, 2, "code_review", sample_prompt_content)
-        assert path3.name.startswith("prompt-22-2-06-code_review-")
+        assert path3.name.startswith("prompt-22-2-05-code_review-")
         assert path3.name.endswith(".md")
 
     def test_counter_resets_on_new_run_init(self, project_root: Path, sample_prompt_content: str):
@@ -167,7 +167,7 @@ class TestPromptCounter:
 
         # Save prompt in new run - uses descriptive naming
         path = save_prompt(project_root, 22, 2, "dev_story", sample_prompt_content)
-        assert path.name.startswith("prompt-22-2-05-dev_story-")
+        assert path.name.startswith("prompt-22-2-04-dev_story-")
         assert path.parent.name == "run-20260115T030000Z"
 
     def test_counter_returns_incremented_value(self, project_root: Path, run_timestamp: str):
@@ -195,21 +195,31 @@ class TestPromptCounter:
 
 
 class TestPhaseSequence:
-    """Tests for _get_phase_sequence() phase-to-number mapping."""
+    """Tests for _get_phase_sequence() phase-to-number mapping.
 
-    def test_known_phases_have_correct_sequence(self):
-        """Known phases return correct 1-based sequence numbers."""
+    Note: _get_phase_sequence uses LoopConfig.story (from DEFAULT_LOOP_CONFIG) which has
+    6 phases: create_story, validate_story, validate_story_synthesis, dev_story,
+    code_review, code_review_synthesis. Phases not in this list return 99.
+    """
+
+    def test_default_loop_config_phases_have_correct_sequence(self):
+        """Phases in DEFAULT_LOOP_CONFIG.story return correct 1-based sequence numbers."""
+        # These are the 6 phases in DEFAULT_LOOP_CONFIG.story
         assert _get_phase_sequence("create_story") == 1
         assert _get_phase_sequence("validate_story") == 2
         assert _get_phase_sequence("validate_story_synthesis") == 3
-        assert _get_phase_sequence("atdd") == 4
-        assert _get_phase_sequence("dev_story") == 5
-        assert _get_phase_sequence("code_review") == 6
-        assert _get_phase_sequence("code_review_synthesis") == 7
-        assert _get_phase_sequence("test_review") == 8
-        assert _get_phase_sequence("retrospective") == 9
-        assert _get_phase_sequence("qa_plan_generate") == 10
-        assert _get_phase_sequence("qa_plan_execute") == 11
+        assert _get_phase_sequence("dev_story") == 4
+        assert _get_phase_sequence("code_review") == 5
+        assert _get_phase_sequence("code_review_synthesis") == 6
+
+    def test_phases_not_in_loop_config_return_99(self):
+        """Phases not in DEFAULT_LOOP_CONFIG.story return 99."""
+        # These are NOT in DEFAULT_LOOP_CONFIG.story
+        assert _get_phase_sequence("atdd") == 99  # testarch phase
+        assert _get_phase_sequence("test_review") == 99  # testarch phase
+        assert _get_phase_sequence("retrospective") == 99  # epic_teardown
+        assert _get_phase_sequence("qa_plan_generate") == 99  # QA phase
+        assert _get_phase_sequence("qa_plan_execute") == 99  # QA phase
 
     def test_unknown_phase_returns_99(self):
         """Unknown phase returns 99 to sort last."""
@@ -391,8 +401,9 @@ class TestGetPromptPath:
 
     def test_matches_metadata_normalizes_phase(self):
         """_matches_metadata normalizes underscores to hyphens."""
-        # Need all metadata fields present for matching to work
-        content = """<!-- Epic: 22 -->
+        # Need all metadata fields present for matching to work (including marker)
+        content = """<!-- BMAD Prompt Run Metadata -->
+<!-- Epic: 22 -->
 <!-- Story: 22.2 -->
 <!-- Phase: create-story -->"""
         assert _matches_metadata(content, 22, "22.2", "create_story")  # Query has underscore
@@ -497,7 +508,7 @@ class TestSavePrompt:
 
         # Verify path - dev_story is phase 05, story "16.1" extracts to "1"
         assert prompt_path.parent.name == f"run-{run_timestamp}"
-        assert prompt_path.name.startswith("prompt-16-1-05-dev_story-")
+        assert prompt_path.name.startswith("prompt-16-1-04-dev_story-")
         assert prompt_path.suffix == ".md"
 
         # Verify file exists and has metadata (metadata keeps original story_num)
@@ -518,7 +529,7 @@ class TestSavePrompt:
         # Verify run-scoped format path (auto-initialized)
         assert prompt_path.parent.name.startswith("run-")
         assert prompt_path.suffix == ".md"
-        assert "prompt-16-1-05-dev_story-" in prompt_path.name
+        assert "prompt-16-1-04-dev_story-" in prompt_path.name
 
         # Verify file exists with metadata header
         assert prompt_path.exists()

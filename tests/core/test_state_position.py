@@ -19,9 +19,9 @@ from unittest.mock import patch
 
 import pytest
 
+from bmad_assist.core.config import DEFAULT_LOOP_CONFIG
 from bmad_assist.core.exceptions import StateError
 from bmad_assist.core.state import (
-    PHASE_ORDER,
     Phase,
     State,
     advance_state,
@@ -276,39 +276,32 @@ class TestAdvanceStateBasic:
 class TestAdvanceStatePhaseOrdering:
     """Test advance_state handles phase ordering (AC6)."""
 
-    def test_phase_order_constant_has_all_phases(self) -> None:
-        """AC6: PHASE_ORDER contains all 11 phases (including ATDD, TEST_REVIEW, and QA)."""
-        assert len(PHASE_ORDER) == 11
-        assert set(PHASE_ORDER) == set(Phase)
-
-    def test_phase_order_is_correct_sequence(self) -> None:
-        """AC6: PHASE_ORDER has correct sequence."""
-        expected = [
-            Phase.CREATE_STORY,
-            Phase.VALIDATE_STORY,
-            Phase.VALIDATE_STORY_SYNTHESIS,
-            Phase.ATDD,
-            Phase.DEV_STORY,
-            Phase.CODE_REVIEW,
-            Phase.CODE_REVIEW_SYNTHESIS,
-            Phase.TEST_REVIEW,
-            Phase.RETROSPECTIVE,
-            Phase.QA_PLAN_GENERATE,
-            Phase.QA_PLAN_EXECUTE,
+    def test_default_loop_config_has_expected_phases(self) -> None:
+        """AC6: DEFAULT_LOOP_CONFIG.story contains expected phases."""
+        # Default config has standard 6-phase story loop
+        expected_story = [
+            "create_story",
+            "validate_story",
+            "validate_story_synthesis",
+            "dev_story",
+            "code_review",
+            "code_review_synthesis",
         ]
-        assert expected == PHASE_ORDER
+        assert DEFAULT_LOOP_CONFIG.story == expected_story
+
+    def test_default_loop_config_teardown(self) -> None:
+        """AC6: DEFAULT_LOOP_CONFIG.epic_teardown contains retrospective."""
+        assert DEFAULT_LOOP_CONFIG.epic_teardown == ["retrospective"]
 
     @pytest.mark.parametrize(
         "current_phase,expected_next",
         [
+            # Test transitions within DEFAULT_LOOP_CONFIG.story
             (Phase.CREATE_STORY, Phase.VALIDATE_STORY),
             (Phase.VALIDATE_STORY, Phase.VALIDATE_STORY_SYNTHESIS),
-            (Phase.VALIDATE_STORY_SYNTHESIS, Phase.ATDD),
-            (Phase.ATDD, Phase.DEV_STORY),
+            (Phase.VALIDATE_STORY_SYNTHESIS, Phase.DEV_STORY),
             (Phase.DEV_STORY, Phase.CODE_REVIEW),
             (Phase.CODE_REVIEW, Phase.CODE_REVIEW_SYNTHESIS),
-            (Phase.CODE_REVIEW_SYNTHESIS, Phase.TEST_REVIEW),
-            (Phase.TEST_REVIEW, Phase.RETROSPECTIVE),
         ],
     )
     def test_advance_state_transitions_correctly(
@@ -364,48 +357,64 @@ class TestAdvanceStateReturnValue:
 # =============================================================================
 
 
-class TestAdvanceStateRetrospective:
-    """Test advance_state at RETROSPECTIVE indicates epic complete (AC8)."""
+class TestAdvanceStateAtLastStoryPhase:
+    """Test advance_state at last story phase indicates epic complete (AC8).
 
-    def test_advance_state_at_retrospective_returns_epic_complete(
-        self, retrospective_state: State
+    Note: In the configurable loop architecture, advance_state uses LoopConfig.story.
+    The last phase in DEFAULT_LOOP_CONFIG.story is CODE_REVIEW_SYNTHESIS.
+    """
+
+    @pytest.fixture
+    def last_story_phase_state(self) -> State:
+        """State at the last phase in the story sequence (CODE_REVIEW_SYNTHESIS)."""
+        return State(
+            current_epic=2,
+            current_story="2.5",
+            current_phase=Phase.CODE_REVIEW_SYNTHESIS,
+            completed_stories=["2.1", "2.2", "2.3", "2.4", "2.5"],
+            started_at=datetime(2025, 12, 10, 8, 0, 0),
+            updated_at=datetime(2025, 12, 10, 18, 0, 0),
+        )
+
+    def test_advance_state_at_last_story_phase_returns_epic_complete(
+        self, last_story_phase_state: State
     ) -> None:
-        """AC8: epic_complete is True at RETROSPECTIVE."""
-        result = advance_state(retrospective_state)
+        """AC8: epic_complete is True at last story phase."""
+        result = advance_state(last_story_phase_state)
         assert result["epic_complete"] is True
 
-    def test_advance_state_at_retrospective_not_transitioned(
-        self, retrospective_state: State
+    def test_advance_state_at_last_story_phase_not_transitioned(
+        self, last_story_phase_state: State
     ) -> None:
-        """AC8: transitioned is False at RETROSPECTIVE."""
-        result = advance_state(retrospective_state)
+        """AC8: transitioned is False at last story phase."""
+        result = advance_state(last_story_phase_state)
         assert result["transitioned"] is False
 
-    def test_advance_state_at_retrospective_phase_unchanged(
-        self, retrospective_state: State
+    def test_advance_state_at_last_story_phase_phase_unchanged(
+        self, last_story_phase_state: State
     ) -> None:
-        """AC8: current_phase remains RETROSPECTIVE."""
-        advance_state(retrospective_state)
-        assert retrospective_state.current_phase == Phase.RETROSPECTIVE
+        """AC8: current_phase remains at last story phase."""
+        advance_state(last_story_phase_state)
+        assert last_story_phase_state.current_phase == Phase.CODE_REVIEW_SYNTHESIS
 
-    def test_advance_state_at_retrospective_previous_equals_new(
-        self, retrospective_state: State
+    def test_advance_state_at_last_story_phase_previous_equals_new(
+        self, last_story_phase_state: State
     ) -> None:
         """AC8: previous_phase equals new_phase."""
-        result = advance_state(retrospective_state)
+        result = advance_state(last_story_phase_state)
         assert result["previous_phase"] == result["new_phase"]
-        assert result["previous_phase"] == Phase.RETROSPECTIVE
+        assert result["previous_phase"] == Phase.CODE_REVIEW_SYNTHESIS
 
-    def test_advance_state_at_retrospective_updates_timestamp(
-        self, retrospective_state: State
+    def test_advance_state_at_last_story_phase_updates_timestamp(
+        self, last_story_phase_state: State
     ) -> None:
         """AC8: updated_at is still updated even when no transition occurs."""
-        original_updated = retrospective_state.updated_at
+        original_updated = last_story_phase_state.updated_at
         fixed_time = datetime(2025, 12, 10, 20, 0, 0)
         with patch("bmad_assist.core.state._get_now", return_value=fixed_time):
-            advance_state(retrospective_state)
-        assert retrospective_state.updated_at == fixed_time
-        assert retrospective_state.updated_at != original_updated
+            advance_state(last_story_phase_state)
+        assert last_story_phase_state.updated_at == fixed_time
+        assert last_story_phase_state.updated_at != original_updated
 
 
 # =============================================================================
@@ -477,11 +486,14 @@ class TestFunctionSignaturesAndExports:
 
         assert "advance_state" in state_module.__all__
 
-    def test_phase_order_in_all(self) -> None:
-        """AC10: PHASE_ORDER is in __all__."""
-        from bmad_assist.core import state as state_module
+    def test_default_loop_config_exported(self) -> None:
+        """AC10: DEFAULT_LOOP_CONFIG is importable from config."""
+        from bmad_assist.core.config import DEFAULT_LOOP_CONFIG as config
 
-        assert "PHASE_ORDER" in state_module.__all__
+        # Verify it's a LoopConfig instance with required fields
+        assert hasattr(config, "story")
+        assert hasattr(config, "epic_setup")
+        assert hasattr(config, "epic_teardown")
 
     def test_update_position_keyword_only_args(self) -> None:
         """AC10: update_position requires keyword-only args."""
@@ -510,13 +522,16 @@ class TestFunctionSignaturesAndExports:
         assert sig.return_annotation is None or sig.return_annotation is type(None)
 
     def test_advance_state_signature(self) -> None:
-        """AC10: advance_state(state: State) -> dict[str, Any]."""
+        """AC10: advance_state(state: State, phase_list: list[str] | None = None) -> dict[str, Any]."""
         import inspect
 
         sig = inspect.signature(advance_state)
         params = list(sig.parameters.values())
-        assert len(params) == 1
+        # First param is 'state' (required), second is optional 'phase_list'
+        assert len(params) == 2
         assert params[0].name == "state"
+        assert params[1].name == "phase_list"
+        assert params[1].default is None  # Optional with default None
 
 
 # =============================================================================
@@ -612,14 +627,13 @@ class TestErrorCases:
         assert "no current phase" in str(exc_info.value).lower()
 
     def test_advance_state_raises_stateerror_for_invalid_phase(self) -> None:
-        """advance_state raises StateError (not ValueError) for phase not in PHASE_ORDER."""
-        state = State(current_phase=Phase.DEV_STORY)
-        # Simulate a phase that's somehow not in PHASE_ORDER by patching the list
-        empty_list: list[Phase] = []
-        with patch("bmad_assist.core.state.PHASE_ORDER", empty_list):
-            with pytest.raises(StateError) as exc_info:
-                advance_state(state)
-            assert "not in PHASE_ORDER" in str(exc_info.value)
+        """advance_state raises StateError for phase not in loop config."""
+        # Use a phase that's not in DEFAULT_LOOP_CONFIG.story (e.g. RETROSPECTIVE)
+        state = State(current_phase=Phase.RETROSPECTIVE)
+        # RETROSPECTIVE is in epic_teardown, not story, so advance_state should fail
+        with pytest.raises(StateError) as exc_info:
+            advance_state(state)
+        assert "not in loop config" in str(exc_info.value).lower()
 
 
 # =============================================================================
@@ -655,10 +669,10 @@ class TestEdgeCases:
         assert state.completed_stories == ["1.1"]
 
     def test_advance_state_full_cycle(self) -> None:
-        """State can advance through all phases until RETROSPECTIVE signals epic complete.
+        """State can advance through all story phases until epic_complete is signaled.
 
-        Note: QA phases (QA_PLAN_GENERATE, QA_PLAN_EXECUTE) are after RETROSPECTIVE
-        but the loop stops at RETROSPECTIVE since epic_complete=True is returned.
+        Uses DEFAULT_LOOP_CONFIG.story phases and expects epic_complete=True
+        at the end of the story phase sequence.
         """
         state = State(current_phase=Phase.CREATE_STORY)
         phases_traversed = [state.current_phase]
@@ -669,10 +683,19 @@ class TestEdgeCases:
             if result["epic_complete"]:
                 break
 
-        # Loop stops at RETROSPECTIVE (epic_complete=True), so we get:
-        # All phases up to and including RETROSPECTIVE + RETROSPECTIVE again (no transition)
-        expected_up_to_retro = PHASE_ORDER[: PHASE_ORDER.index(Phase.RETROSPECTIVE) + 1]
-        assert phases_traversed == expected_up_to_retro + [Phase.RETROSPECTIVE]
+        # Expected: traverse all story phases, then epic_complete at the last one
+        # DEFAULT_LOOP_CONFIG.story = [create_story, validate_story, validate_story_synthesis,
+        #                              dev_story, code_review, code_review_synthesis]
+        expected = [
+            Phase.CREATE_STORY,
+            Phase.VALIDATE_STORY,
+            Phase.VALIDATE_STORY_SYNTHESIS,
+            Phase.DEV_STORY,
+            Phase.CODE_REVIEW,
+            Phase.CODE_REVIEW_SYNTHESIS,
+            Phase.CODE_REVIEW_SYNTHESIS,  # No transition at last phase
+        ]
+        assert phases_traversed == expected
 
     def test_completed_stories_order_preserved(self) -> None:
         """Completed stories maintain insertion order."""

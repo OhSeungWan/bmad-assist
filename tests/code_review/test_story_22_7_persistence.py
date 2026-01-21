@@ -88,6 +88,7 @@ class TestIndividualReportSaving:
 
         # Save each report with different role_id
         saved_paths = []
+        test_session_id = "test-session-abc123"
         for idx, output in enumerate(outputs):
             role_id = chr(ord("a") + idx)  # a, b, c...
             anonymized_id = f"Validator {chr(ord('A') + idx)}"
@@ -97,6 +98,7 @@ class TestIndividualReportSaving:
                 story=7,
                 reviews_dir=reviews_dir,
                 role_id=role_id,
+                session_id=test_session_id,
                 anonymized_id=anonymized_id,
             )
             saved_paths.append(path)
@@ -116,6 +118,7 @@ class TestIndividualReportSaving:
             content = path.read_text(encoding="utf-8")
             assert "---" in content  # YAML frontmatter
             assert "role_id:" in content  # AC #2: role_id in frontmatter
+            assert "session_id:" in content  # AC #3: session_id in frontmatter
 
     def test_all_n_validators_saved(self, tmp_path: Path) -> None:
         """Test AC #1: All N validators generate N separate report files."""
@@ -142,6 +145,7 @@ class TestIndividualReportSaving:
 
         # Save all reports
         saved_files = []
+        test_session_id = "test-session-6-validators"
         for idx, output in enumerate(outputs):
             role_id = chr(ord("a") + idx)
             path = _save_code_review_report(
@@ -150,6 +154,7 @@ class TestIndividualReportSaving:
                 story=7,
                 reviews_dir=reviews_dir,
                 role_id=role_id,
+                session_id=test_session_id,
                 anonymized_id=f"Validator {idx}",
             )
             saved_files.append(path.name)
@@ -193,6 +198,7 @@ class TestIndividualReportSaving:
             story=7,
             reviews_dir=reviews_dir,
             role_id="a",
+            session_id="test-session-content",
             anonymized_id="Validator A",
         )
 
@@ -360,6 +366,7 @@ class TestPartialSuccessHandling:
 
         # Save reports for only successful validators
         saved_files = []
+        test_session_id = "test-session-partial"
         for idx, output in enumerate(successful_outputs):
             role_id = chr(ord("a") + idx)
             path = _save_code_review_report(
@@ -368,6 +375,7 @@ class TestPartialSuccessHandling:
                 story=7,
                 reviews_dir=reviews_dir,
                 role_id=role_id,
+                session_id=test_session_id,
                 anonymized_id=f"Validator {idx}",
             )
             saved_files.append(path)
@@ -480,6 +488,7 @@ class TestErrorHandlingAndLogging:
                         story=7,
                         reviews_dir=reviews_dir,
                         role_id="a",
+                        session_id="test-session-error",
                         anonymized_id="Validator A",
                     )
 
@@ -516,6 +525,7 @@ class TestErrorHandlingAndLogging:
             story=7,
             reviews_dir=reviews_dir,
             role_id="a",
+            session_id="test-session-mkdir",
             anonymized_id="Validator A",
         )
 
@@ -544,6 +554,7 @@ class TestErrorHandlingAndLogging:
             story=7,
             reviews_dir=reviews_dir,
             role_id="a",
+            session_id="test-session-atomic",
             anonymized_id="Validator A",
         )
 

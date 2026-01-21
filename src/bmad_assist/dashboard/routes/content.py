@@ -1,6 +1,7 @@
 """Content route handlers.
 
-Provides endpoints for prompts, validation reports, and report content.
+Provides endpoints for prompts, validation reports, report content, and
+reviewer identity mapping (Story 23.8).
 """
 
 import logging
@@ -10,14 +11,16 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
+from bmad_assist.dashboard.utils.validator_mapping import get_mapping_for_story
+
 logger = logging.getLogger(__name__)
 
 
 async def get_prompt(request: Request) -> Response:
-    """GET /api/prompt/{epic}/{story}/{phase} - Get compiled template.
+    """GET /api/prompt/{epic}/{story}/{phase} - Get compiled prompt.
 
-    Returns the cached template file for a specific workflow phase.
-    Templates are phase-agnostic; epic/story params retained for API consistency.
+    Returns the cached prompt file for a specific workflow phase.
+    Prompts are phase-agnostic; epic/story params retained for API consistency.
     """
     server = request.app.state.server
 
@@ -35,9 +38,9 @@ async def get_prompt(request: Request) -> Response:
                 headers={"X-Prompt-Path": str(prompt_path)},
             )
         else:
-            # AC 1.5: Return 404 with specific error message
+            # Story 24.2 AC3: Use "Prompt" terminology in error message
             return JSONResponse(
-                {"error": f"Template not found for phase: {phase}"},
+                {"error": f"Prompt not found for phase: {phase}"},
                 status_code=404,
             )
     except Exception as e:
@@ -60,6 +63,25 @@ async def get_validation(request: Request) -> Response:
         return JSONResponse(reports)
     except Exception as e:
         logger.exception("Failed to get validation reports")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def get_reviews(request: Request) -> Response:
+    """GET /api/reviews/{epic}/{story} - Get all review reports (validation + code-review).
+
+    Returns both validation and code-review reports for a story,
+    each with their own synthesis and individual reports.
+    """
+    server = request.app.state.server
+
+    epic = request.path_params["epic"]
+    story = request.path_params["story"]
+
+    try:
+        reviews = server.get_all_reviews(epic, story)
+        return JSONResponse(reviews)
+    except Exception as e:
+        logger.exception("Failed to get reviews")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -107,8 +129,101 @@ async def get_report_content(request: Request) -> Response:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+async def get_story_content(request: Request) -> Response:
+    """GET /api/story/{epic}/{story}/content - Get story file content.
+
+    Story 24.5: Returns story file content from implementation-artifacts.
+    Searches for files matching pattern {epic}-{story}-*.md and returns
+    the most recent one if multiple matches exist.
+
+    Returns:
+        JSON with content, file_path, and title on success.
+        404 JSON error if story file not found.
+    """
+    server = request.app.state.server
+
+    epic = request.path_params["epic"]
+    story = request.path_params["story"]
+
+    try:
+        result = server.get_story_file_content(epic, story)
+        if result is None:
+            return JSONResponse(
+                {"error": f"Story file not found for {epic}.{story}"},
+                status_code=404,
+            )
+        return JSONResponse(result)
+    except Exception as e:
+        logger.exception("Failed to get story content")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def get_reviewer_mapping(request: Request) -> Response:
+    """GET /api/mapping/{type}/{epic}/{story} - Get reviewer identity mapping.
+
+    Story 23.8: Returns mapping of anonymous validator IDs (Validator A, B, C...)
+    to actual model names. Used by frontend to replace anonymous IDs with
+    real model names in reports and prompts.
+
+    Path params:
+        type: Mapping type - "validation" or "code-review"
+        epic: Epic identifier
+        story: Story number
+
+    Query params:
+        session_id: Optional session_id for direct lookup
+
+    Returns:
+        JSON with validators mapping and metadata:
+        {
+            "session_id": "...",
+            "timestamp": "...",
+            "validators": {"Validator A": "glm-4.7", "Validator B": "opus", ...}
+        }
+
+        Returns 404 if no mapping found.
+    """
+    server = request.app.state.server
+
+    mapping_type = request.path_params["type"]
+    epic = request.path_params["epic"]
+    story = request.path_params["story"]
+    session_id = request.query_params.get("session_id")
+
+    # Validate mapping type
+    if mapping_type not in ("validation", "code-review"):
+        return JSONResponse(
+            {"error": f"Invalid mapping type: {mapping_type}. Use 'validation' or 'code-review'"},
+            status_code=400,
+        )
+
+    try:
+        mapping = get_mapping_for_story(
+            server.project_root,
+            mapping_type,
+            epic,
+            story,
+            session_id,
+        )
+
+        if mapping is None:
+            return JSONResponse(
+                {"error": f"No {mapping_type} mapping found for {epic}-{story}"},
+                status_code=404,
+            )
+
+        return JSONResponse(mapping)
+
+    except Exception as e:
+        logger.exception("Failed to get reviewer mapping")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 routes = [
     Route("/api/prompt/{epic}/{story}/{phase}", get_prompt, methods=["GET"]),
     Route("/api/validation/{epic}/{story}", get_validation, methods=["GET"]),
+    Route("/api/reviews/{epic}/{story}", get_reviews, methods=["GET"]),
     Route("/api/report/content", get_report_content, methods=["GET"]),
+    Route("/api/mapping/{type}/{epic}/{story}", get_reviewer_mapping, methods=["GET"]),
+    Route("/api/story/{epic}/{story}/content", get_story_content, methods=["GET"]),
 ]

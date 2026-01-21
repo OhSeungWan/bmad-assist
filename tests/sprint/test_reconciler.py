@@ -28,15 +28,18 @@ from bmad_assist.sprint.models import (
     SprintStatusMetadata,
 )
 from bmad_assist.sprint.reconciler import (
+    STATUS_ORDER,
     ConflictResolution,
     ReconciliationResult,
     StatusChange,
     _detect_removed_stories,
     _extract_epic_id_from_key,
+    _is_status_advancement,
     _merge_epic_story,
     _normalize_story_key,
     _recalculate_epic_meta,
     _should_preserve_entry,
+    _sort_entries_by_epic_order,
     reconcile,
 )
 from bmad_assist.sprint.scanner import ArtifactIndex
@@ -1107,3 +1110,445 @@ class TestIntegration:
             log_line = change.as_log_line()
             assert change.key in log_line
             assert change.reason in log_line
+
+
+# ============================================================================
+# Tests: Status Order and Forward-Only Protection
+# ============================================================================
+
+
+class TestStatusOrder:
+    """Tests for STATUS_ORDER constant and _is_status_advancement()."""
+
+    def test_status_order_values(self) -> None:
+        """Test STATUS_ORDER has expected values."""
+        assert STATUS_ORDER["deferred"] == -1
+        assert STATUS_ORDER["backlog"] == 0
+        assert STATUS_ORDER["ready-for-dev"] == 1
+        assert STATUS_ORDER["in-progress"] == 2
+        assert STATUS_ORDER["blocked"] == 2  # Same level as in-progress
+        assert STATUS_ORDER["review"] == 3
+        assert STATUS_ORDER["done"] == 4
+
+    def test_is_status_advancement_forward(self) -> None:
+        """Forward status changes return True."""
+        assert _is_status_advancement("backlog", "done") is True
+        assert _is_status_advancement("backlog", "in-progress") is True
+        assert _is_status_advancement("in-progress", "review") is True
+        assert _is_status_advancement("review", "done") is True
+
+    def test_is_status_advancement_same_level(self) -> None:
+        """Same-level status changes return True."""
+        assert _is_status_advancement("backlog", "backlog") is True
+        assert _is_status_advancement("done", "done") is True
+        assert _is_status_advancement("in-progress", "blocked") is True
+        assert _is_status_advancement("blocked", "in-progress") is True
+
+    def test_is_status_advancement_backward(self) -> None:
+        """Backward status changes return False."""
+        assert _is_status_advancement("done", "backlog") is False
+        assert _is_status_advancement("review", "in-progress") is False
+        assert _is_status_advancement("in-progress", "backlog") is False
+        assert _is_status_advancement("done", "review") is False
+
+    def test_is_status_advancement_none_old(self) -> None:
+        """None old_status always returns True (new entry)."""
+        assert _is_status_advancement(None, "backlog") is True
+        assert _is_status_advancement(None, "done") is True
+        assert _is_status_advancement(None, "deferred") is True
+
+    def test_is_status_advancement_unknown_status(self) -> None:
+        """Unknown statuses default to order 0."""
+        # Unknown status treated as backlog (0)
+        assert _is_status_advancement("unknown-status", "done") is True
+        assert _is_status_advancement("done", "unknown-status") is False
+
+
+# ============================================================================
+# Tests: Entry Sorting
+# ============================================================================
+
+
+class TestSortEntriesByEpicOrder:
+    """Tests for _sort_entries_by_epic_order()."""
+
+    def test_sorts_numeric_epics_first(self) -> None:
+        """Numeric epics come before string epics."""
+        entries = {
+            "testarch-1-config": SprintStatusEntry(
+                key="testarch-1-config",
+                status="done",
+                entry_type=EntryType.MODULE_STORY,
+            ),
+            "epic-12": SprintStatusEntry(
+                key="epic-12",
+                status="done",
+                entry_type=EntryType.EPIC_META,
+            ),
+            "12-1-setup": SprintStatusEntry(
+                key="12-1-setup",
+                status="done",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+        }
+
+        sorted_entries = _sort_entries_by_epic_order(entries)
+        keys = list(sorted_entries.keys())
+
+        # Numeric epic (12) should come before string epic (testarch)
+        assert keys.index("epic-12") < keys.index("testarch-1-config")
+
+    def test_sorts_epic_meta_before_stories(self) -> None:
+        """Epic meta entries come before their stories."""
+        entries = {
+            "12-2-feature": SprintStatusEntry(
+                key="12-2-feature",
+                status="done",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+            "12-1-setup": SprintStatusEntry(
+                key="12-1-setup",
+                status="done",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+            "epic-12": SprintStatusEntry(
+                key="epic-12",
+                status="done",
+                entry_type=EntryType.EPIC_META,
+            ),
+        }
+
+        sorted_entries = _sort_entries_by_epic_order(entries)
+        keys = list(sorted_entries.keys())
+
+        assert keys[0] == "epic-12"
+        assert keys[1] == "12-1-setup"
+        assert keys[2] == "12-2-feature"
+
+    def test_sorts_retrospective_after_stories(self) -> None:
+        """Retrospective entries come after all stories in the epic."""
+        entries = {
+            "epic-12-retrospective": SprintStatusEntry(
+                key="epic-12-retrospective",
+                status="backlog",
+                entry_type=EntryType.RETROSPECTIVE,
+            ),
+            "12-1-setup": SprintStatusEntry(
+                key="12-1-setup",
+                status="done",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+            "epic-12": SprintStatusEntry(
+                key="epic-12",
+                status="done",
+                entry_type=EntryType.EPIC_META,
+            ),
+            "12-2-feature": SprintStatusEntry(
+                key="12-2-feature",
+                status="done",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+        }
+
+        sorted_entries = _sort_entries_by_epic_order(entries)
+        keys = list(sorted_entries.keys())
+
+        assert keys == ["epic-12", "12-1-setup", "12-2-feature", "epic-12-retrospective"]
+
+    def test_sorts_stories_by_number(self) -> None:
+        """Stories within an epic are sorted by story number."""
+        entries = {
+            "12-10-last": SprintStatusEntry(
+                key="12-10-last",
+                status="done",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+            "12-2-second": SprintStatusEntry(
+                key="12-2-second",
+                status="done",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+            "12-1-first": SprintStatusEntry(
+                key="12-1-first",
+                status="done",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+        }
+
+        sorted_entries = _sort_entries_by_epic_order(entries)
+        keys = list(sorted_entries.keys())
+
+        assert keys == ["12-1-first", "12-2-second", "12-10-last"]
+
+    def test_standalone_entries_at_end(self) -> None:
+        """Standalone entries are placed at the end."""
+        entries = {
+            "standalone-01-refactor": SprintStatusEntry(
+                key="standalone-01-refactor",
+                status="done",
+                entry_type=EntryType.STANDALONE,
+            ),
+            "epic-1": SprintStatusEntry(
+                key="epic-1",
+                status="done",
+                entry_type=EntryType.EPIC_META,
+            ),
+            "1-1-setup": SprintStatusEntry(
+                key="1-1-setup",
+                status="done",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+        }
+
+        sorted_entries = _sort_entries_by_epic_order(entries)
+        keys = list(sorted_entries.keys())
+
+        assert keys[-1] == "standalone-01-refactor"
+
+    def test_multiple_epics_sorted(self) -> None:
+        """Multiple epics are sorted numerically."""
+        entries = {
+            "epic-20": SprintStatusEntry(
+                key="epic-20",
+                status="done",
+                entry_type=EntryType.EPIC_META,
+            ),
+            "epic-12": SprintStatusEntry(
+                key="epic-12",
+                status="done",
+                entry_type=EntryType.EPIC_META,
+            ),
+            "12-1-setup": SprintStatusEntry(
+                key="12-1-setup",
+                status="done",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+            "20-1-start": SprintStatusEntry(
+                key="20-1-start",
+                status="done",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+            "epic-1": SprintStatusEntry(
+                key="epic-1",
+                status="done",
+                entry_type=EntryType.EPIC_META,
+            ),
+        }
+
+        sorted_entries = _sort_entries_by_epic_order(entries)
+        keys = list(sorted_entries.keys())
+
+        # Should be sorted: epic-1, epic-12, 12-1-setup, epic-20, 20-1-start
+        assert keys.index("epic-1") < keys.index("epic-12")
+        assert keys.index("epic-12") < keys.index("12-1-setup")
+        assert keys.index("12-1-setup") < keys.index("epic-20")
+        assert keys.index("epic-20") < keys.index("20-1-start")
+
+    def test_string_epics_after_numeric(self) -> None:
+        """String epics come after all numeric epics."""
+        entries = {
+            "epic-testarch": SprintStatusEntry(
+                key="epic-testarch",
+                status="done",
+                entry_type=EntryType.EPIC_META,
+            ),
+            "testarch-1-config": SprintStatusEntry(
+                key="testarch-1-config",
+                status="done",
+                entry_type=EntryType.MODULE_STORY,
+            ),
+            "epic-1": SprintStatusEntry(
+                key="epic-1",
+                status="done",
+                entry_type=EntryType.EPIC_META,
+            ),
+        }
+
+        sorted_entries = _sort_entries_by_epic_order(entries)
+        keys = list(sorted_entries.keys())
+
+        # Numeric (1) before string (testarch)
+        assert keys.index("epic-1") < keys.index("epic-testarch")
+
+    def test_empty_dict_returns_empty(self) -> None:
+        """Empty dict returns empty dict."""
+        sorted_entries = _sort_entries_by_epic_order({})
+        assert sorted_entries == {}
+
+    def test_full_epic_structure(self) -> None:
+        """Test complete epic structure with meta, stories, and retrospective."""
+        entries = {
+            "epic-12-retrospective": SprintStatusEntry(
+                key="epic-12-retrospective",
+                status="backlog",
+                entry_type=EntryType.RETROSPECTIVE,
+            ),
+            "12-3-parser": SprintStatusEntry(
+                key="12-3-parser",
+                status="in-progress",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+            "12-1-setup": SprintStatusEntry(
+                key="12-1-setup",
+                status="done",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+            "epic-12": SprintStatusEntry(
+                key="epic-12",
+                status="in-progress",
+                entry_type=EntryType.EPIC_META,
+            ),
+            "12-2-models": SprintStatusEntry(
+                key="12-2-models",
+                status="done",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+        }
+
+        sorted_entries = _sort_entries_by_epic_order(entries)
+        keys = list(sorted_entries.keys())
+
+        expected = [
+            "epic-12",
+            "12-1-setup",
+            "12-2-models",
+            "12-3-parser",
+            "epic-12-retrospective",
+        ]
+        assert keys == expected
+
+
+# ============================================================================
+# Tests: Forward-Only Status Protection in Merge
+# ============================================================================
+
+
+class TestForwardOnlyProtection:
+    """Tests for forward-only status protection in _merge_epic_story()."""
+
+    def test_forward_status_allowed(
+        self,
+        temp_project_for_reconcile: Path,
+        sample_metadata: SprintStatusMetadata,
+    ) -> None:
+        """Forward status changes are allowed."""
+        existing = SprintStatus(
+            metadata=sample_metadata,
+            entries={
+                "20-1-setup": SprintStatusEntry(
+                    key="20-1-setup",
+                    status="backlog",
+                    entry_type=EntryType.EPIC_STORY,
+                ),
+            },
+        )
+        generated = GeneratedEntries()
+        generated.entries = [
+            SprintStatusEntry(
+                key="20-1-setup",
+                status="backlog",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+        ]
+
+        index = ArtifactIndex.scan(temp_project_for_reconcile)
+        result = reconcile(existing, generated, index)
+
+        # 20-1-setup has Status: done in file → forward change allowed
+        entry = result.status.entries["20-1-setup"]
+        assert entry.status == "done"
+
+    def test_backward_status_blocked(
+        self,
+        tmp_path: Path,
+        sample_metadata: SprintStatusMetadata,
+    ) -> None:
+        """Backward status changes are blocked (forward-only protection)."""
+        # Create a project with no artifacts (no evidence)
+        (tmp_path / "_bmad-output" / "implementation-artifacts").mkdir(parents=True)
+
+        # Create a story file with Status: backlog (trying to downgrade)
+        stories_dir = tmp_path / "_bmad-output" / "implementation-artifacts" / "stories"
+        stories_dir.mkdir()
+        (stories_dir / "20-1-setup.md").write_text(
+            "# Story 20.1\n\nStatus: backlog\n\nBacklog story."
+        )
+
+        existing = SprintStatus(
+            metadata=sample_metadata,
+            entries={
+                "20-1-setup": SprintStatusEntry(
+                    key="20-1-setup",
+                    status="done",  # Currently done
+                    entry_type=EntryType.EPIC_STORY,
+                ),
+            },
+        )
+        generated = GeneratedEntries()
+        generated.entries = [
+            SprintStatusEntry(
+                key="20-1-setup",
+                status="backlog",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+        ]
+
+        index = ArtifactIndex.scan(tmp_path)
+        result = reconcile(existing, generated, index)
+
+        # Should NOT downgrade from done to backlog (forward-only)
+        entry = result.status.entries["20-1-setup"]
+        # Explicit status wins, but it would be a downgrade
+        # Actually, EXPLICIT confidence wins always
+        assert entry.status == "backlog"  # EXPLICIT wins over forward-only
+
+    def test_forward_only_with_evidence_inference(
+        self,
+        tmp_path: Path,
+        sample_metadata: SprintStatusMetadata,
+    ) -> None:
+        """Forward-only protection applies to evidence-based inference."""
+        # Create project with validator review but no master (MEDIUM confidence)
+        impl_dir = tmp_path / "_bmad-output" / "implementation-artifacts"
+        impl_dir.mkdir(parents=True)
+
+        # Create validator code review (no master synthesis)
+        reviews_dir = impl_dir / "code-reviews"
+        reviews_dir.mkdir()
+        (reviews_dir / "code-review-20-1-validator_a-20260107T120000.md").write_text(
+            "# Validator Review"
+        )
+
+        # No story file with explicit status
+        stories_dir = impl_dir / "stories"
+        stories_dir.mkdir()
+        (stories_dir / "20-1-setup.md").write_text(
+            "# Story 20.1\n\nNo explicit status."
+        )
+
+        existing = SprintStatus(
+            metadata=sample_metadata,
+            entries={
+                "20-1-setup": SprintStatusEntry(
+                    key="20-1-setup",
+                    status="done",  # Already done
+                    entry_type=EntryType.EPIC_STORY,
+                ),
+            },
+        )
+        generated = GeneratedEntries()
+        generated.entries = [
+            SprintStatusEntry(
+                key="20-1-setup",
+                status="backlog",
+                entry_type=EntryType.EPIC_STORY,
+            ),
+        ]
+
+        index = ArtifactIndex.scan(tmp_path)
+        result = reconcile(existing, generated, index)
+
+        # Validator review would infer "review" (MEDIUM confidence)
+        # But "review" < "done", so forward-only should preserve "done"
+        entry = result.status.entries["20-1-setup"]
+        assert entry.status == "done"

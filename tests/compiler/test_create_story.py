@@ -210,9 +210,13 @@ class TestValidateContext:
         with pytest.raises(CompilerError, match="story_num"):
             compiler.validate_context(context)
 
-    def test_missing_workflow_dir_raises(self, tmp_project: Path) -> None:
-        """Missing workflow directory raises CompilerError."""
-        # Remove workflow directory
+    def test_missing_workflow_dir_uses_bundled_fallback(self, tmp_project: Path) -> None:
+        """Missing BMAD workflow uses bundled fallback.
+
+        With bundled workflows, validate_context should NOT fail when
+        the BMAD directory doesn't exist - it falls back to bundled.
+        """
+        # Remove workflow directory from BMAD
         workflow_dir = (
             tmp_project / "_bmad" / "bmm" / "workflows" / "4-implementation" / "create-story"
         )
@@ -223,8 +227,8 @@ class TestValidateContext:
         context = create_test_context(tmp_project)
         compiler = CreateStoryCompiler()
 
-        with pytest.raises(CompilerError, match="Workflow directory not found"):
-            compiler.validate_context(context)
+        # Should NOT raise - uses bundled workflow as fallback
+        compiler.validate_context(context)  # No exception expected
 
     def test_missing_project_context_raises(self, tmp_project: Path) -> None:
         """Missing project_context.md raises CompilerError."""

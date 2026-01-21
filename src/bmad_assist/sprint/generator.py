@@ -42,10 +42,6 @@ __all__ = [
 ]
 
 
-# Legacy tracking file path (relative to project root)
-LEGACY_TRACKING_PATH = "docs/sprint-artifacts/sprint-status.yaml"
-
-
 def detect_legacy_epics(project_root: Path) -> set[int]:
     """Auto-detect epic numbers tracked in legacy location.
 
@@ -70,7 +66,13 @@ def detect_legacy_epics(project_root: Path) -> set[int]:
         {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}
 
     """
-    legacy_dir = project_root / "docs" / "sprint-artifacts"
+    try:
+        from bmad_assist.core.paths import get_paths
+
+        legacy_dir = get_paths().legacy_sprint_artifacts
+    except RuntimeError:
+        # Paths not initialized (e.g., in tests) - use project_root defaults
+        legacy_dir = project_root / "docs" / "sprint-artifacts"
     if not legacy_dir.exists() or not legacy_dir.is_dir():
         return set()
 
@@ -551,6 +553,18 @@ def _generate_entries_from_epic(
             )
         )
 
+    # Add retrospective entry at the end of each epic
+    retro_key = f"epic-{epic.epic_num}-retrospective"
+    entries.append(
+        SprintStatusEntry(
+            key=retro_key,
+            status="backlog",
+            entry_type=EntryType.RETROSPECTIVE,
+            source="epic",
+            comment=None,
+        )
+    )
+
     return entries
 
 
@@ -601,6 +615,22 @@ def generate_from_epics(
     result = GeneratedEntries()
     seen_keys: set[str] = set()
 
+    # Get paths with fallback for when singleton not initialized
+    try:
+        from bmad_assist.core.paths import get_paths
+
+        paths = get_paths()
+        epics_dir = paths.epics_dir
+        project_knowledge = paths.project_knowledge
+        planning_artifacts = paths.planning_artifacts
+        modules_dir = paths.modules_dir
+    except RuntimeError:
+        # Paths not initialized (e.g., in tests) - use project_root defaults
+        epics_dir = project_root / "docs" / "epics"
+        project_knowledge = project_root / "docs"
+        planning_artifacts = project_root / "_bmad-output" / "planning-artifacts"
+        modules_dir = project_root / "docs" / "modules"
+
     # Determine excluded epics: explicit or auto-detected
     effective_exclude: set[int] = set()
     if exclude_epics is not None:
@@ -612,9 +642,9 @@ def generate_from_epics(
 
     # Define epic scan locations in priority order
     epic_locations: list[Path] = [
-        project_root / "docs" / "epics",  # Sharded epics directory
-        project_root / "docs" / "epics.md",  # Single-file multi-epic
-        project_root / "_bmad-output" / "planning-artifacts" / "epics",
+        epics_dir,  # docs/epics (sharded)
+        project_knowledge / "epics.md",  # Single-file multi-epic
+        planning_artifacts / "epics",  # planning-artifacts/epics
     ]
 
     # Scan epic files from primary locations
@@ -628,7 +658,6 @@ def generate_from_epics(
             all_epics.append((epic, False))
 
     # Scan module epics
-    modules_dir = project_root / "docs" / "modules"
     module_epics, module_failed = _scan_module_epics(modules_dir)
     total_failed += module_failed
     for _module_name, epic in module_epics:

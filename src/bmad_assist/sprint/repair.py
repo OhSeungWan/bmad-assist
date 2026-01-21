@@ -186,16 +186,22 @@ def _calculate_divergence(
 
 
 def _get_sprint_status_path(project_root: Path) -> Path:
-    """Get sprint-status.yaml path following BMAD v6 convention.
+    """Get sprint-status.yaml path using paths singleton.
 
     Args:
-        project_root: Project root directory.
+        project_root: Project root directory (used as fallback).
 
     Returns:
         Path to sprint-status.yaml in implementation artifacts.
 
     """
-    return project_root / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml"
+    try:
+        from bmad_assist.core.paths import get_paths
+
+        return get_paths().sprint_status_file
+    except RuntimeError:
+        # Paths not initialized (e.g., in tests) - use project_root defaults
+        return project_root / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml"
 
 
 # =============================================================================
@@ -372,8 +378,17 @@ def _repair_sprint_status_impl(
     from bmad_assist.sprint.sync import sync_state_to_sprint
     from bmad_assist.sprint.writer import write_sprint_status
 
-    sprint_path = _get_sprint_status_path(project_root)
-    legacy_path = project_root / "docs" / "sprint-artifacts" / "sprint-status.yaml"
+    # Get sprint path with fallback for when paths singleton not initialized
+    try:
+        from bmad_assist.core.paths import get_paths
+
+        paths = get_paths()
+        sprint_path = paths.sprint_status_file
+        legacy_path = paths.legacy_sprint_artifacts / "sprint-status.yaml"
+    except RuntimeError:
+        # Paths not initialized (e.g., in tests) - use project_root defaults
+        sprint_path = project_root / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml"
+        legacy_path = project_root / "docs" / "sprint-artifacts" / "sprint-status.yaml"
 
     # Determine effective sprint path and auto_exclude_legacy setting
     # If only legacy location exists, use it and disable auto_exclude

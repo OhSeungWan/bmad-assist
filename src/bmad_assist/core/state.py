@@ -81,7 +81,6 @@ __all__ = [
     "update_position",
     "mark_story_completed",
     "advance_state",
-    "PHASE_ORDER",
     "ResumePoint",
     "CleanupResult",
     "get_resume_point",
@@ -154,20 +153,6 @@ class Phase(Enum):
     QA_PLAN_EXECUTE = "qa_plan_execute"
 
 
-# Phase ordering for advance_state - must match Phase enum order
-PHASE_ORDER: list[Phase] = [
-    Phase.CREATE_STORY,
-    Phase.VALIDATE_STORY,
-    Phase.VALIDATE_STORY_SYNTHESIS,
-    Phase.ATDD,
-    Phase.DEV_STORY,
-    Phase.CODE_REVIEW,
-    Phase.CODE_REVIEW_SYNTHESIS,
-    Phase.TEST_REVIEW,
-    Phase.RETROSPECTIVE,
-    Phase.QA_PLAN_GENERATE,
-    Phase.QA_PLAN_EXECUTE,
-]
 
 
 class PreflightStateEntry(BaseModel):
@@ -210,6 +195,8 @@ class State(BaseModel):
         testarch_preflight: Preflight check completion tracking (None if not run).
         atdd_ran_for_story: True if ATDD ran for current story (reset at handler start).
         atdd_ran_in_epic: True if ATDD ran for any story in current epic.
+        epic_setup_complete: True if epic_setup phases ran for current epic.
+            Reset to False when epic changes in handle_epic_completion().
 
     Example:
         >>> state = State()
@@ -244,6 +231,8 @@ class State(BaseModel):
     atdd_ran_for_story: bool = False
     atdd_ran_in_epic: bool = False
     qa_category: str = "A"  # Test category for QA phases: "A", "B", or "all"
+    # Configurable loop architecture: track epic setup completion
+    epic_setup_complete: bool = False  # Reset to False on epic change
 
 
 def save_state(state: State, path: str | Path) -> None:
@@ -456,24 +445,30 @@ def mark_story_completed(state: State) -> None:
     state.updated_at = _get_now()
 
 
-def advance_state(state: State) -> dict[str, Any]:
+def advance_state(state: State, phase_list: list[str] | None = None) -> dict[str, Any]:
     """Advance state to the next phase in the workflow.
 
-    Moves current_phase to the next phase in PHASE_ORDER.
-    If at RETROSPECTIVE (final phase), indicates epic completion.
+    Moves current_phase to the next phase in the configured story phase sequence.
+    Uses LoopConfig.story (via get_loop_config()) by default, or explicit phase_list.
+
+    Note: epic_complete detection is now handled by runner.py using LoopConfig.
+    This function returns epic_complete=True for backwards compatibility when at
+    the last phase in the story sequence.
 
     Args:
         state: The State instance to modify.
+        phase_list: Optional explicit phase list (snake_case strings).
+            If None, uses get_loop_config().story.
 
     Returns:
         Dict with transition info:
         - "previous_phase": Phase before transition
-        - "new_phase": Phase after transition (same if epic complete)
+        - "new_phase": Phase after transition (same if at last phase)
         - "transitioned": True if phase changed
-        - "epic_complete": True if at RETROSPECTIVE (caller handles epic transition)
+        - "epic_complete": True if at last phase in story sequence
 
     Raises:
-        StateError: If current_phase is None.
+        StateError: If current_phase is None or not found in phase sequence.
 
     Example:
         >>> state = State(current_phase=Phase.DEV_STORY)
@@ -482,13 +477,29 @@ def advance_state(state: State) -> dict[str, Any]:
         <Phase.CODE_REVIEW: 'code_review'>
 
     """
+    from bmad_assist.core.config import get_loop_config
+
     if state.current_phase is None:
         raise StateError("Cannot advance state: no current phase set")
 
     previous = state.current_phase
 
-    # At RETROSPECTIVE (last phase) - signal epic complete, don't change phase
-    if previous == Phase.RETROSPECTIVE:
+    # Get phase list from loop config if not provided
+    if phase_list is None:
+        loop_config = get_loop_config()
+        phase_list = loop_config.story
+
+    # Find current index in the phase sequence
+    current_value = previous.value
+    try:
+        current_idx = phase_list.index(current_value)
+    except ValueError as e:
+        raise StateError(
+            f"Cannot advance state: phase {previous!r} not in loop config story sequence"
+        ) from e
+
+    # Check if at last phase in story sequence
+    if current_idx + 1 >= len(phase_list):
         state.updated_at = _get_now()
         return {
             "previous_phase": previous,
@@ -497,12 +508,12 @@ def advance_state(state: State) -> dict[str, Any]:
             "epic_complete": True,
         }
 
-    # Find current index and advance
+    # Advance to next phase
+    next_value = phase_list[current_idx + 1]
     try:
-        current_idx = PHASE_ORDER.index(previous)
+        next_phase = Phase(next_value)
     except ValueError as e:
-        raise StateError(f"Cannot advance state: phase {previous!r} not in PHASE_ORDER") from e
-    next_phase = PHASE_ORDER[current_idx + 1]
+        raise StateError(f"Invalid phase '{next_value}' in loop config") from e
 
     state.current_phase = next_phase
     state.updated_at = _get_now()

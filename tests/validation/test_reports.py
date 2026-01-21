@@ -1310,3 +1310,211 @@ Different content - should also be kept!
         assert "Second issues section" in result
         assert "Some content" in result
         assert "Different content" in result
+
+
+# =============================================================================
+# Story 22.8: Validation Synthesis Saving - Session ID and Failed Validators
+# =============================================================================
+
+
+class TestStory22_8SessionIdInValidationReports:
+    """Story 22.8 AC #3: Individual reports include session_id for mapping traceability."""
+
+    @pytest.fixture
+    def validations_dir(self, tmp_path: Path) -> Path:
+        """Create story-validations directory structure."""
+        dir_path = tmp_path / "docs" / "sprint-artifacts" / "story-validations"
+        dir_path.mkdir(parents=True)
+        return dir_path
+
+    @pytest.fixture
+    def sample_validation_output(self) -> ValidationOutput:
+        """Sample ValidationOutput for testing."""
+        return ValidationOutput(
+            provider="claude-sonnet_4",
+            model="claude-sonnet-4",
+            content="## Issues Found\n\n1. Missing test coverage...",
+            timestamp=datetime.now(UTC),
+            duration_ms=5234,
+            token_count=1847,
+        )
+
+    def test_session_id_in_frontmatter_when_provided(
+        self,
+        validations_dir: Path,
+        sample_validation_output: ValidationOutput,
+    ) -> None:
+        """Test session_id is added to frontmatter when provided (AC #3)."""
+        result_path = save_validation_report(
+            output=sample_validation_output,
+            epic=22,
+            story=8,
+            phase="VALIDATE_STORY",
+            validations_dir=validations_dir,
+            session_id="test-session-12345",
+        )
+
+        with open(result_path, "r", encoding="utf-8") as f:
+            post = frontmatter.load(f)
+
+        # AC #3: session_id should be in frontmatter
+        assert "session_id" in post.metadata
+        assert post.metadata["session_id"] == "test-session-12345"
+
+    def test_session_id_not_in_frontmatter_when_not_provided(
+        self,
+        validations_dir: Path,
+        sample_validation_output: ValidationOutput,
+    ) -> None:
+        """Test session_id is omitted from frontmatter when not provided."""
+        result_path = save_validation_report(
+            output=sample_validation_output,
+            epic=22,
+            story=8,
+            phase="VALIDATE_STORY",
+            validations_dir=validations_dir,
+            # session_id not provided
+        )
+
+        with open(result_path, "r", encoding="utf-8") as f:
+            post = frontmatter.load(f)
+
+        # session_id should NOT be in frontmatter (backward compatible)
+        assert "session_id" not in post.metadata
+
+    def test_session_id_with_role_id(
+        self,
+        validations_dir: Path,
+        sample_validation_output: ValidationOutput,
+    ) -> None:
+        """Test session_id works alongside role_id (AC #3)."""
+        result_path = save_validation_report(
+            output=sample_validation_output,
+            epic=22,
+            story=8,
+            phase="VALIDATE_STORY",
+            validations_dir=validations_dir,
+            role_id="a",
+            session_id="sess-abc-123",
+        )
+
+        with open(result_path, "r", encoding="utf-8") as f:
+            post = frontmatter.load(f)
+
+        # Both role_id and session_id should be present
+        assert post.metadata["role_id"] == "a"
+        assert post.metadata["session_id"] == "sess-abc-123"
+
+
+class TestStory22_8FailedValidatorsInSynthesis:
+    """Story 22.8 AC #2, AC #4: Synthesis report includes failed_validators in frontmatter."""
+
+    @pytest.fixture
+    def validations_dir(self, tmp_path: Path) -> Path:
+        """Create story-validations directory structure."""
+        dir_path = tmp_path / "docs" / "sprint-artifacts" / "story-validations"
+        dir_path.mkdir(parents=True)
+        return dir_path
+
+    def test_failed_validators_in_frontmatter_when_provided(
+        self,
+        validations_dir: Path,
+    ) -> None:
+        """Test failed_validators is added to frontmatter when provided (AC #2, AC #4)."""
+        result_path = save_synthesis_report(
+            content="## Synthesis Summary\n\nCombined findings...",
+            master_validator_id="master-opus_4",
+            session_id="sess-xyz",
+            validators_used=["Validator A", "Validator B"],
+            epic=22,
+            story=8,
+            duration_ms=8432,
+            validations_dir=validations_dir,
+            failed_validators=["claude-haiku", "gemini-flash"],
+        )
+
+        with open(result_path, "r", encoding="utf-8") as f:
+            post = frontmatter.load(f)
+
+        # AC #2, AC #4: failed_validators should be in frontmatter
+        assert "failed_validators" in post.metadata
+        assert post.metadata["failed_validators"] == ["claude-haiku", "gemini-flash"]
+
+    def test_failed_validators_empty_list_omitted_from_frontmatter(
+        self,
+        validations_dir: Path,
+    ) -> None:
+        """Test empty failed_validators list is omitted from frontmatter (cleaner YAML)."""
+        result_path = save_synthesis_report(
+            content="## Synthesis Summary\n\nCombined findings...",
+            master_validator_id="master-opus_4",
+            session_id="sess-xyz",
+            validators_used=["Validator A", "Validator B"],
+            epic=22,
+            story=8,
+            duration_ms=8432,
+            validations_dir=validations_dir,
+            failed_validators=[],  # Empty list - treated same as None
+        )
+
+        with open(result_path, "r", encoding="utf-8") as f:
+            post = frontmatter.load(f)
+
+        # Empty list is omitted (same as None) for cleaner YAML
+        assert "failed_validators" not in post.metadata
+
+    def test_failed_validators_not_in_frontmatter_when_none(
+        self,
+        validations_dir: Path,
+    ) -> None:
+        """Test failed_validators is omitted when None (backward compatible)."""
+        result_path = save_synthesis_report(
+            content="## Synthesis Summary\n\nCombined findings...",
+            master_validator_id="master-opus_4",
+            session_id="sess-xyz",
+            validators_used=["Validator A", "Validator B"],
+            epic=22,
+            story=8,
+            duration_ms=8432,
+            validations_dir=validations_dir,
+            # failed_validators not provided (defaults to None)
+        )
+
+        with open(result_path, "r", encoding="utf-8") as f:
+            post = frontmatter.load(f)
+
+        # failed_validators should NOT be in frontmatter
+        assert "failed_validators" not in post.metadata
+
+    def test_synthesis_frontmatter_complete_with_failed_validators(
+        self,
+        validations_dir: Path,
+    ) -> None:
+        """Test complete frontmatter structure with failed_validators."""
+        result_path = save_synthesis_report(
+            content="## Synthesis Summary\n\nCombined findings...",
+            master_validator_id="master-opus_4",
+            session_id="sess-complete-test",
+            validators_used=["Validator A", "Validator B", "Validator C"],
+            epic=22,
+            story=8,
+            duration_ms=8432,
+            validations_dir=validations_dir,
+            failed_validators=["claude-haiku"],
+        )
+
+        with open(result_path, "r", encoding="utf-8") as f:
+            post = frontmatter.load(f)
+
+        metadata = post.metadata
+
+        # All expected fields present
+        assert metadata["type"] == "synthesis"
+        assert metadata["master_validator_id"] == "master-opus_4"
+        assert metadata["session_id"] == "sess-complete-test"
+        assert metadata["validators_used"] == ["Validator A", "Validator B", "Validator C"]
+        assert metadata["failed_validators"] == ["claude-haiku"]
+        assert metadata["epic"] == 22
+        assert metadata["story"] == 8
+        assert metadata["duration_ms"] == 8432
+        assert "timestamp" in metadata

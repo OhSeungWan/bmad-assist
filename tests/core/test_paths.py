@@ -346,3 +346,118 @@ class TestRepr:
         result = repr(paths)
         assert "ProjectPaths" in result
         assert str(project_root.resolve()) in result
+
+
+class TestExternalPaths:
+    """Tests for external (absolute) path support."""
+
+    def test_absolute_external_path_not_modified(self, project_root: Path):
+        """Absolute paths outside project are used as-is."""
+        project_root.mkdir(parents=True)
+        config = {"project_knowledge": "/external/shared/docs"}
+        paths = ProjectPaths(project_root, config)
+        assert paths.project_knowledge == Path("/external/shared/docs")
+
+    def test_external_path_with_placeholder_resolved(self, project_root: Path):
+        """Paths with {project-root} are still resolved."""
+        project_root.mkdir(parents=True)
+        config = {"project_knowledge": "{project-root}/custom-docs"}
+        paths = ProjectPaths(project_root, config)
+        assert paths.project_knowledge == project_root.resolve() / "custom-docs"
+
+    def test_relative_path_without_placeholder(self, project_root: Path):
+        """Relative paths without {project-root} resolve relative to project."""
+        project_root.mkdir(parents=True)
+        config = {"project_knowledge": "../shared-docs"}
+        paths = ProjectPaths(project_root, config)
+        expected = (project_root / "../shared-docs").resolve()
+        assert paths.project_knowledge == expected
+
+    def test_empty_path_falls_back_to_project_root(self, project_root: Path):
+        """Empty path template falls back to project root."""
+        project_root.mkdir(parents=True)
+        config = {"project_knowledge": ""}
+        paths = ProjectPaths(project_root, config)
+        assert paths.project_knowledge == project_root.resolve()
+
+
+class TestFindSprintStatus:
+    """Tests for find_sprint_status() and get_sprint_status_search_locations()."""
+
+    def test_find_sprint_status_new_location(self, project_root: Path):
+        """find_sprint_status() returns new location when it exists."""
+        project_root.mkdir(parents=True)
+        paths = ProjectPaths(project_root)
+        paths.sprint_status_file.parent.mkdir(parents=True)
+        paths.sprint_status_file.write_text("entries: {}")
+
+        assert paths.find_sprint_status() == paths.sprint_status_file
+
+    def test_find_sprint_status_legacy_fallback(self, project_root: Path):
+        """find_sprint_status() falls back to legacy location."""
+        project_root.mkdir(parents=True)
+        paths = ProjectPaths(project_root)
+        legacy = paths.legacy_sprint_artifacts / "sprint-status.yaml"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text("entries: {}")
+
+        assert paths.find_sprint_status() == legacy
+
+    def test_find_sprint_status_returns_none_when_missing(self, project_root: Path):
+        """find_sprint_status() returns None when no file exists."""
+        project_root.mkdir(parents=True)
+        paths = ProjectPaths(project_root)
+        assert paths.find_sprint_status() is None
+
+    def test_get_sprint_status_search_locations_returns_all(self, project_root: Path):
+        """get_sprint_status_search_locations() returns all candidates."""
+        project_root.mkdir(parents=True)
+        paths = ProjectPaths(project_root)
+        locations = paths.get_sprint_status_search_locations()
+
+        assert len(locations) == 3
+        assert paths.sprint_status_file in locations
+        assert paths.legacy_sprint_artifacts / "sprint-status.yaml" in locations
+
+    def test_get_sprint_status_search_locations_deduplicates(self, project_root: Path):
+        """get_sprint_status_search_locations() deduplicates paths."""
+        project_root.mkdir(parents=True)
+        paths = ProjectPaths(project_root)
+        locations = paths.get_sprint_status_search_locations()
+        # Check for uniqueness
+        resolved = [p.resolve() for p in locations]
+        assert len(resolved) == len(set(resolved))
+
+
+class TestLegacySprintArtifacts:
+    """Tests for legacy_sprint_artifacts property."""
+
+    def test_legacy_sprint_artifacts(self, project_root: Path):
+        """legacy_sprint_artifacts returns project_knowledge/sprint-artifacts."""
+        project_root.mkdir(parents=True)
+        paths = ProjectPaths(project_root)
+        expected = paths.project_knowledge / "sprint-artifacts"
+        assert paths.legacy_sprint_artifacts == expected
+
+
+class TestEnsureDirectoriesPermissions:
+    """Tests for ensure_directories() permission handling."""
+
+    def test_ensure_directories_permission_error_message(self, project_root: Path, tmp_path: Path):
+        """Permission error includes helpful message for external paths."""
+        project_root.mkdir(parents=True)
+        # Create read-only directory
+        readonly_dir = tmp_path / "readonly"
+        readonly_dir.mkdir()
+        readonly_dir.chmod(0o444)
+
+        try:
+            config = {"output_folder": str(readonly_dir / "subdir")}
+            paths = ProjectPaths(project_root, config)
+
+            with pytest.raises(PermissionError) as exc_info:
+                paths.ensure_directories()
+
+            assert "external path" in str(exc_info.value).lower()
+        finally:
+            readonly_dir.chmod(0o755)

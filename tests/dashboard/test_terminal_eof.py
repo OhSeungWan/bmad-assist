@@ -547,3 +547,105 @@ class TestSSEBroadcasterEOF:
         # Verify both exited
         assert not subscriber1_active
         assert not subscriber2_active
+
+
+# =============================================================================
+# Story 22.11 Task 8: Tests for validator_progress and phase_complete events
+# =============================================================================
+
+
+class TestValidatorProgressEvents:
+    """Tests for validator_progress and phase_complete SSE events."""
+
+    def test_validator_progress_schema_valid(self) -> None:
+        """Test that ValidatorProgressData schema validates correctly."""
+        from bmad_assist.dashboard.schemas import ValidatorProgressData
+
+        data = ValidatorProgressData(
+            validator_id="validator-a",
+            status="completed",
+            duration_ms=45000,
+        )
+        assert data.validator_id == "validator-a"
+        assert data.status == "completed"
+        assert data.duration_ms == 45000
+
+    def test_validator_progress_timeout_status(self) -> None:
+        """Test ValidatorProgressData with timeout status."""
+        from bmad_assist.dashboard.schemas import ValidatorProgressData
+
+        data = ValidatorProgressData(
+            validator_id="validator-b",
+            status="timeout",
+            duration_ms=300000,
+        )
+        assert data.status == "timeout"
+
+    def test_validator_progress_no_duration(self) -> None:
+        """Test ValidatorProgressData without duration_ms."""
+        from bmad_assist.dashboard.schemas import ValidatorProgressData
+
+        data = ValidatorProgressData(
+            validator_id="validator-c",
+            status="failed",
+        )
+        assert data.duration_ms is None
+
+    def test_phase_complete_schema_valid(self) -> None:
+        """Test that PhaseCompleteData schema validates correctly."""
+        from bmad_assist.dashboard.schemas import PhaseCompleteData
+
+        data = PhaseCompleteData(
+            phase_name="VALIDATE_STORY",
+            success=True,
+            validator_count=6,
+            failed_count=0,
+        )
+        assert data.phase_name == "VALIDATE_STORY"
+        assert data.success is True
+        assert data.validator_count == 6
+        assert data.failed_count == 0
+
+    def test_phase_complete_with_failures(self) -> None:
+        """Test PhaseCompleteData with some failed validators."""
+        from bmad_assist.dashboard.schemas import PhaseCompleteData
+
+        data = PhaseCompleteData(
+            phase_name="VALIDATE_STORY",
+            success=False,
+            validator_count=6,
+            failed_count=2,
+        )
+        assert data.success is False
+        assert data.failed_count == 2
+
+    def test_validator_progress_event_creation(self) -> None:
+        """Test create_validator_progress factory function."""
+        from bmad_assist.dashboard.schemas import create_validator_progress
+
+        event = create_validator_progress(
+            run_id="run-20260115-080000-a1b2c3d4",
+            sequence_id=5,
+            validator_id="validator-a",
+            status="completed",
+            duration_ms=45000,
+        )
+        assert event.type == "validator_progress"
+        assert event.data.validator_id == "validator-a"
+        assert event.data.status == "completed"
+
+    def test_phase_complete_event_creation(self) -> None:
+        """Test create_phase_complete factory function."""
+        from bmad_assist.dashboard.schemas import create_phase_complete
+
+        event = create_phase_complete(
+            run_id="run-20260115-080000-a1b2c3d4",
+            sequence_id=10,
+            phase_name="VALIDATE_STORY",
+            success=True,
+            validator_count=6,
+            failed_count=0,
+        )
+        assert event.type == "phase_complete"
+        assert event.data.phase_name == "VALIDATE_STORY"
+        assert event.data.success is True

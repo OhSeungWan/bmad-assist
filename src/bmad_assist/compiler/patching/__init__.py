@@ -36,7 +36,12 @@ from bmad_assist.compiler.patching.config import (
     load_patcher_config,
     reset_patcher_config,
 )
-from bmad_assist.compiler.patching.discovery import discover_patch, load_defaults, load_patch
+from bmad_assist.compiler.patching.discovery import (
+    determine_patch_source_level,
+    discover_patch,
+    load_defaults,
+    load_patch,
+)
 from bmad_assist.compiler.patching.git_intelligence import (
     extract_git_intelligence,
     is_git_repo,
@@ -88,6 +93,7 @@ __all__ = [
     "check_threshold",
     "compile_patch",
     "compute_file_hash",
+    "determine_patch_source_level",
     "discover_patch",
     "ensure_template_compiled",
     "extract_git_intelligence",

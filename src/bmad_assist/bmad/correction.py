@@ -55,12 +55,17 @@ def _get_sprint_status_path(bmad_root: Path) -> Path:
         Path to sprint-status.yaml.
 
     """
-    try:
-        from bmad_assist.core.paths import get_paths
+    from bmad_assist.core.paths import get_paths
 
-        return get_paths().sprint_status_file
-    except (RuntimeError, ImportError):
-        # Check legacy locations
+    try:
+        paths = get_paths()
+        found = paths.find_sprint_status()
+        if found:
+            return found
+        # Return default new location if not found
+        return paths.sprint_status_file
+    except RuntimeError:
+        # Fallback when singleton not initialized
         legacy_artifacts = bmad_root / "sprint-artifacts" / "sprint-status.yaml"
         if legacy_artifacts.exists():
             return legacy_artifacts

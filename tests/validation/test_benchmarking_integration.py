@@ -252,6 +252,39 @@ class TestParseRoleId:
             assert len(info.role_id) == 1
             assert "a" <= info.role_id <= "z"
 
+    def test_pydantic_validation_rejects_invalid_inputs(self) -> None:
+        """Pydantic validation rejects non-ASCII, uppercase, multi-char, numbers.
+
+        Story 22.5 synthesis fix: Validator accepts only ASCII lowercase a-z.
+        Unicode lowercase letters (ä, é, ñ) must be rejected to prevent data corruption.
+        """
+        from pydantic import ValidationError
+
+        from bmad_assist.benchmarking import EvaluatorInfo
+
+        invalid_cases = [
+            "ä",  # Unicode lowercase (German umlaut)
+            "é",  # Unicode lowercase (French accent)
+            "ñ",  # Unicode lowercase (Spanish tilde)
+            "ø",  # Unicode lowercase (Nordic)
+            "A",  # Uppercase
+            "Z",  # Uppercase
+            "1",  # Number
+            "-",  # Symbol
+            "ab",  # Multi-char
+            "",  # Empty string
+        ]
+
+        for invalid_id in invalid_cases:
+            with pytest.raises(ValidationError, match="role_id must be single lowercase"):
+                EvaluatorInfo(
+                    provider="test",
+                    model="test",
+                    role=EvaluatorRole.VALIDATOR,
+                    role_id=invalid_id,
+                    session_id="test",
+                )
+
 
 class TestCreateEvaluatorInfo:
     """Test _create_evaluator_info helper function."""
