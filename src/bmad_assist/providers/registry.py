@@ -44,18 +44,22 @@ def _init_default_providers() -> None:
     identity for code that imports _REGISTRY directly (e.g., tests).
     """
     # Import here to avoid circular imports
+    from bmad_assist.providers.amp import AmpProvider
     from bmad_assist.providers.claude import ClaudeSubprocessProvider
     from bmad_assist.providers.claude_sdk import ClaudeSDKProvider
     from bmad_assist.providers.codex import CodexProvider
     from bmad_assist.providers.gemini import GeminiProvider
+    from bmad_assist.providers.opencode import OpenCodeProvider
 
     # Use update() to preserve reference identity (not assignment)
     _REGISTRY.update(
         {
+            "amp": AmpProvider,
             "claude": ClaudeSDKProvider,
             "claude-subprocess": ClaudeSubprocessProvider,
             "codex": CodexProvider,
             "gemini": GeminiProvider,
+            "opencode": OpenCodeProvider,
         }
     )
     logger.debug(

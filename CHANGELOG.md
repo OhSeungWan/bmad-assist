@@ -2,6 +2,17 @@
 
 All notable changes to bmad-assist are documented in this file.
 
+## [0.4.4] - 2026-01-21
+
+### Added
+- OpenCode provider for Multi-LLM validation (subprocess-based, JSON streaming)
+- Amp provider for Sourcegraph's Claude wrapper (smart mode only)
+- Three-tier config hierarchy: Global → CWD → Project
+
+### Fixed
+- Config loading now respects CWD when using `--project` flag
+- OpenCode provider accepts any `provider/model` format (no hardcoded list)
+
 ## [0.4.3] - 2026-01-21
 
 ### Added

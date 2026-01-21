@@ -742,7 +742,7 @@ class TestFileListExtraction:
 
     def test_extract_file_paths_basic(self) -> None:
         """Extracts file paths from basic File List section."""
-        from bmad_assist.compiler.workflows.create_story import _extract_file_paths_from_story
+        from bmad_assist.compiler.source_context import extract_file_paths_from_story
 
         story_content = """# Story 6.3
 
@@ -757,7 +757,7 @@ Some text here.
 
 ## Change Log
 """
-        paths = _extract_file_paths_from_story(story_content)
+        paths = extract_file_paths_from_story(story_content)
 
         assert len(paths) == 2
         assert "src/bmad_assist/core/loop.py" in paths
@@ -765,14 +765,14 @@ Some text here.
 
     def test_extract_file_paths_with_h3(self) -> None:
         """Extracts file paths from ### File List section."""
-        from bmad_assist.compiler.workflows.create_story import _extract_file_paths_from_story
+        from bmad_assist.compiler.source_context import extract_file_paths_from_story
 
         story_content = """### File List
 
 - `src/module/file.py` - Description
 - `tests/test_file.py`
 """
-        paths = _extract_file_paths_from_story(story_content)
+        paths = extract_file_paths_from_story(story_content)
 
         assert len(paths) == 2
         assert "src/module/file.py" in paths
@@ -780,34 +780,34 @@ Some text here.
 
     def test_extract_file_paths_no_section(self) -> None:
         """Returns empty list if no File List section."""
-        from bmad_assist.compiler.workflows.create_story import _extract_file_paths_from_story
+        from bmad_assist.compiler.source_context import extract_file_paths_from_story
 
         story_content = """# Story
 
 ## Implementation
 Code here.
 """
-        paths = _extract_file_paths_from_story(story_content)
+        paths = extract_file_paths_from_story(story_content)
 
         assert paths == []
 
     def test_extract_file_paths_without_backticks(self) -> None:
         """Extracts paths without backticks."""
-        from bmad_assist.compiler.workflows.create_story import _extract_file_paths_from_story
+        from bmad_assist.compiler.source_context import extract_file_paths_from_story
 
         story_content = """## File List
 
 - src/plain/path.ts - Plain path
 * tests/another.py - Asterisk bullet
 """
-        paths = _extract_file_paths_from_story(story_content)
+        paths = extract_file_paths_from_story(story_content)
 
         assert "src/plain/path.ts" in paths
         assert "tests/another.py" in paths
 
     def test_extract_file_paths_various_extensions(self) -> None:
         """Extracts paths with various file extensions."""
-        from bmad_assist.compiler.workflows.create_story import _extract_file_paths_from_story
+        from bmad_assist.compiler.source_context import extract_file_paths_from_story
 
         story_content = """## File List
 
@@ -817,7 +817,7 @@ Code here.
 - `src/util.go`
 - `src/main.rs`
 """
-        paths = _extract_file_paths_from_story(story_content)
+        paths = extract_file_paths_from_story(story_content)
 
         assert len(paths) == 5
         assert "src/code.py" in paths
@@ -828,99 +828,43 @@ Code here.
 
 
 class TestSourceFilesCollection:
-    """Tests for collecting source files from File List with token budget."""
+    """Tests for collecting source files via SourceContextService."""
 
     def test_collect_source_files_basic(self, tmp_project: Path) -> None:
-        """Collects source files from story File List."""
+        """Collects source files from File List paths."""
+        from bmad_assist.compiler.source_context import SourceContextService
+
         # Create source file
         src_dir = tmp_project / "src"
         src_dir.mkdir()
         source_file = src_dir / "module.py"
         source_file.write_text("def hello():\n    return 'world'")
 
-        # Create story with File List referencing the source file
-        story_file = tmp_project / "docs" / "sprint-artifacts" / "10-6-test.md"
-        story_file.write_text(f"""# Story 10.6
-
-## File List
-
-- `src/module.py` - Main module
-""")
-
         context = create_test_context(tmp_project, epic_num=10, story_num=7)
-        compiler = CreateStoryCompiler()
+        service = SourceContextService(context, "create_story")
 
-        result = compiler._collect_source_files_from_stories([story_file], context)
+        result = service.collect_files(["src/module.py"], None)
 
         assert len(result) == 1
         assert "def hello():" in list(result.values())[0]
 
-    def test_collect_source_files_skips_docs(self, tmp_project: Path) -> None:
-        """Skips files in docs/ folder."""
-        # Create story with File List referencing docs file
-        story_file = tmp_project / "docs" / "sprint-artifacts" / "10-6-test.md"
-        story_file.write_text("""# Story 10.6
-
-## File List
-
-- `docs/architecture.md` - Should be skipped
-- `src/module.py` - Should be included
-""")
-
-        # Create src file
-        src_dir = tmp_project / "src"
-        src_dir.mkdir()
-        (src_dir / "module.py").write_text("# code")
+    def test_source_context_defaults(self, tmp_project: Path) -> None:
+        """SourceContextService uses correct defaults for create_story."""
+        from bmad_assist.compiler.source_context import SourceContextService
 
         context = create_test_context(tmp_project, epic_num=10, story_num=7)
-        compiler = CreateStoryCompiler()
+        service = SourceContextService(context, "create_story")
 
-        result = compiler._collect_source_files_from_stories([story_file], context)
-
-        # Only src/module.py should be included
-        assert len(result) == 1
-        paths = list(result.keys())
-        assert "module.py" in paths[0]
-        assert "architecture.md" not in str(paths)
-
-    def test_collect_source_files_respects_token_budget(self, tmp_project: Path) -> None:
-        """Truncates when token budget is exceeded."""
-        # Create large source file (~1000 tokens = 4000 chars)
-        src_dir = tmp_project / "src"
-        src_dir.mkdir()
-        large_content = "# " + "x" * 5000  # > 1000 tokens
-        (src_dir / "large.py").write_text(large_content)
-
-        story_file = tmp_project / "docs" / "sprint-artifacts" / "10-6-test.md"
-        story_file.write_text("""## File List
-
-- `src/large.py`
-""")
-
-        context = create_test_context(tmp_project, epic_num=10, story_num=7)
-        compiler = CreateStoryCompiler()
-
-        # Use small budget
-        result = compiler._collect_source_files_from_stories(
-            [story_file], context, token_budget=500
-        )
-
-        assert len(result) == 1
-        content = list(result.values())[0]
-        assert "[... TRUNCATED at line" in content
-        assert len(content) < len(large_content)
+        assert service.budget == 20000  # create_story default
+        assert service.is_enabled()
 
     def test_collect_source_files_skips_missing(self, tmp_project: Path) -> None:
         """Skips files that don't exist."""
-        story_file = tmp_project / "docs" / "sprint-artifacts" / "10-6-test.md"
-        story_file.write_text("""## File List
-
-- `src/nonexistent.py`
-""")
+        from bmad_assist.compiler.source_context import SourceContextService
 
         context = create_test_context(tmp_project, epic_num=10, story_num=7)
-        compiler = CreateStoryCompiler()
+        service = SourceContextService(context, "create_story")
 
-        result = compiler._collect_source_files_from_stories([story_file], context)
+        result = service.collect_files(["src/nonexistent.py"], None)
 
         assert len(result) == 0

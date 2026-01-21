@@ -1,8 +1,8 @@
 """CLI provider integration module.
 
 Provides the abstract base class and data structures for CLI provider
-implementations. All providers (Claude Code, Codex, Gemini CLI) must
-implement the BaseProvider interface.
+implementations. All providers (Claude Code, Codex, Gemini CLI, OpenCode, Amp)
+must implement the BaseProvider interface.
 
 Provider Registry:
     - ClaudeSDKProvider: PRIMARY Claude integration using claude-agent-sdk (native async)
@@ -10,6 +10,8 @@ Provider Registry:
     - ClaudeProvider: Alias for ClaudeSDKProvider (default)
     - CodexProvider: Codex CLI subprocess provider for Multi-LLM validation
     - GeminiProvider: Gemini CLI subprocess provider for Multi-LLM validation
+    - OpenCodeProvider: OpenCode CLI subprocess provider for Multi-LLM validation
+    - AmpProvider: Amp CLI (Sourcegraph) subprocess provider for Multi-LLM validation
 
 Registry Functions:
     - get_provider(): Get provider instance by name
@@ -29,12 +31,14 @@ Example:
     >>> from bmad_assist.providers import ClaudeProvider  # Alias for ClaudeSDKProvider
     >>> from bmad_assist.providers import ClaudeSDKProvider, ClaudeSubprocessProvider
     >>> from bmad_assist.providers import CodexProvider, GeminiProvider
+    >>> from bmad_assist.providers import OpenCodeProvider, AmpProvider
     >>> from bmad_assist.providers import get_provider, list_providers
     >>> from bmad_assist.providers import resolve_settings_file, validate_settings_file
     >>> from bmad_assist.core.exceptions import ProviderError, ProviderExitCodeError
 
 """
 
+from .amp import AmpProvider
 from .base import (
     BaseProvider,
     ExitStatus,
@@ -46,6 +50,7 @@ from .claude import ClaudeSubprocessProvider
 from .claude_sdk import ClaudeSDKProvider
 from .codex import CodexProvider
 from .gemini import GeminiProvider
+from .opencode import OpenCodeProvider
 from .registry import (
     denormalize_model_name,
     get_provider,
@@ -60,6 +65,7 @@ from .registry import (
 ClaudeProvider = ClaudeSDKProvider
 
 __all__ = [
+    "AmpProvider",
     "BaseProvider",
     "ClaudeProvider",  # Alias for ClaudeSDKProvider
     "ClaudeSDKProvider",
@@ -67,6 +73,7 @@ __all__ = [
     "CodexProvider",
     "ExitStatus",
     "GeminiProvider",
+    "OpenCodeProvider",
     "ProviderResult",
     # Registry functions
     "denormalize_model_name",

@@ -354,6 +354,208 @@ class ProjectPathsConfig(BaseModel):
     )
 
 
+class SourceContextBudgetsConfig(BaseModel):
+    """Token budgets per workflow for source file collection.
+
+    Budget values:
+    - 0-99: Disabled (source context collection skipped)
+    - 100+: Active budget in tokens
+
+    Attributes:
+        code_review: Budget for code review workflow.
+        code_review_synthesis: Budget for code review synthesis.
+        create_story: Budget for create-story workflow.
+        dev_story: Budget for dev-story workflow.
+        validate_story: Budget for validate-story (disabled by default).
+        validate_story_synthesis: Budget for synthesis (disabled by default).
+        default: Fallback for unlisted workflows.
+
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    code_review: int = Field(
+        default=15000,
+        ge=0,
+        description="Token budget for code_review workflow (0-99 = disabled)",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+    code_review_synthesis: int = Field(
+        default=15000,
+        ge=0,
+        description="Token budget for code_review_synthesis workflow",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+    create_story: int = Field(
+        default=20000,
+        ge=0,
+        description="Token budget for create_story workflow",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+    dev_story: int = Field(
+        default=20000,
+        ge=0,
+        description="Token budget for dev_story workflow",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+    validate_story: int = Field(
+        default=0,
+        ge=0,
+        description="Token budget for validate_story (0 = disabled)",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+    validate_story_synthesis: int = Field(
+        default=0,
+        ge=0,
+        description="Token budget for validate_story_synthesis (0 = disabled)",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+    default: int = Field(
+        default=20000,
+        ge=0,
+        description="Fallback budget for unlisted workflows",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+
+    def get_budget(self, workflow_name: str) -> int:
+        """Get budget for a workflow by name.
+
+        Args:
+            workflow_name: Name of the workflow (e.g., 'code_review').
+
+        Returns:
+            Token budget for the workflow, or default if not found.
+
+        """
+        # Normalize name (replace hyphens with underscores)
+        normalized = workflow_name.replace("-", "_")
+        return getattr(self, normalized, self.default)
+
+
+class SourceContextScoringConfig(BaseModel):
+    """Scoring weights for file prioritization.
+
+    Higher scores = more likely to be included in source context.
+
+    Attributes:
+        in_file_list: Bonus for files in story's File List.
+        in_git_diff: Bonus for files in git diff.
+        is_test_file: Penalty for test files (usually negative).
+        is_config_file: Penalty for config files (usually negative).
+        change_lines_factor: Points per changed line in git diff.
+        change_lines_cap: Max points from change_lines.
+
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    in_file_list: int = Field(
+        default=50,
+        description="Bonus points for files in story's File List section",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+    in_git_diff: int = Field(
+        default=50,
+        description="Bonus points for files in git diff",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+    is_test_file: int = Field(
+        default=-10,
+        description="Points for test files (negative = penalty)",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+    is_config_file: int = Field(
+        default=-5,
+        description="Points for config files (negative = penalty)",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+    change_lines_factor: int = Field(
+        default=1,
+        ge=0,
+        description="Points per changed line in git diff",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+    change_lines_cap: int = Field(
+        default=50,
+        ge=0,
+        description="Max points from change_lines",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+
+
+class SourceContextExtractionConfig(BaseModel):
+    """Content extraction settings for source files.
+
+    Controls adaptive mode and hunk extraction behavior.
+
+    Attributes:
+        adaptive_threshold: Threshold for full vs hunk extraction.
+            If file_tokens > (budget/files)*threshold → extract hunks only.
+        hunk_context_lines: Minimum context lines around changes.
+        hunk_context_scale: Scale factor for context calculation.
+        max_files: Hard cap on files included (prevents budget dilution).
+
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    adaptive_threshold: float = Field(
+        default=0.25,
+        ge=0.0,
+        le=1.0,
+        description="Threshold: file_tokens > (budget/files)*threshold → hunks only",
+        json_schema_extra={"security": "safe", "ui_widget": "slider"},
+    )
+    hunk_context_lines: int = Field(
+        default=20,
+        ge=1,
+        description="Minimum context lines around each change",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+    hunk_context_scale: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Context = max(hunk_context_lines, changes * scale)",
+        json_schema_extra={"security": "safe", "ui_widget": "slider"},
+    )
+    max_files: int = Field(
+        default=15,
+        ge=1,
+        description="Max files included (prevents budget dilution)",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+
+
+class SourceContextConfig(BaseModel):
+    """Source context collection configuration.
+
+    Controls how source files are collected and prioritized
+    for inclusion in compiled workflow prompts.
+
+    Attributes:
+        budgets: Per-workflow token budgets.
+        scoring: File prioritization weights.
+        extraction: Content extraction settings.
+
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    budgets: SourceContextBudgetsConfig = Field(
+        default_factory=SourceContextBudgetsConfig,
+        description="Per-workflow token budgets",
+    )
+    scoring: SourceContextScoringConfig = Field(
+        default_factory=SourceContextScoringConfig,
+        description="File prioritization weights",
+    )
+    extraction: SourceContextExtractionConfig = Field(
+        default_factory=SourceContextExtractionConfig,
+        description="Content extraction settings",
+    )
+
+
 class CompilerConfig(BaseModel):
     """Compiler configuration section.
 
@@ -363,6 +565,7 @@ class CompilerConfig(BaseModel):
         patch_path: Custom path to patch files directory.
             Relative paths are resolved from project root.
             Defaults to {project}/.bmad-assist/patches.
+        source_context: Source file collection configuration.
 
     """
 
@@ -372,6 +575,10 @@ class CompilerConfig(BaseModel):
         default=None,
         description="Custom path to patch files directory",
         json_schema_extra={"security": "dangerous"},
+    )
+    source_context: SourceContextConfig = Field(
+        default_factory=SourceContextConfig,
+        description="Source file collection configuration",
     )
 
 
@@ -958,12 +1165,18 @@ def load_config_with_project(
     project_path: str | Path | None = None,
     *,
     global_config_path: str | Path | None = None,
+    cwd_config_path: str | Path | None | Literal[False] = None,
 ) -> Config:
-    """Load configuration with project override support.
+    """Load configuration with three-tier hierarchy support.
 
-    Loads global config from ~/.bmad-assist/config.yaml (or specified path),
-    then loads project config from {project_path}/bmad-assist.yaml,
-    and performs deep merge with project taking precedence.
+    Configuration is loaded and merged from three sources (in order of precedence):
+    1. Global: ~/.bmad-assist/config.yaml (base defaults)
+    2. CWD: {cwd}/bmad-assist.yaml (workspace-level overrides, if different from project)
+    3. Project: {project_path}/bmad-assist.yaml (project-specific overrides)
+
+    This allows running `bmad-assist run --project experiments/fixtures/foo` from
+    the main bmad-assist directory and having the main bmad-assist.yaml config
+    apply, with fixture-specific overrides taking precedence.
 
     Also loads environment variables from {project_path}/.env before config
     validation, so CLI providers can use credentials immediately.
@@ -972,18 +1185,21 @@ def load_config_with_project(
         project_path: Path to project directory. Defaults to current working directory.
             MUST be a directory, not a file.
         global_config_path: Custom global config path (for testing).
+        cwd_config_path: CWD config path override. Use False to disable CWD tier
+            entirely (for testing). Defaults to None (auto-detect from cwd).
 
     Returns:
         Validated Config instance with merged configuration.
 
     Raises:
-        ConfigError: If neither config exists, if config is invalid YAML,
+        ConfigError: If no config exists at any tier, if config is invalid YAML,
             if project_path is not a directory, or if Pydantic validation fails.
-            Error messages distinguish between global and project config errors.
+            Error messages list which config sources were merged.
 
     Example:
-        >>> load_config_with_project("/path/to/project")  # Load with project override
-        Config(providers=...)
+        >>> # From /home/user/bmad-assist-22 with bmad-assist.yaml
+        >>> load_config_with_project("experiments/fixtures/simple")
+        # Merges: global <- cwd (bmad-assist.yaml) <- project (if exists)
 
         >>> load_config_with_project()  # Uses cwd as project path
         Config(providers=...)
@@ -1008,19 +1224,42 @@ def load_config_with_project(
         GLOBAL_CONFIG_PATH if global_config_path is None else Path(global_config_path).expanduser()
     )
 
-    # Check existence
+    # Check existence - three-tier hierarchy:
+    # 1. Global (~/.bmad-assist/config.yaml) - base defaults
+    # 2. CWD (current working directory) - workspace-level overrides
+    # 3. Project (--project flag) - project-specific overrides
     global_exists = resolved_global.exists() and resolved_global.is_file()
+
+    # CWD config (only if different from project and not disabled)
+    cwd_exists = False
+    resolved_cwd_config: Path | None = None
+    if cwd_config_path is not False:  # False = disabled entirely
+        if cwd_config_path is not None:
+            # Custom path provided (for testing)
+            resolved_cwd_config = Path(cwd_config_path).expanduser()
+        else:
+            # Auto-detect from cwd
+            cwd_path = Path.cwd()
+            resolved_cwd_config = cwd_path / PROJECT_CONFIG_NAME
+            # Only use if different from project path (don't load twice)
+            if cwd_path.resolve() == resolved_project.resolve():
+                resolved_cwd_config = None
+
+        if resolved_cwd_config is not None:
+            cwd_exists = resolved_cwd_config.exists() and resolved_cwd_config.is_file()
+
     project_config_path = resolved_project / PROJECT_CONFIG_NAME
     project_exists = project_config_path.exists() and project_config_path.is_file()
 
-    # Handle the four scenarios
-    if not global_exists and not project_exists:
+    # Handle no config scenario
+    if not global_exists and not cwd_exists and not project_exists:
         raise ConfigError("No configuration found. Run 'bmad-assist init' to create config.")
 
     global_data: dict[str, Any] = {}
+    cwd_data: dict[str, Any] | None = None
     project_data: dict[str, Any] | None = None
 
-    # Load global config if exists
+    # Load global config if exists (tier 1 - base)
     if global_exists:
         try:
             global_data = _load_yaml_file(resolved_global)
@@ -1029,34 +1268,52 @@ def load_config_with_project(
             _config = None
             raise ConfigError(f"Failed to parse global config at {resolved_global}: {e}") from e
 
-    # Load project config if exists
+    # Load CWD config if exists (tier 2 - workspace overrides)
+    if cwd_exists and resolved_cwd_config is not None:
+        try:
+            cwd_data = _load_yaml_file(resolved_cwd_config)
+            logger.debug("Loaded CWD config from %s", resolved_cwd_config)
+        except ConfigError as e:
+            _config = None
+            raise ConfigError(f"Failed to parse CWD config at {resolved_cwd_config}: {e}") from e
+
+    # Load project config if exists (tier 3 - project overrides)
     if project_exists:
         try:
             project_data = _load_project_config(resolved_project)
+            logger.debug("Loaded project config from %s", project_config_path)
         except ConfigError:
             # Clear singleton on YAML parse error to prevent stale state
             _config = None
             raise
 
-    # Merge configurations
+    # Merge configurations: global <- cwd <- project
+    merged_data = global_data
+    if cwd_data is not None:
+        merged_data = _deep_merge(merged_data, cwd_data)
     if project_data is not None:
-        merged_data = _deep_merge(global_data, project_data)
-    else:
-        merged_data = global_data
+        merged_data = _deep_merge(merged_data, project_data)
 
     # Validate and load
     try:
         return load_config(merged_data)
     except ConfigError as e:
         # Singleton already cleared by load_config on validation failure
-        if global_exists and project_exists:
-            raise ConfigError("Invalid configuration (merged from global + project)") from e
-        elif project_exists:
-            raise ConfigError(
-                f"Invalid configuration in project config at {project_config_path}"
-            ) from e
+        # Build descriptive error message based on which configs were loaded
+        sources = []
+        if global_exists:
+            sources.append(f"global ({resolved_global})")
+        if cwd_exists and resolved_cwd_config is not None:
+            sources.append(f"CWD ({resolved_cwd_config})")
+        if project_exists:
+            sources.append(f"project ({project_config_path})")
+
+        if len(sources) > 1:
+            raise ConfigError(f"Invalid configuration (merged from {' + '.join(sources)})") from e
+        elif sources:
+            raise ConfigError(f"Invalid configuration in {sources[0]}") from e
         else:
-            raise ConfigError(f"Invalid configuration in {resolved_global}") from e
+            raise ConfigError("Invalid configuration") from e
 
 
 # =============================================================================

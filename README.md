@@ -102,6 +102,12 @@ bmad-assist init --project /path/to/your/project
 
 # 3. Run the development loop
 bmad-assist run --project /path/to/your/project
+
+# CLI options:
+#   -n, --no-interactive   Disable prompts (for CI/automation)
+#                          WARNING: Burns tokens fast, no human oversight!
+#   -v, --verbose          Enable debug output
+#   -q, --quiet            Suppress non-error output
 ```
 
 **Your project needs documentation in `docs/`:**

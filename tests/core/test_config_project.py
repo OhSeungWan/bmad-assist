@@ -62,6 +62,7 @@ state_path: /project/state.yaml
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert config.state_path == "/project/state.yaml"
         assert config.providers.master.provider == "claude"
@@ -91,6 +92,7 @@ state_path: /project/state.yaml
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert config.power_prompts.set_name == "python-cli"
 
@@ -127,6 +129,7 @@ providers:
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert config.providers.master.provider == "claude"
         assert config.providers.master.model == "sonnet_4"
@@ -160,6 +163,7 @@ providers:
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert len(config.providers.multi) == 1
         assert config.providers.multi[0].provider == "gemini"
@@ -189,6 +193,7 @@ providers:
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=nonexistent_global,
+            cwd_config_path=False,
         )
         assert config.providers.master.provider == "codex"
         assert config.providers.master.model == "o3"
@@ -212,6 +217,7 @@ providers:
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=nonexistent_global,
+            cwd_config_path=False,
         )
         assert config is not None
 
@@ -240,6 +246,7 @@ providers:
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert config.providers.master.provider == "gemini"
 
@@ -261,6 +268,7 @@ providers:
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert config is not None
 
@@ -282,6 +290,7 @@ class TestNeitherConfigExists:
             load_config_with_project(
                 project_path=project_dir,
                 global_config_path=nonexistent_global,
+                cwd_config_path=False,
             )
         assert "init" in str(exc_info.value).lower()
 
@@ -295,6 +304,7 @@ class TestNeitherConfigExists:
             load_config_with_project(
                 project_path=project_dir,
                 global_config_path=nonexistent_global,
+                cwd_config_path=False,
             )
         error_msg = str(exc_info.value)
         assert "bmad-assist init" in error_msg.lower() or "init" in error_msg.lower()
@@ -329,6 +339,7 @@ state_path: /project/custom/state.yaml
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert config.state_path == "/project/custom/state.yaml"
 
@@ -359,5 +370,6 @@ state_path: /cwd/state.yaml
         config = load_config_with_project(
             project_path=None,  # Defaults to cwd
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert config.state_path == "/cwd/state.yaml"

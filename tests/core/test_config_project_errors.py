@@ -45,6 +45,7 @@ providers:
             load_config_with_project(
                 project_path=project_dir,
                 global_config_path=global_config,
+                cwd_config_path=False,
             )
 
     def test_error_contains_project_config_identifier(self, tmp_path: Path) -> None:
@@ -67,6 +68,7 @@ providers:
             load_config_with_project(
                 project_path=project_dir,
                 global_config_path=global_config,
+                cwd_config_path=False,
             )
         error_msg = str(exc_info.value).lower()
         assert "project config" in error_msg or "bmad-assist.yaml" in error_msg
@@ -83,6 +85,7 @@ providers:
             load_config_with_project(
                 project_path=project_dir,
                 global_config_path=invalid_global,
+                cwd_config_path=False,
             )
         global_error = str(exc_info_global.value).lower()
 
@@ -105,6 +108,7 @@ providers:
             load_config_with_project(
                 project_path=project_dir,
                 global_config_path=valid_global,
+                cwd_config_path=False,
             )
         project_error = str(exc_info_project.value).lower()
 
@@ -180,6 +184,7 @@ providers:
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert config.providers.master.provider == "claude"
 
@@ -196,6 +201,7 @@ providers:
             load_config_with_project(
                 project_path=project_dir,
                 global_config_path=nonexistent_global,
+                cwd_config_path=False,
             )
         error_msg = str(exc_info.value)
         # Should get "no config found" error since directory is not treated as file
@@ -225,6 +231,7 @@ providers:
             load_config_with_project(
                 project_path=project_dir,
                 global_config_path=nonexistent_global,
+                cwd_config_path=False,
             )
         error_msg = str(exc_info.value).lower()
         assert "project" in error_msg or "bmad-assist.yaml" in error_msg
@@ -277,6 +284,7 @@ bmad_paths:
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
 
         # Master: provider from global, model from project
@@ -329,6 +337,7 @@ state_path: /from/home/project
         config = load_config_with_project(
             project_path="~/project",
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert config.state_path == "/from/home/project"
 
@@ -350,6 +359,7 @@ providers:
         load_config_with_project(
             project_path=project_dir,
             global_config_path=valid_global,
+            cwd_config_path=False,
         )
         first_config = get_config()
         assert first_config is not None
@@ -371,6 +381,7 @@ providers:
             load_config_with_project(
                 project_path=project_dir,
                 global_config_path=invalid_global,
+                cwd_config_path=False,
             )
 
         # Singleton should be cleared
@@ -398,6 +409,7 @@ providers:
             load_config_with_project(
                 project_path=project_dir,
                 global_config_path=global_config,
+                cwd_config_path=False,
             )
         error_msg = str(exc_info.value).lower()
         assert "empty" in error_msg or "whitespace" in error_msg
@@ -419,6 +431,7 @@ providers:
         config = load_config_with_project(
             project_path=nonexistent_project,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert config.providers.master.provider == "claude"
 
@@ -449,6 +462,7 @@ providers:
             load_config_with_project(
                 project_path=project_dir,
                 global_config_path=global_config,
+                cwd_config_path=False,
             )
         error_msg = str(exc_info.value).lower()
         # Should mention it's a merged config error

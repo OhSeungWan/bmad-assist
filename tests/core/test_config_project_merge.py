@@ -52,6 +52,7 @@ providers:
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert len(config.providers.multi) == 1
         assert config.providers.multi[0].provider == "codex"
@@ -88,6 +89,7 @@ providers:
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         # Only codex should be in multi, gemini and claude from global should NOT be there
         assert len(config.providers.multi) == 1
@@ -134,6 +136,7 @@ power_prompts:
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert config.power_prompts.set_name == "python-cli"
         assert config.power_prompts.variables["project_type"] == "web-app"
@@ -168,6 +171,7 @@ power_prompts:
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert config.power_prompts.variables["global_key"] == "global_value"
         assert config.power_prompts.variables["project_key"] == "project_value"
@@ -204,6 +208,7 @@ bmad_paths:
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert config.bmad_paths.prd == "./docs/prd.md"
         assert config.bmad_paths.architecture == "./docs/architecture.md"
@@ -233,6 +238,7 @@ bmad_paths:
         config = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         assert config.bmad_paths.prd == "relative/path/prd.md"
         assert config.bmad_paths.stories == "../stories/"
@@ -267,6 +273,7 @@ state_path: /project/state.yaml
         loaded = load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         retrieved = get_config()
         assert loaded is retrieved
@@ -297,6 +304,7 @@ state_path: /project/state.yaml
         load_config_with_project(
             project_path=project_dir,
             global_config_path=global_config,
+            cwd_config_path=False,
         )
         config = get_config()
         assert config.providers.master.provider == "claude"

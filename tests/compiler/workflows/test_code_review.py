@@ -631,60 +631,46 @@ class TestContextFileBuilding:
         if arch_idx >= 0 and story_idx >= 0:
             assert arch_idx < story_idx
 
-    def test_token_budget_enforcement(self, tmp_project: Path) -> None:
-        """Modified source files respect 8K token budget."""
-        from bmad_assist.compiler.workflows.code_review import (
-            DEFAULT_SOURCE_FILES_TOKEN_BUDGET,
-            _collect_modified_source_files,
-        )
+    def test_source_context_service_used(self, tmp_project: Path) -> None:
+        """Source files collected via SourceContextService."""
+        from bmad_assist.compiler.source_context import SourceContextService
 
-        # Create large source file
+        # Create source file
         src_dir = tmp_project / "src"
         src_dir.mkdir()
-        large_content = "x" * 50000  # ~12500 tokens
+        (src_dir / "main.py").write_text("# Main file\nprint('hello')")
+
+        context = create_test_context(tmp_project)
+
+        # Test service directly
+        service = SourceContextService(context, "code_review")
+        assert service.is_enabled()  # Default budget is 15000
+        assert service.budget == 15000  # code_review default
+
+        result = service.collect_files(["src/main.py"], None)
+        assert len(result) == 1
+
+    def test_source_context_truncation(self, tmp_project: Path) -> None:
+        """SourceContextService truncates large files within budget."""
+        from bmad_assist.compiler.source_context import SourceContextService
+
+        # Create large source file (much larger than budget)
+        src_dir = tmp_project / "src"
+        src_dir.mkdir()
+        large_content = "x" * 200000  # ~50000 tokens (budget is 15000)
         (src_dir / "large.py").write_text(large_content)
 
         context = create_test_context(tmp_project)
-        modified_files = [("src/large.py", 100)]
+        service = SourceContextService(context, "code_review")
 
-        result = _collect_modified_source_files(
-            modified_files, context, token_budget=DEFAULT_SOURCE_FILES_TOKEN_BUDGET
-        )
+        result = service.collect_files(["src/large.py"], None)
 
         assert len(result) == 1
         content = list(result.values())[0]
-        # Should be truncated
-        assert "[... TRUNCATED at line" in content
-
-    def test_truncation_at_line_boundary(self, tmp_project: Path) -> None:
-        """Truncation occurs at line boundary with marker."""
-        from bmad_assist.compiler.workflows.code_review import _collect_modified_source_files
-
-        src_dir = tmp_project / "src"
-        src_dir.mkdir()
-        # Create file with clear line structure
-        content = "\n".join([f"line {i}" for i in range(1000)])
-        (src_dir / "lines.py").write_text(content)
-
-        context = create_test_context(tmp_project)
-        modified_files = [("src/lines.py", 100)]
-
-        result = _collect_modified_source_files(
-            modified_files,
-            context,
-            token_budget=500,  # Very small budget
-        )
-
-        content = list(result.values())[0]
-        # Truncation marker should be present
-        assert "[... TRUNCATED at line" in content
-        # The content before truncation should have complete lines
-        # (extract the non-empty, non-marker lines)
-        lines = content.split("\n")
-        content_lines = [line for line in lines if line and "TRUNCATED" not in line]
-        # All content lines should be complete "line X" format
-        for line in content_lines:
-            assert line.startswith("line "), f"Incomplete line found: {line[:50]}"
+        # Should be truncated (budget is 15000 tokens = ~60000 chars)
+        # Content (without marker) should be much smaller than original
+        assert len(content) < len(large_content) * 0.5
+        assert "truncated" in content.lower()
 
 
 class TestCompileOutput:

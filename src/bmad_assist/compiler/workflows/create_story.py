@@ -25,6 +25,10 @@ from bmad_assist.compiler.shared_utils import (
     get_epics_dir,
     load_workflow_template,
 )
+from bmad_assist.compiler.source_context import (
+    SourceContextService,
+    extract_file_paths_from_story,
+)
 from bmad_assist.compiler.types import CompiledWorkflow, CompilerContext
 from bmad_assist.compiler.variables import resolve_variables
 from bmad_assist.core.exceptions import CompilerError
@@ -32,9 +36,6 @@ from bmad_assist.core.exceptions import CompilerError
 # Patterns for variable substitution
 _DOUBLE_BRACE_PATTERN = re.compile(r"\{\{([a-zA-Z_][a-zA-Z0-9_-]*)\}\}")
 _SINGLE_BRACE_PATTERN = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_-]*)\}")
-
-# Default token budget for source files from File List
-DEFAULT_SOURCE_FILES_TOKEN_BUDGET = 20000
 
 
 def _substitute_variables(text: str, variables: dict[str, Any]) -> str:
@@ -67,73 +68,6 @@ def _substitute_variables(text: str, variables: dict[str, Any]) -> str:
 
 
 logger = logging.getLogger(__name__)
-
-# Workflow path relative to project root
-_WORKFLOW_RELATIVE_PATH = "_bmad/bmm/workflows/4-implementation/create-story"
-
-# Pattern for File List section header
-_FILE_LIST_HEADER = re.compile(r"^#{2,3}\s*File\s+List\s*$", re.MULTILINE | re.IGNORECASE)
-# Pattern for file paths in markdown lists (supports backticks and plain paths)
-# Note: longer extensions (tsx, jsx, yaml, cpp, hpp) must come before shorter (ts, js, yml, c, h)
-_FILE_PATH_PATTERN = re.compile(
-    r"^\s*[-*]\s*`?([^`\s]+\."
-    r"(py|tsx|ts|jsx|js|yaml|yml|json|md|sql|sh|go|rs|java|kt|swift|rb|php|cpp|hpp|c|h))`?",
-    re.MULTILINE,
-)
-
-
-def _extract_file_paths_from_story(story_content: str) -> list[str]:
-    """Extract file paths from File List section in story content.
-
-    Parses the "## File List" or "### File List" section and extracts
-    file paths from markdown list items like:
-    - `src/module/file.py` - Description
-    - src/other/file.ts
-
-    Args:
-        story_content: Full story file content.
-
-    Returns:
-        List of file paths found in the File List section.
-
-    """
-    # Find File List section
-    header_match = _FILE_LIST_HEADER.search(story_content)
-    if not header_match:
-        return []
-
-    # Extract section content (until next ## or ### or end)
-    section_start = header_match.end()
-    next_section = re.search(r"^#{2,3}\s+\w", story_content[section_start:], re.MULTILINE)
-    if next_section:
-        section_content = story_content[section_start : section_start + next_section.start()]
-    else:
-        section_content = story_content[section_start:]
-
-    # Extract file paths from list items
-    paths: list[str] = []
-    for match in _FILE_PATH_PATTERN.finditer(section_content):
-        path = match.group(1).strip()
-        if path and not path.startswith("#"):
-            paths.append(path)
-
-    return paths
-
-
-def _estimate_tokens(content: str) -> int:
-    """Estimate token count for content.
-
-    Uses simple heuristic: ~4 characters per token on average.
-    This is a rough approximation for code content.
-
-    Args:
-        content: Text content to estimate.
-
-    Returns:
-        Estimated token count.
-
-    """
-    return len(content) // 4
 
 
 class CreateStoryCompiler:
@@ -443,11 +377,20 @@ class CreateStoryCompiler:
         # Get previous stories for source file collection using shared utility
         prev_stories = find_previous_stories(context, resolved)
 
-        # Add source files from File List sections (create-story specific)
-        # This must come after stories but before epic in recency-bias order
-        source_files = self._collect_source_files_from_stories(
-            prev_stories, context, token_budget=DEFAULT_SOURCE_FILES_TOKEN_BUDGET
-        )
+        # Collect file paths from all previous stories' File Lists
+        file_list_paths: list[str] = []
+        for story_path in prev_stories:
+            try:
+                story_content = story_path.read_text(encoding="utf-8")
+                paths = extract_file_paths_from_story(story_content)
+                file_list_paths.extend(paths)
+            except (OSError, UnicodeDecodeError) as e:
+                logger.debug("Could not read story %s: %s", story_path, e)
+
+        # Add source files from File List using SourceContextService
+        # create_story uses File List only (no git diff)
+        service = SourceContextService(context, "create_story")
+        source_files = service.collect_files(file_list_paths, None)
 
         # Merge: base_files already has proper order, insert source_files before epics
         # Since ContextBuilder handles ordering, we just update with source files
@@ -472,138 +415,6 @@ class CreateStoryCompiler:
         files.update(epic_entries)
 
         return files
-
-    def _collect_source_files_from_stories(
-        self,
-        stories: list[Path],
-        context: CompilerContext,
-        token_budget: int = DEFAULT_SOURCE_FILES_TOKEN_BUDGET,
-    ) -> dict[str, str]:
-        """Collect source files from File List sections with token budget.
-
-        Reads File List sections from provided story files, extracts file paths,
-        filters out docs/ files, and includes source file contents up to the
-        token budget. Files from most recent stories are prioritized.
-
-        Args:
-            stories: List of story file paths (most recent first).
-            context: Compilation context with project root.
-            token_budget: Maximum tokens for source files (default 20K).
-
-        Returns:
-            Dictionary mapping file paths to content (possibly truncated).
-
-        """
-        if not stories:
-            return {}
-
-        # Collect unique file paths from all stories (preserving order: newest first)
-        seen_paths: set[str] = set()
-        ordered_paths: list[str] = []
-        output_folder_str = str(context.output_folder.resolve())
-
-        for story_path in stories:
-            try:
-                story_content = story_path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError) as e:
-                logger.debug("Could not read story %s: %s", story_path, e)
-                continue
-
-            file_paths = _extract_file_paths_from_story(story_content)
-            for rel_path in file_paths:
-                if rel_path in seen_paths:
-                    continue
-
-                # Resolve to absolute path
-                abs_path = (context.project_root / rel_path).resolve()
-
-                # Skip files outside project root
-                try:
-                    if not abs_path.is_relative_to(context.project_root.resolve()):
-                        logger.debug("Skipping path outside project: %s", rel_path)
-                        continue
-                except ValueError:
-                    continue
-
-                # Skip files in docs/ (output_folder) - those are already included
-                if str(abs_path).startswith(output_folder_str):
-                    logger.debug("Skipping docs file: %s", rel_path)
-                    continue
-
-                # Skip non-existent files
-                if not abs_path.exists():
-                    logger.debug("Skipping missing file: %s", rel_path)
-                    continue
-
-                seen_paths.add(rel_path)
-                ordered_paths.append(rel_path)
-
-        if not ordered_paths:
-            return {}
-
-        # Read files up to token budget
-        result: dict[str, str] = {}
-        tokens_used = 0
-
-        for rel_path in ordered_paths:
-            abs_path = context.project_root / rel_path
-
-            try:
-                content = abs_path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError) as e:
-                logger.debug("Could not read source file %s: %s", rel_path, e)
-                continue
-
-            file_tokens = _estimate_tokens(content)
-
-            if tokens_used + file_tokens <= token_budget:
-                # Full file fits in budget
-                result[str(abs_path)] = content
-                tokens_used += file_tokens
-                logger.debug(
-                    "Added source file %s (~%d tokens, total: %d)",
-                    rel_path,
-                    file_tokens,
-                    tokens_used,
-                )
-            elif tokens_used < token_budget:
-                # Partial file - truncate to fit remaining budget
-                remaining_tokens = token_budget - tokens_used
-                remaining_chars = remaining_tokens * 4  # Reverse of _estimate_tokens
-
-                # Find last complete line within budget
-                truncated = content[:remaining_chars]
-                last_newline = truncated.rfind("\n")
-                if last_newline > 0:
-                    truncated = truncated[:last_newline]
-                    line_count = truncated.count("\n") + 1
-                else:
-                    line_count = 1
-
-                truncated += f"\n\n[... TRUNCATED at line {line_count} due to token budget ...]"
-                result[str(abs_path)] = truncated
-                tokens_used = token_budget
-
-                logger.debug(
-                    "Truncated source file %s at line %d (budget reached)", rel_path, line_count
-                )
-                break  # Budget exhausted
-            else:
-                # Budget already exhausted
-                logger.debug(
-                    "Skipping source file %s - token budget exhausted (%d/%d)",
-                    rel_path,
-                    tokens_used,
-                    token_budget,
-                )
-                break
-
-        if result:
-            logger.info(
-                "Collected %d source files from File List (~%d tokens)", len(result), tokens_used
-            )
-
-        return result
 
     def _find_epic_context_files(
         self,

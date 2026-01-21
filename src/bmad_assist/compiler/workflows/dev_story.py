@@ -6,11 +6,9 @@ all necessary context embedded.
 
 Public API:
     DevStoryCompiler: Workflow compiler class implementing WorkflowCompiler protocol
-    DEFAULT_SOURCE_FILES_TOKEN_BUDGET: Token budget for source files from File List
 """
 
 import logging
-import re
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +17,6 @@ from bmad_assist.compiler.output import generate_output
 from bmad_assist.compiler.shared_utils import (
     apply_post_process,
     context_snapshot,
-    estimate_tokens,
     find_epic_file,
     find_file_in_output_folder,
     find_file_in_planning_dir,
@@ -28,65 +25,16 @@ from bmad_assist.compiler.shared_utils import (
     resolve_story_file,
     safe_read_file,
 )
+from bmad_assist.compiler.source_context import (
+    SourceContextService,
+    extract_file_paths_from_story,
+)
 from bmad_assist.compiler.types import CompiledWorkflow, CompilerContext, WorkflowIR
 from bmad_assist.compiler.variable_utils import substitute_variables
 from bmad_assist.compiler.variables import resolve_variables
 from bmad_assist.core.exceptions import CompilerError
 
 logger = logging.getLogger(__name__)
-
-# Workflow path relative to project root
-_WORKFLOW_RELATIVE_PATH = "_bmad/bmm/workflows/4-implementation/dev-story"
-
-# Default token budget for source files from File List (AC3)
-DEFAULT_SOURCE_FILES_TOKEN_BUDGET = 20000
-
-
-# Pattern for File List section header
-_FILE_LIST_HEADER = re.compile(r"^#{2,3}\s*File\s+List\s*$", re.MULTILINE | re.IGNORECASE)
-
-# Pattern for file paths in markdown lists (supports backticks and plain paths)
-# Note: longer extensions must come before shorter ones (tsx before ts, etc.)
-_FILE_PATH_PATTERN = re.compile(
-    r"^\s*[-*]\s*`?([^`\s]+\."
-    r"(py|tsx|ts|jsx|js|yaml|yml|json|md|sql|sh|go|rs|java|kt|swift|rb|php|cpp|hpp|c|h))`?",
-    re.MULTILINE,
-)
-
-
-def _extract_file_paths_from_story(story_content: str) -> list[str]:
-    """Extract file paths from File List section in story content.
-
-    Parses the "## File List" or "### File List" section and extracts
-    file paths from markdown list items like:
-    - `src/module/file.py` - Description
-    - src/other/file.ts
-
-    Args:
-        story_content: Full story file content.
-
-    Returns:
-        List of file paths found in the File List section.
-
-    """
-    header_match = _FILE_LIST_HEADER.search(story_content)
-    if not header_match:
-        return []
-
-    section_start = header_match.end()
-    next_section = re.search(r"^#{2,3}\s+\w", story_content[section_start:], re.MULTILINE)
-    if next_section:
-        section_content = story_content[section_start : section_start + next_section.start()]
-    else:
-        section_content = story_content[section_start:]
-
-    paths: list[str] = []
-    for match in _FILE_PATH_PATTERN.finditer(section_content):
-        path = match.group(1).strip()
-        if path and not path.startswith("#"):
-            paths.append(path)
-
-    return paths
 
 
 class DevStoryCompiler:
@@ -397,13 +345,17 @@ class DevStoryCompiler:
                     files[str(atdd_path)] = content
                     logger.debug("Embedded ATDD checklist: %s", atdd_path)
 
-        # 6. Source files from story's File List (with token budget)
+        # 6. Source files from story's File List using SourceContextService
         story_path_str = resolved.get("story_file")
         if story_path_str:
             story_path = Path(story_path_str)
-            source_files = self._collect_source_files_from_story(
-                story_path, context, token_budget=DEFAULT_SOURCE_FILES_TOKEN_BUDGET
-            )
+            story_content = safe_read_file(story_path, project_root)
+            file_list_paths: list[str] = []
+            if story_content:
+                file_list_paths = extract_file_paths_from_story(story_content)
+
+            service = SourceContextService(context, "dev_story")
+            source_files = service.collect_files(file_list_paths, None)
             files.update(source_files)
 
         # 7. Story file (LAST - closest to instructions per recency-bias)
@@ -414,118 +366,6 @@ class DevStoryCompiler:
                 files[str(story_path)] = content
 
         return files
-
-    def _collect_source_files_from_story(
-        self,
-        story_path: Path,
-        context: CompilerContext,
-        token_budget: int = DEFAULT_SOURCE_FILES_TOKEN_BUDGET,
-    ) -> dict[str, str]:
-        """Collect source files from story's File List with token budget.
-
-        Reads File List section from story, extracts file paths, filters
-        out docs/ files, and includes source file contents up to token budget.
-
-        Args:
-            story_path: Path to story file.
-            context: Compilation context with project root.
-            token_budget: Maximum tokens for source files.
-
-        Returns:
-            Dictionary mapping file paths to content (possibly truncated).
-
-        """
-        try:
-            story_content = story_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as e:
-            logger.warning("Could not read story %s for source file extraction: %s", story_path, e)
-            return {}
-
-        file_paths = _extract_file_paths_from_story(story_content)
-        if not file_paths:
-            logger.debug("No file paths in File List for %s", story_path.name)
-            return {}
-
-        output_folder_resolved = context.output_folder.resolve()
-        project_root_resolved = context.project_root.resolve()
-        result: dict[str, str] = {}
-        tokens_used = 0
-
-        for rel_path in file_paths:
-            abs_path = (context.project_root / rel_path).resolve()
-
-            try:
-                if not abs_path.is_relative_to(project_root_resolved):
-                    logger.debug("Skipping path outside project: %s", rel_path)
-                    continue
-            except ValueError:
-                continue
-
-            # Use is_relative_to for proper path containment check
-            # (avoids false positives with startswith on similar prefixes like docs2/)
-            try:
-                if abs_path.is_relative_to(output_folder_resolved):
-                    logger.debug("Skipping docs file: %s", rel_path)
-                    continue
-            except ValueError:
-                pass  # Not relative to output folder, which is fine
-
-            if not abs_path.exists():
-                logger.debug("Skipping missing file: %s", rel_path)
-                continue
-
-            try:
-                content = abs_path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError) as e:
-                logger.debug("Could not read source file %s: %s", rel_path, e)
-                continue
-
-            file_tokens = estimate_tokens(content)
-
-            if tokens_used + file_tokens <= token_budget:
-                result[str(abs_path)] = content
-                tokens_used += file_tokens
-                logger.debug(
-                    "Added source file %s (~%d tokens, total: %d)",
-                    rel_path,
-                    file_tokens,
-                    tokens_used,
-                )
-            elif tokens_used < token_budget:
-                remaining_tokens = token_budget - tokens_used
-                remaining_chars = remaining_tokens * 4
-
-                truncated = content[:remaining_chars]
-                last_newline = truncated.rfind("\n")
-                if last_newline > 0:
-                    truncated = truncated[:last_newline]
-                    line_count = truncated.count("\n") + 1
-                else:
-                    line_count = 1
-
-                truncated += f"\n\n[... TRUNCATED at line {line_count} due to token budget ...]"
-                result[str(abs_path)] = truncated
-                tokens_used = token_budget
-
-                logger.debug(
-                    "Truncated source file %s at line %d (budget reached)", rel_path, line_count
-                )
-                break
-            else:
-                logger.debug(
-                    "Skipping source file %s - token budget exhausted (%d/%d)",
-                    rel_path,
-                    tokens_used,
-                    token_budget,
-                )
-                break
-
-        if result:
-            logger.info(
-                "Collected %d source files from File List (~%d tokens)", len(result), tokens_used
-            )
-
-        return result
 
     def _build_mission(
         self,

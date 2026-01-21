@@ -11,12 +11,9 @@ from typing import Any
 import pytest
 
 from bmad_assist.compiler.parser import parse_workflow
+from bmad_assist.compiler.source_context import extract_file_paths_from_story
 from bmad_assist.compiler.types import CompiledWorkflow, CompilerContext
-from bmad_assist.compiler.workflows.dev_story import (
-    DEFAULT_SOURCE_FILES_TOKEN_BUDGET,
-    DevStoryCompiler,
-    _extract_file_paths_from_story,
-)
+from bmad_assist.compiler.workflows.dev_story import DevStoryCompiler
 from bmad_assist.core.exceptions import CompilerError
 
 
@@ -436,7 +433,7 @@ class TestFileListExtraction:
 - `src/bmad_assist/compiler/dev_story.py` - New compiler
 - `tests/compiler/test_dev_story.py` - Unit tests
 """
-        paths = _extract_file_paths_from_story(story_content)
+        paths = extract_file_paths_from_story(story_content)
 
         assert len(paths) == 2
         assert "src/bmad_assist/compiler/dev_story.py" in paths
@@ -452,7 +449,7 @@ class TestFileListExtraction:
 
 ## Change Log
 """
-        paths = _extract_file_paths_from_story(story_content)
+        paths = extract_file_paths_from_story(story_content)
         assert paths == []
 
     def test_extract_file_paths_no_section(self) -> None:
@@ -463,76 +460,52 @@ class TestFileListExtraction:
 
 Implementation details.
 """
-        paths = _extract_file_paths_from_story(story_content)
+        paths = extract_file_paths_from_story(story_content)
         assert paths == []
 
-    def test_source_files_token_budget(self, tmp_project: Path) -> None:
-        """Source files respect token budget."""
-        # Create large source file
+    def test_source_files_collected_via_service(self, tmp_project: Path) -> None:
+        """Source files are collected via SourceContextService."""
+        from bmad_assist.compiler.source_context import SourceContextService
+
+        # Create source file
         src_dir = tmp_project / "src"
         src_dir.mkdir()
-        large_content = "# " + "x" * 10000  # ~2500 tokens
-        (src_dir / "large.py").write_text(large_content)
-
-        # Create story with File List
-        story_file = tmp_project / "docs" / "sprint-artifacts" / "14-1-test.md"
-        story_file.write_text("""# Story 14.1
-
-Status: ready-for-dev
-
-## File List
-
-- `src/large.py` - Large file
-""")
+        (src_dir / "main.py").write_text("# Main file")
 
         context = create_test_context(tmp_project)
-        compiler = DevStoryCompiler()
-        compiler.validate_context(context)
 
-        # Use small budget
-        result = compiler._collect_source_files_from_story(story_file, context, token_budget=500)
+        # Use service directly
+        service = SourceContextService(context, "dev_story")
+        assert service.budget == 20000  # dev_story default
 
+        result = service.collect_files(["src/main.py"], None)
         assert len(result) == 1
-        content = list(result.values())[0]
-        assert "[... TRUNCATED at line" in content
 
     def test_skip_nonexistent_files(self, tmp_project: Path) -> None:
         """Non-existent files are skipped gracefully."""
-        story_file = tmp_project / "docs" / "sprint-artifacts" / "14-1-test.md"
-        story_file.write_text("""# Story 14.1
-
-Status: ready-for-dev
-
-## File List
-
-- `src/nonexistent.py` - Does not exist
-""")
+        from bmad_assist.compiler.source_context import SourceContextService
 
         context = create_test_context(tmp_project)
-        compiler = DevStoryCompiler()
+        service = SourceContextService(context, "dev_story")
 
-        result = compiler._collect_source_files_from_story(story_file, context)
+        result = service.collect_files(["src/nonexistent.py"], None)
 
         # Should return empty, not raise
         assert len(result) == 0
 
-    def test_skip_docs_files(self, tmp_project: Path) -> None:
-        """Files in docs/ folder are skipped (already in context)."""
-        story_file = tmp_project / "docs" / "sprint-artifacts" / "14-1-test.md"
-        story_file.write_text("""# Story 14.1
+    def test_skip_binary_files(self, tmp_project: Path) -> None:
+        """Binary files are skipped."""
+        from bmad_assist.compiler.source_context import SourceContextService
 
-Status: ready-for-dev
-
-## File List
-
-- `docs/architecture.md` - Should be skipped
-""")
+        # Create binary file
+        src_dir = tmp_project / "src"
+        src_dir.mkdir()
+        (src_dir / "image.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
 
         context = create_test_context(tmp_project)
-        compiler = DevStoryCompiler()
+        service = SourceContextService(context, "dev_story")
 
-        result = compiler._collect_source_files_from_story(story_file, context)
-
+        result = service.collect_files(["src/image.png"], None)
         assert len(result) == 0
 
 
@@ -679,12 +652,15 @@ class TestEdgeCases:
         assert result1.instructions == result2.instructions
 
 
-class TestDefaultTokenBudget:
-    """Tests for DEFAULT_SOURCE_FILES_TOKEN_BUDGET constant."""
+class TestSourceContextConfigDefaults:
+    """Tests for SourceContext config defaults."""
 
-    def test_default_budget_exists(self) -> None:
-        """DEFAULT_SOURCE_FILES_TOKEN_BUDGET is defined as 20000."""
-        assert DEFAULT_SOURCE_FILES_TOKEN_BUDGET == 20000
+    def test_dev_story_default_budget(self) -> None:
+        """dev_story default budget is 20000."""
+        from bmad_assist.core.config import SourceContextBudgetsConfig
+
+        budgets = SourceContextBudgetsConfig()
+        assert budgets.get_budget("dev_story") == 20000
 
 
 class TestFinalXMLOrdering:

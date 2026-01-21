@@ -50,10 +50,13 @@ from bmad_assist.compiler.variable_utils import (
 from bmad_assist.compiler.variables import resolve_variables
 
 # Reuse git diff functions from code_review.py (until Epic 12 consolidation)
+from bmad_assist.compiler.source_context import (
+    SourceContextService,
+    extract_file_paths_from_story,
+    get_git_diff_files,
+)
 from bmad_assist.compiler.workflows.code_review import (
-    DEFAULT_SOURCE_FILES_TOKEN_BUDGET,
     _capture_git_diff,
-    _collect_modified_source_files,
     _extract_modified_files_from_stat,
 )
 from bmad_assist.core.exceptions import CompilerError
@@ -275,23 +278,34 @@ class CodeReviewSynthesisCompiler:
             files["[git-diff]"] = git_diff
             logger.debug("Added git diff to synthesis context")
 
-        # 5. Modified source files from git diff --stat
-        if git_diff:
-            modified_files = _extract_modified_files_from_stat(git_diff, skip_docs=True)
-            if modified_files:
-                source_files = _collect_modified_source_files(
-                    modified_files, context, token_budget=DEFAULT_SOURCE_FILES_TOKEN_BUDGET
-                )
-                files.update(source_files)
-                logger.debug(
-                    "Added %d modified source files to synthesis context", len(source_files)
-                )
-
-        # 6. Story file (LAST - closest to instructions per recency-bias, REQUIRED)
+        # 5. Source files using SourceContextService (File List + git diff)
+        # Get story file to extract File List
         stories_dir = get_stories_dir(context)
         pattern = f"{epic_num}-{story_num}-*.md"
         story_matches = sorted(stories_dir.glob(pattern)) if stories_dir.exists() else []
 
+        file_list_paths: list[str] = []
+        if story_matches:
+            story_content_for_list = safe_read_file(story_matches[0], project_root)
+            if story_content_for_list:
+                file_list_paths = extract_file_paths_from_story(story_content_for_list)
+
+        git_diff_files = None
+        if git_diff:
+            modified_files = _extract_modified_files_from_stat(git_diff, skip_docs=True)
+            if modified_files:
+                git_diff_files = get_git_diff_files(project_root, git_diff)
+
+        service = SourceContextService(context, "code_review_synthesis")
+        source_files = service.collect_files(file_list_paths, git_diff_files)
+        files.update(source_files)
+        if source_files:
+            logger.debug(
+                "Added %d source files to synthesis context", len(source_files)
+            )
+
+        # 6. Story file (LAST - closest to instructions per recency-bias, REQUIRED)
+        # story_matches already populated above for File List extraction
         if not story_matches:
             raise CompilerError(
                 f"Story file not found: {stories_dir}/{pattern}\n\n"

@@ -360,3 +360,195 @@ def mock_gemini_popen_not_found():
     with patch("bmad_assist.providers.gemini.Popen") as mock:
         mock.side_effect = FileNotFoundError("gemini")
         yield mock
+
+
+# =============================================================================
+# OpenCode Provider Popen Fixtures
+# =============================================================================
+
+
+def make_opencode_json_output(
+    text: str = "Mock response",
+    session_id: str = "ses_test",
+) -> str:
+    """Create OpenCode --format json output for testing.
+
+    Args:
+        text: Response text to include.
+        session_id: Session ID for step_start message.
+
+    Returns:
+        Multi-line string with OpenCode JSON stream messages.
+    """
+    lines = [
+        json.dumps({"type": "step_start", "sessionID": session_id, "part": {"type": "step-start"}}),
+        json.dumps({"type": "text", "part": {"type": "text", "text": text}}),
+        json.dumps(
+            {
+                "type": "step_finish",
+                "part": {"type": "step-finish", "reason": "stop", "cost": 0.001, "tokens": {}},
+            }
+        ),
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def create_opencode_mock_process(
+    stdout_content: str | None = None,
+    stderr_content: str = "",
+    returncode: int = 0,
+    wait_side_effect: Exception | None = None,
+    response_text: str = "Mock response",
+) -> MagicMock:
+    """Create a mock Popen process for OpenCode testing."""
+    if stdout_content is None:
+        stdout_content = make_opencode_json_output(response_text)
+    return create_mock_process(
+        stdout_content=stdout_content,
+        stderr_content=stderr_content,
+        returncode=returncode,
+        wait_side_effect=wait_side_effect,
+    )
+
+
+@pytest.fixture
+def mock_opencode_popen_success():
+    """Fixture that mocks Popen for successful OpenCode invocation."""
+    with patch("bmad_assist.providers.opencode.Popen") as mock:
+        mock.return_value = create_opencode_mock_process(
+            response_text="Mock OpenCode response",
+            returncode=0,
+        )
+        yield mock
+
+
+@pytest.fixture
+def mock_opencode_popen_timeout():
+    """Fixture that mocks Popen for OpenCode timeout."""
+    with patch("bmad_assist.providers.opencode.Popen") as mock:
+        mock.return_value = create_opencode_mock_process(
+            wait_side_effect=TimeoutExpired(cmd=["opencode"], timeout=5)
+        )
+        yield mock
+
+
+@pytest.fixture
+def mock_opencode_popen_error():
+    """Fixture that mocks Popen for non-zero OpenCode exit."""
+    with patch("bmad_assist.providers.opencode.Popen") as mock:
+        mock.return_value = create_opencode_mock_process(
+            stdout_content="",
+            stderr_content="OpenCode error message",
+            returncode=1,
+        )
+        yield mock
+
+
+@pytest.fixture
+def mock_opencode_popen_not_found():
+    """Fixture that mocks Popen when OpenCode CLI not found."""
+    with patch("bmad_assist.providers.opencode.Popen") as mock:
+        mock.side_effect = FileNotFoundError("opencode")
+        yield mock
+
+
+# =============================================================================
+# Amp Provider Popen Fixtures
+# =============================================================================
+
+
+def make_amp_json_output(
+    text: str = "Mock response",
+    session_id: str = "T-test",
+) -> str:
+    """Create Amp -x --stream-json output for testing.
+
+    Args:
+        text: Response text to include.
+        session_id: Session ID for system message.
+
+    Returns:
+        Multi-line string with Amp JSON stream messages.
+    """
+    lines = [
+        json.dumps({"type": "system", "subtype": "init", "session_id": session_id, "tools": []}),
+        json.dumps(
+            {
+                "type": "user",
+                "message": {"role": "user", "content": [{"type": "text", "text": "test prompt"}]},
+            }
+        ),
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": text}],
+                    "stop_reason": "end_turn",
+                },
+            }
+        ),
+        json.dumps(
+            {"type": "result", "subtype": "success", "duration_ms": 100, "result": text}
+        ),
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def create_amp_mock_process(
+    stdout_content: str | None = None,
+    stderr_content: str = "",
+    returncode: int = 0,
+    wait_side_effect: Exception | None = None,
+    response_text: str = "Mock response",
+) -> MagicMock:
+    """Create a mock Popen process for Amp testing."""
+    if stdout_content is None:
+        stdout_content = make_amp_json_output(response_text)
+    return create_mock_process(
+        stdout_content=stdout_content,
+        stderr_content=stderr_content,
+        returncode=returncode,
+        wait_side_effect=wait_side_effect,
+    )
+
+
+@pytest.fixture
+def mock_amp_popen_success():
+    """Fixture that mocks Popen for successful Amp invocation."""
+    with patch("bmad_assist.providers.amp.Popen") as mock:
+        mock.return_value = create_amp_mock_process(
+            response_text="Mock Amp response",
+            returncode=0,
+        )
+        yield mock
+
+
+@pytest.fixture
+def mock_amp_popen_timeout():
+    """Fixture that mocks Popen for Amp timeout."""
+    with patch("bmad_assist.providers.amp.Popen") as mock:
+        mock.return_value = create_amp_mock_process(
+            wait_side_effect=TimeoutExpired(cmd=["amp"], timeout=5)
+        )
+        yield mock
+
+
+@pytest.fixture
+def mock_amp_popen_error():
+    """Fixture that mocks Popen for non-zero Amp exit."""
+    with patch("bmad_assist.providers.amp.Popen") as mock:
+        mock.return_value = create_amp_mock_process(
+            stdout_content="",
+            stderr_content="Amp error message",
+            returncode=1,
+        )
+        yield mock
+
+
+@pytest.fixture
+def mock_amp_popen_not_found():
+    """Fixture that mocks Popen when Amp CLI not found."""
+    with patch("bmad_assist.providers.amp.Popen") as mock:
+        mock.side_effect = FileNotFoundError("amp")
+        yield mock

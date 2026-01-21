@@ -405,10 +405,12 @@ def run(
             # SystemExit from wizard rejection propagates naturally
 
         # Load configuration (includes .env loading per Story 1.5)
+        # When --config is explicitly provided, disable CWD tier to avoid interference
         logger.debug("Loading configuration...")
         loaded_config = load_config_with_project(
             project_path=project_path,
             global_config_path=global_config_path,
+            cwd_config_path=False if config is not None else None,
         )
         logger.debug("Configuration loaded successfully")
 

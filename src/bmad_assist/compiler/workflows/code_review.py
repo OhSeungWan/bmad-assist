@@ -20,12 +20,16 @@ from bmad_assist.compiler.output import generate_output
 from bmad_assist.compiler.shared_utils import (
     apply_post_process,
     context_snapshot,
-    estimate_tokens,
     find_file_in_planning_dir,
     find_project_context_file,
     find_sprint_status_file,
     resolve_story_file,
     safe_read_file,
+)
+from bmad_assist.compiler.source_context import (
+    SourceContextService,
+    extract_file_paths_from_story,
+    get_git_diff_files,
 )
 from bmad_assist.compiler.types import CompiledWorkflow, CompilerContext, WorkflowIR
 from bmad_assist.compiler.variable_utils import substitute_variables
@@ -34,12 +38,6 @@ from bmad_assist.core.exceptions import CompilerError
 from bmad_assist.git import get_validated_diff
 
 logger = logging.getLogger(__name__)
-
-# Workflow path relative to project root
-_WORKFLOW_RELATIVE_PATH = "_bmad/bmm/workflows/4-implementation/code-review"
-
-# Token budget for modified source files (reduced from 20K to fit NFR10)
-DEFAULT_SOURCE_FILES_TOKEN_BUDGET = 8000
 
 # Maximum lines for git diff before truncation
 _MAX_DIFF_LINES = 500
@@ -235,96 +233,6 @@ def _extract_modified_files_from_stat(
 
     # Sort by changes descending, then path ascending for determinism
     result.sort(key=lambda x: (-x[1], x[0]))
-
-    return result
-
-
-def _collect_modified_source_files(
-    modified_files: list[tuple[str, int]],
-    context: CompilerContext,
-    token_budget: int = DEFAULT_SOURCE_FILES_TOKEN_BUDGET,
-) -> dict[str, str]:
-    """Collect modified source files with token budget.
-
-    Files already sorted by change size (largest first).
-    Uses _estimate_tokens (4 chars/token).
-    Truncates last file at line boundary if budget exceeded.
-
-    Args:
-        modified_files: List of (path, change_count) sorted by changes desc.
-        context: Compilation context with project root.
-        token_budget: Maximum tokens for all source files.
-
-    Returns:
-        Dictionary mapping file paths to content (possibly truncated).
-
-    """
-    result: dict[str, str] = {}
-    tokens_used = 0
-    project_root = context.project_root
-
-    for rel_path, _ in modified_files:
-        if tokens_used >= token_budget:
-            break
-
-        # Sanity check: skip paths that look like code content, not file paths
-        # These can slip through if git output parsing fails
-        if len(rel_path) > 255 or "\n" in rel_path or "{" in rel_path:
-            logger.debug("Skipping invalid path (likely parsing error): %s...", rel_path[:50])
-            continue
-
-        abs_path = (project_root / rel_path).resolve()
-
-        # Security check - must be within project
-        try:
-            if not abs_path.is_relative_to(project_root.resolve()):
-                logger.debug("Skipping path outside project: %s", rel_path)
-                continue
-        except ValueError:
-            continue
-
-        if not abs_path.exists():
-            logger.debug("Skipping missing file: %s", rel_path)
-            continue
-
-        try:
-            content = abs_path.read_text(encoding="utf-8", errors="replace")
-        except (OSError, UnicodeDecodeError) as e:
-            logger.debug("Could not read source file %s: %s", rel_path, e)
-            continue
-
-        file_tokens = estimate_tokens(content)
-
-        if tokens_used + file_tokens <= token_budget:
-            result[str(abs_path)] = content
-            tokens_used += file_tokens
-            logger.debug(
-                "Added source file %s (~%d tokens, total: %d)", rel_path, file_tokens, tokens_used
-            )
-        elif tokens_used < token_budget:
-            # Truncate this file to fit remaining budget
-            remaining_tokens = token_budget - tokens_used
-            remaining_chars = remaining_tokens * 4
-
-            truncated = content[:remaining_chars]
-            last_newline = truncated.rfind("\n")
-            if last_newline > 0:
-                truncated = truncated[:last_newline]
-                line_count = truncated.count("\n") + 1
-            else:
-                line_count = 1
-
-            truncated += f"\n\n[... TRUNCATED at line {line_count} due to token budget ...]"
-            result[str(abs_path)] = truncated
-            tokens_used = token_budget
-
-            logger.debug(
-                "Truncated source file %s at line %d (budget reached)", rel_path, line_count
-            )
-            break
-
-    if result:
-        logger.info("Collected %d modified source files (~%d tokens)", len(result), tokens_used)
 
     return result
 
@@ -616,15 +524,29 @@ class CodeReviewCompiler:
         if git_diff:
             files["[git-diff]"] = git_diff
 
-        # 5. Modified source files from git diff --stat
+        # 5. Source files using SourceContextService (File List + git diff)
+        # Get File List from story file
+        story_path_str = resolved.get("story_file")
+        file_list_paths: list[str] = []
+        if story_path_str:
+            story_path = Path(story_path_str)
+            story_content = safe_read_file(story_path, project_root)
+            if story_content:
+                file_list_paths = extract_file_paths_from_story(story_content)
+                if file_list_paths:
+                    logger.debug("Extracted %d files from File List", len(file_list_paths))
+
+        # Get git diff files with hunk info
+        git_diff_files = None
         if git_diff:
-            # Extract modified files from the stat portion of git show output
             modified_files = _extract_modified_files_from_stat(git_diff, skip_docs=True)
             if modified_files:
-                source_files = _collect_modified_source_files(
-                    modified_files, context, token_budget=DEFAULT_SOURCE_FILES_TOKEN_BUDGET
-                )
-                files.update(source_files)
+                git_diff_files = get_git_diff_files(project_root, git_diff)
+
+        # Collect source files using service
+        service = SourceContextService(context, "code_review")
+        source_files = service.collect_files(file_list_paths, git_diff_files)
+        files.update(source_files)
 
         # 6. Story file (LAST - closest to instructions per recency-bias)
         story_path_str = resolved.get("story_file")
