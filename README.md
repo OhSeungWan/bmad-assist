@@ -199,7 +199,7 @@ bmad-assist run --project experiments/fixtures/simple-portfolio
 
 ## Project Configuration
 
-Create `bmad-assist.yaml` in your project root:
+Copy `bmad-assist.yaml` from this repository to your project root, then customize it by commenting/uncommenting sections as needed:
 
 ```yaml
 providers:
