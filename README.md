@@ -154,6 +154,27 @@ bmad-assist extends [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) 
 
 Patches are transparent - see `.bmad-assist/patches/` for implementation details.
 
+## Multi-LLM Orchestration
+
+bmad-assist uses different LLM patterns depending on the workflow phase:
+
+| Phase | Pattern | Description |
+|-------|---------|-------------|
+| `create_story` | Master | Single LLM creates story for consistency |
+| `validate_story` | **Multi (parallel)** | Multiple LLMs validate independently for diverse perspectives |
+| `validate_story_synthesis` | Master | Single LLM consolidates validator reports |
+| `dev_story` | Master | Single LLM implements code for consistency |
+| `code_review` | **Multi (parallel)** | Multiple LLMs review independently as adversarial reviewers |
+| `code_review_synthesis` | Master | Single LLM consolidates review findings |
+| `retrospective` | Master | Single LLM generates retrospective |
+
+**Why this pattern?**
+- **Validation & Review** benefit from multiple perspectives - different models catch different issues
+- **Creation & Implementation** need single source of truth - multiple writers cause conflicts
+- **Synthesis** consolidates parallel outputs into actionable decisions
+
+> **Planned:** Per-workflow model configuration - ability to specify different models for each phase (e.g., Opus for dev_story, GLM 4.7 for synthesis).
+
 ## Development
 
 ```bash
