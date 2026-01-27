@@ -614,12 +614,14 @@ from bmad_assist.commands.experiment import experiment_app  # noqa: E402
 from bmad_assist.commands.patch import patch_app  # noqa: E402
 from bmad_assist.commands.qa import qa_app  # noqa: E402
 from bmad_assist.commands.sprint import sprint_app  # noqa: E402
+from bmad_assist.commands.test import test_app  # noqa: E402
 
 app.add_typer(patch_app, name="patch")
 app.add_typer(benchmark_app, name="benchmark")
 app.add_typer(sprint_app, name="sprint")
 app.add_typer(experiment_app, name="experiment")
 app.add_typer(qa_app, name="qa")
+app.add_typer(test_app, name="test")
 
 
 if __name__ == "__main__":

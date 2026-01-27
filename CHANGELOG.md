@@ -2,6 +2,38 @@
 
 All notable changes to bmad-assist are documented in this file.
 
+## [0.4.10] - 2026-01-27
+
+### Added
+- **`bmad-assist test scorecard <fixture>`** command for automated quality scoring of experiment fixtures
+  - Completeness: TODOs, placeholders, empty files detection
+  - Functionality: build verification, unit tests, behavior tests
+  - Code Quality: linting (go vet), complexity (gocyclo), security (gosec)
+  - Documentation: README, API docs, inline comments ratio
+- **Experiment prerequisites documentation** (`docs/experiments/prerequisites.md`)
+- **Benchmark fixtures release** with webhook-relay-001, 002, 003 (available in GitHub Releases)
+
+### Fixed
+- **Scorecard false positives** when Go tools not installed - now correctly reports `skipped: true` with reason instead of giving max scores
+- Graceful degradation for missing `gocyclo` and `gosec` tools
+
+### Changed
+- Scorecard defaults changed from max to 0 for code_quality when tools unavailable
+
+### Benchmark Results
+First empirical validation of Antipatterns module effectiveness:
+
+| Fixture | Config | Score | Build | Tests |
+|---------|--------|-------|-------|-------|
+| webhook-relay-001 | baseline | 40.0% | FAIL | 252 |
+| webhook-relay-002 | strategic context | 28.2% | FAIL | 0 |
+| webhook-relay-003 | strategic + antipatterns | **55.3%** | **PASS** | **1254** |
+
+Key findings:
+- Strategic context alone caused regression (-11.8pp)
+- Antipatterns module improved quality significantly (+15.3pp vs baseline, +27.1pp vs strategic-only)
+- 5x more unit tests generated with antipatterns guidance
+
 ## [0.4.9] - 2026-01-25
 
 ### Changed

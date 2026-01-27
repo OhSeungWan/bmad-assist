@@ -15,11 +15,17 @@ This module has been refactored to import helper functions from:
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
+import yaml
+
+from bmad_assist import __version__
 from bmad_assist.core.config import Config
 from bmad_assist.core.exceptions import StateError
 
@@ -78,6 +84,163 @@ from bmad_assist.core.state import (
 from bmad_assist.core.types import EpicId
 
 logger = logging.getLogger(__name__)
+
+# Temp file suffix for atomic writes
+_EFFECTIVE_CONFIG_TEMP_SUFFIX = ".tmp"
+_REDACTED_VALUE = "***REDACTED***"
+
+
+def _get_dangerous_field_paths(
+    model: type,
+    prefix: str = "",
+) -> set[str]:
+    """Recursively find all field paths marked as security: dangerous.
+
+    Args:
+        model: Pydantic model class to inspect.
+        prefix: Dot-separated prefix for nested paths.
+
+    Returns:
+        Set of dot-separated field paths (e.g., "state_path", "providers.settings").
+
+    """
+    from pydantic import BaseModel
+
+    dangerous_paths: set[str] = set()
+
+    if not hasattr(model, "model_fields"):
+        return dangerous_paths
+
+    for field_name, field_info in model.model_fields.items():
+        field_path = f"{prefix}.{field_name}" if prefix else field_name
+
+        # Check if this field is marked dangerous
+        extra = field_info.json_schema_extra
+        if isinstance(extra, dict) and extra.get("security") == "dangerous":
+            dangerous_paths.add(field_path)
+
+        # Recurse into nested Pydantic models
+        annotation = field_info.annotation
+
+        # Handle Optional[X], Union[X, None], list[X], etc.
+        if hasattr(annotation, "__args__"):
+            for arg in annotation.__args__:
+                if arg is type(None):
+                    continue
+                # Recurse into BaseModel types (handles Optional[X], Union[X, Y], list[X])
+                if isinstance(arg, type) and issubclass(arg, BaseModel):
+                    dangerous_paths.update(_get_dangerous_field_paths(arg, field_path))
+
+        # Direct Pydantic model (not wrapped in generic)
+        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            dangerous_paths.update(_get_dangerous_field_paths(annotation, field_path))
+
+    return dangerous_paths
+
+
+def _redact_secrets(config_dict: dict[str, Any], dangerous_paths: set[str]) -> dict[str, Any]:
+    """Recursively redact fields marked as security: dangerous.
+
+    Args:
+        config_dict: Serialized config dictionary.
+        dangerous_paths: Set of dot-separated paths to redact.
+
+    Returns:
+        New dictionary with dangerous values replaced by "***REDACTED***".
+
+    """
+    result: dict[str, Any] = {}
+
+    for key, value in config_dict.items():
+        if key in dangerous_paths:
+            # Top-level dangerous field
+            result[key] = _REDACTED_VALUE
+        elif isinstance(value, dict):
+            # Recurse into nested dict, adjusting paths
+            nested_dangerous = {
+                p[len(key) + 1 :] for p in dangerous_paths if p.startswith(f"{key}.")
+            }
+            result[key] = _redact_secrets(value, nested_dangerous)
+        elif isinstance(value, list):
+            # Handle lists (e.g., providers.multi is a list)
+            # Find paths that start with "key." (these apply to list items)
+            list_item_dangerous = {
+                p[len(key) + 1 :] for p in dangerous_paths if p.startswith(f"{key}.")
+            }
+            if list_item_dangerous:
+                result[key] = [
+                    _redact_secrets(item, list_item_dangerous)
+                    if isinstance(item, dict)
+                    else item
+                    for item in value
+                ]
+            else:
+                result[key] = value
+        else:
+            result[key] = value
+
+    return result
+
+
+def _save_effective_config(
+    config: Config,
+    project_path: Path,
+    started_at: datetime,
+) -> None:
+    """Save merged config snapshot for reproducibility.
+
+    Creates a timestamped YAML file with the full merged configuration.
+    Fields marked with security: dangerous are redacted.
+
+    This is a non-blocking operation - failures are logged but don't interrupt the run.
+
+    Args:
+        config: The merged Config instance.
+        project_path: Project root directory.
+        started_at: Timestamp from State.started_at (for filename).
+
+    """
+    # Format: 2026-01-26T12-34-56-123456 (filesystem-safe)
+    timestamp_str = started_at.strftime("%Y-%m-%dT%H-%M-%S-%f")
+    # Store in _bmad-output/ to avoid polluting project root
+    output_dir = project_path / "_bmad-output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"effective-config-{timestamp_str}.yaml"
+    temp_path = output_path.with_suffix(output_path.suffix + _EFFECTIVE_CONFIG_TEMP_SUFFIX)
+
+    try:
+        # Serialize config to JSON-compatible dict (Path -> str)
+        config_dict = config.model_dump(mode="json")
+
+        # Find and redact dangerous fields
+        dangerous_paths = _get_dangerous_field_paths(Config)
+        redacted_config = _redact_secrets(config_dict, dangerous_paths)
+
+        # Build header
+        header = {
+            "bmad_assist_version": __version__,
+            "snapshot_timestamp": started_at.isoformat(),
+            "project_name": project_path.name,
+        }
+
+        # Combine header and config
+        output_data = {**header, "config": redacted_config}
+
+        # Atomic write: temp file + os.replace
+        with open(temp_path, "w", encoding="utf-8") as f:
+            yaml.dump(output_data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+        os.replace(temp_path, output_path)
+
+        logger.info("Saved effective config snapshot: %s", output_path)
+
+    except (OSError, yaml.YAMLError) as e:
+        logger.warning("Failed to save effective config to %s: %s", output_path, e)
+    finally:
+        # Clean up temp file if it exists (e.g., after os.replace failure)
+        with contextlib.suppress(OSError):
+            if temp_path.exists():
+                temp_path.unlink()
 
 
 __all__ = [
@@ -304,6 +467,12 @@ def _run_loop_body(
             first_story,
             first_story_phase.name,
         )
+
+        # Save effective config snapshot for reproducibility (non-blocking)
+        # Note: state.started_at is guaranteed non-None here (just set above in model_copy)
+        if state.started_at is None:
+            raise StateError("state.started_at is None after fresh start initialization")
+        _save_effective_config(config, project_path, state.started_at)
 
         # AC1: Persist initial state BEFORE first phase execution
         save_state(state, state_path)
