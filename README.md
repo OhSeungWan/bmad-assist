@@ -187,6 +187,7 @@ ruff check src/
 
 - **Discord:** [Join our server](https://discord.gg/GeptH9ManY) - Get help, share workflows, discuss AI-assisted development
 - **Issues:** [GitHub Issues](https://github.com/Pawel-N-pl/bmad-assist/issues) - Bug reports and feature requests
+- **BMAD Method Community:** [Original BMAD community](https://github.com/bmad-code-org/BMAD-METHOD#community) - For questions about the BMAD methodology itself (not bmad-assist tool specific)
 
 ## License
 
