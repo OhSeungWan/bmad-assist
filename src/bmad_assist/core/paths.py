@@ -151,7 +151,8 @@ class ProjectPaths:
         Resolution order:
         1. Config override: epics (e.g., "docs/development_process/epics")
         2. Standard sharded: project_knowledge/epics/ (e.g., docs/epics/)
-        3. Fallback: planning_artifacts/epics/ (generated)
+        3. Auto-discovery: search project_knowledge (max 2 levels) for "epics" dir
+        4. Fallback: planning_artifacts/epics/ (generated)
         """
         # 1. Check for explicit config override
         if "epics" in self._config:
@@ -162,8 +163,53 @@ class ProjectPaths:
         if sharded_dir.exists() and sharded_dir.is_dir():
             return sharded_dir
 
-        # 3. Fallback to planning_artifacts (generated epics)
+        # 3. Auto-discovery: search max 2 levels deep for "epics" directory
+        found = self._find_epics_dir(self.project_knowledge, max_depth=2)
+        if found:
+            # Warn about non-standard location
+            relative = found.relative_to(self.project_knowledge)
+            logger.warning(
+                "Epics directory found at non-standard location: %s "
+                "(expected: epics/). Consider moving or setting bmad_paths.epics in config.",
+                relative,
+            )
+            return found
+
+        # 4. Fallback to planning_artifacts (generated epics)
         return self.planning_artifacts / "epics"
+
+    def _find_epics_dir(self, base: Path, max_depth: int) -> Path | None:
+        """Find 'epics' directory within base, excluding archive dirs.
+
+        Args:
+            base: Directory to search in.
+            max_depth: Maximum depth to search (1 = immediate children only).
+
+        Returns:
+            Path to closest epics directory, or None if not found.
+        """
+        if not base.exists() or not base.is_dir():
+            return None
+
+        candidates: list[tuple[int, Path]] = []  # (depth, path)
+
+        for depth in range(1, max_depth + 1):
+            # Build glob pattern for this depth: */epics, */*/epics, etc.
+            pattern = "/".join(["*"] * depth) + "/epics"
+            for match in base.glob(pattern):
+                if not match.is_dir():
+                    continue
+                # Skip archive directories
+                if any(part in ("archive", "archived") for part in match.parts):
+                    continue
+                candidates.append((depth, match))
+
+        if not candidates:
+            return None
+
+        # Return closest (smallest depth)
+        candidates.sort(key=lambda x: x[0])
+        return candidates[0][1]
 
     @cached_property
     def stories_dir(self) -> Path:

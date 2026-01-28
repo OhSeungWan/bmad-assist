@@ -84,15 +84,12 @@ def _load_epic_data(
         FileNotFoundError: If BMAD docs directory doesn't exist.
 
     """
-    # Determine bmad_path from config.bmad_paths.epics parent directory
-    # This supports non-standard paths like docs/development_process/epics/
-    if config.bmad_paths and config.bmad_paths.epics:
-        epics_path = Path(config.bmad_paths.epics)
-        # Use parent of epics path (e.g., docs/development_process/ from docs/development_process/epics)
-        bmad_path = project_path / epics_path.parent
-    else:
-        # Fallback to standard docs/ path
-        bmad_path = project_path / "docs"
+    # Use paths singleton which auto-discovers epics location
+    from bmad_assist.core.paths import get_paths
+
+    paths = get_paths()
+    # bmad_path is parent of epics_dir (e.g., docs/ or docs/development_process/)
+    bmad_path = paths.epics_dir.parent
 
     logger.debug("Loading BMAD project state from: %s", bmad_path)
 
@@ -534,8 +531,8 @@ def run(
 
         # Apply start point override if --epic specified
         if epic:
-            # Use project_knowledge from paths singleton for BMAD files
-            bmad_path = project_paths.project_knowledge
+            # Use epics_dir parent for BMAD files (supports auto-discovered paths)
+            bmad_path = project_paths.epics_dir.parent
 
             apply_start_point_override(
                 loaded_config,
