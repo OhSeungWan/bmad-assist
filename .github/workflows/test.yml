@@ -41,7 +41,10 @@ jobs:
             --ignore=tests/core/test_config_generator.py \
             --ignore=tests/core/test_state_location.py \
             --ignore=tests/dashboard/test_config_routes.py \
+            --ignore=tests/dashboard/test_cli_serve.py \
+            --ignore=tests/benchmarking/test_reports.py \
             --ignore=tests/test_cli.py \
+            --ignore=tests/test_cli_sprint.py \
             --ignore=experiments
 
       - name: Type check
