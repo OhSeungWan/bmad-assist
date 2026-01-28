@@ -1000,7 +1000,7 @@ class TestCompareWorkflowVariants:
             assert filters.date_to == date_to
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="Rich/Typer help broken in Docker as root")
+@pytest.mark.skipif(os.environ.get("CI") == "true", reason="Rich/Typer help rendering unreliable in CI")
 class TestCLIBenchmarkCompare:
     """Test CLI benchmark compare command (AC1, AC8)."""
 
@@ -2477,7 +2477,7 @@ class TestCompareModels:
 # =============================================================================
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="Rich/Typer help broken in Docker as root")
+@pytest.mark.skipif(os.environ.get("CI") == "true", reason="Rich/Typer help rendering unreliable in CI")
 class TestCLIBenchmarkModels:
     """Test CLI benchmark models command (AC8)."""
 

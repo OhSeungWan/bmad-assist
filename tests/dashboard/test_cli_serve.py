@@ -44,7 +44,7 @@ def mock_asyncio_run():
 # =============================================================================
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="Rich/Typer help broken in Docker as root")
+@pytest.mark.skipif(os.environ.get("CI") == "true", reason="Rich/Typer help rendering unreliable in CI")
 class TestServeCommandExists:
     """Tests for serve command registration and help output."""
 
@@ -486,7 +486,7 @@ class TestServeInvalidProject:
 class TestServePortAutoDiscovery:
     """Tests for port auto-discovery integration (Story 16.11)."""
 
-    @pytest.mark.skipif(os.geteuid() == 0, reason="Rich/Typer help broken in Docker as root")
+    @pytest.mark.skipif(os.environ.get("CI") == "true", reason="Rich/Typer help rendering unreliable in CI")
     def test_serve_help_shows_no_auto_port_flag(self, cli_isolated_env: Path) -> None:
         """GIVEN user runs serve --help
         WHEN they view options

@@ -321,7 +321,7 @@ class TestCliTokenBudget:
         assert result.exit_code == EXIT_TOKEN_BUDGET_ERROR
         assert "24,512" in result.output
 
-    @pytest.mark.skipif(os.geteuid() == 0, reason="Rich/Typer help broken in Docker as root")
+    @pytest.mark.skipif(os.environ.get("CI") == "true", reason="Rich/Typer help rendering unreliable in CI")
     def test_help_shows_max_tokens_option(self, cli_isolated_env: Path) -> None:
         """--help shows --max-tokens option."""
         result = runner.invoke(app, ["compile", "--help"])

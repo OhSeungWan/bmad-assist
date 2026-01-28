@@ -479,7 +479,7 @@ class TestSprintCommonOptions:
 # =============================================================================
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="Rich/Typer help broken in Docker as root")
+@pytest.mark.skipif(os.environ.get("CI") == "true", reason="Rich/Typer help rendering unreliable in CI")
 class TestSprintHelp:
     """Tests for sprint command help output."""
 

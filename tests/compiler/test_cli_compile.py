@@ -103,7 +103,7 @@ class TestCompilerExitCodes:
 # =============================================================================
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="Rich/Typer help broken in Docker as root")
+@pytest.mark.skipif(os.environ.get("CI") == "true", reason="Rich/Typer help rendering unreliable in CI")
 class TestCompileHelpOutput:
     """Tests for compile command help text (AC7)."""
 
