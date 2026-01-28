@@ -1014,7 +1014,7 @@ class TestCLIBenchmarkCompare:
         assert result.exit_code == 0
         assert "Workflow benchmarking comparison commands" in result.output
 
-    def test_compare_help(self) -> None:
+    def test_compare_help(self, cli_isolated_env: Path) -> None:
         """Test that compare subcommand help shows all options."""
         from typer.testing import CliRunner
 
@@ -2490,7 +2490,7 @@ class TestCLIBenchmarkModels:
         assert result.exit_code == 0
         assert "models" in result.output
 
-    def test_models_help(self) -> None:
+    def test_models_help(self, cli_isolated_env: Path) -> None:
         """Test that models subcommand help shows all options."""
         from typer.testing import CliRunner
 

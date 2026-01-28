@@ -481,7 +481,7 @@ class TestSprintCommonOptions:
 class TestSprintHelp:
     """Tests for sprint command help output."""
 
-    def test_sprint_help(self, cli_runner: CliRunner) -> None:
+    def test_sprint_help(self, cli_runner: CliRunner, cli_isolated_env: Path) -> None:
         """Test sprint --help shows all subcommands."""
         result = cli_runner.invoke(app, ["sprint", "--help"])
 
@@ -491,7 +491,7 @@ class TestSprintHelp:
         assert "validate" in result.output
         assert "sync" in result.output
 
-    def test_generate_help(self, cli_runner: CliRunner) -> None:
+    def test_generate_help(self, cli_runner: CliRunner, cli_isolated_env: Path) -> None:
         """Test sprint generate --help shows options."""
         result = cli_runner.invoke(app, ["sprint", "generate", "--help"])
 
@@ -499,7 +499,7 @@ class TestSprintHelp:
         assert "--project" in result.output
         assert "--verbose" in result.output
 
-    def test_repair_help(self, cli_runner: CliRunner) -> None:
+    def test_repair_help(self, cli_runner: CliRunner, cli_isolated_env: Path) -> None:
         """Test sprint repair --help shows options."""
         result = cli_runner.invoke(app, ["sprint", "repair", "--help"])
 
@@ -508,7 +508,7 @@ class TestSprintHelp:
         assert "--verbose" in result.output
         assert "--dry-run" in result.output
 
-    def test_validate_help(self, cli_runner: CliRunner) -> None:
+    def test_validate_help(self, cli_runner: CliRunner, cli_isolated_env: Path) -> None:
         """Test sprint validate --help shows options."""
         result = cli_runner.invoke(app, ["sprint", "validate", "--help"])
 
@@ -517,7 +517,7 @@ class TestSprintHelp:
         assert "--verbose" in result.output
         assert "--format" in result.output
 
-    def test_sync_help(self, cli_runner: CliRunner) -> None:
+    def test_sync_help(self, cli_runner: CliRunner, cli_isolated_env: Path) -> None:
         """Test sprint sync --help shows options."""
         result = cli_runner.invoke(app, ["sprint", "sync", "--help"])
 

@@ -105,54 +105,54 @@ class TestCompilerExitCodes:
 class TestCompileHelpOutput:
     """Tests for compile command help text (AC7)."""
 
-    def test_compile_help_exits_successfully(self) -> None:
+    def test_compile_help_exits_successfully(self, cli_isolated_env: Path) -> None:
         """AC7: compile --help exits with code 0."""
         result = runner.invoke(app, ["compile", "--help"])
         assert result.exit_code == 0
 
-    def test_compile_help_shows_workflow_option(self) -> None:
+    def test_compile_help_shows_workflow_option(self, cli_isolated_env: Path) -> None:
         """AC7: Help shows --workflow / -w option."""
         result = runner.invoke(app, ["compile", "--help"])
         assert "--workflow" in result.output
         assert "-w" in result.output
 
-    def test_compile_help_shows_epic_option(self) -> None:
+    def test_compile_help_shows_epic_option(self, cli_isolated_env: Path) -> None:
         """AC7: Help shows --epic / -e option."""
         result = runner.invoke(app, ["compile", "--help"])
         assert "--epic" in result.output
         assert "-e" in result.output
 
-    def test_compile_help_shows_story_option(self) -> None:
+    def test_compile_help_shows_story_option(self, cli_isolated_env: Path) -> None:
         """AC7: Help shows --story / -s option."""
         result = runner.invoke(app, ["compile", "--help"])
         assert "--story" in result.output
         assert "-s" in result.output
 
-    def test_compile_help_shows_output_option(self) -> None:
+    def test_compile_help_shows_output_option(self, cli_isolated_env: Path) -> None:
         """AC7: Help shows --output / -o option."""
         result = runner.invoke(app, ["compile", "--help"])
         assert "--output" in result.output
         assert "-o" in result.output
 
-    def test_compile_help_shows_project_option(self) -> None:
+    def test_compile_help_shows_project_option(self, cli_isolated_env: Path) -> None:
         """AC7: Help shows --project / -p option."""
         result = runner.invoke(app, ["compile", "--help"])
         assert "--project" in result.output
         assert "-p" in result.output
 
-    def test_compile_help_shows_dry_run_option(self) -> None:
+    def test_compile_help_shows_dry_run_option(self, cli_isolated_env: Path) -> None:
         """AC7: Help shows --dry-run / -d option."""
         result = runner.invoke(app, ["compile", "--help"])
         assert "--dry-run" in result.output
         assert "-d" in result.output
 
-    def test_compile_help_shows_verbose_option(self) -> None:
+    def test_compile_help_shows_verbose_option(self, cli_isolated_env: Path) -> None:
         """AC7: Help shows --verbose / -v option."""
         result = runner.invoke(app, ["compile", "--help"])
         assert "--verbose" in result.output
         assert "-v" in result.output
 
-    def test_compile_help_shows_command_in_cli_help(self) -> None:
+    def test_compile_help_shows_command_in_cli_help(self, cli_isolated_env: Path) -> None:
         """AC7: Main CLI help shows compile command."""
         result = runner.invoke(app, ["--help"])
         assert "compile" in result.output

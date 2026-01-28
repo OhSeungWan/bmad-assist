@@ -445,22 +445,22 @@ providers:
 class TestHelpOutput:
     """Tests for help text (AC3)."""
 
-    def test_cli_help_exits_successfully(self) -> None:
+    def test_cli_help_exits_successfully(self, cli_isolated_env: Path) -> None:
         """CLI responds to --help with exit code 0."""
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
 
-    def test_cli_help_contains_app_name(self) -> None:
+    def test_cli_help_contains_app_name(self, cli_isolated_env: Path) -> None:
         """CLI help contains application name."""
         result = runner.invoke(app, ["--help"])
         assert "bmad-assist" in result.output.lower()
 
-    def test_cli_help_shows_run_command(self) -> None:
+    def test_cli_help_shows_run_command(self, cli_isolated_env: Path) -> None:
         """CLI help shows run command."""
         result = runner.invoke(app, ["--help"])
         assert "run" in result.output.lower()
 
-    def test_run_help_shows_all_options(self) -> None:
+    def test_run_help_shows_all_options(self, cli_isolated_env: Path) -> None:
         """AC3: Help shows all options with descriptions."""
         result = runner.invoke(app, ["run", "--help"])
         assert result.exit_code == 0
@@ -657,22 +657,22 @@ class TestErrorMessages:
 class TestNoInteractiveFlag:
     """Tests for --no-interactive flag (AC6, AC7)."""
 
-    def test_no_interactive_flag_in_help(self) -> None:
+    def test_no_interactive_flag_in_help(self, cli_isolated_env: Path) -> None:
         """AC6: --no-interactive flag appears in help."""
         result = runner.invoke(app, ["run", "--help"])
         assert "--no-interactive" in result.output
 
-    def test_no_interactive_short_form_in_help(self) -> None:
+    def test_no_interactive_short_form_in_help(self, cli_isolated_env: Path) -> None:
         """AC6: -n short form appears in help."""
         result = runner.invoke(app, ["run", "--help"])
         assert "-n" in result.output
 
-    def test_no_interactive_flag_accepted(self) -> None:
+    def test_no_interactive_flag_accepted(self, cli_isolated_env: Path) -> None:
         """AC6: --no-interactive flag is accepted."""
         result = runner.invoke(app, ["run", "--no-interactive", "--help"])
         assert result.exit_code == 0
 
-    def test_no_interactive_short_form_accepted(self) -> None:
+    def test_no_interactive_short_form_accepted(self, cli_isolated_env: Path) -> None:
         """AC6: -n short form is accepted."""
         result = runner.invoke(app, ["run", "-n", "--help"])
         assert result.exit_code == 0
@@ -936,36 +936,36 @@ class TestRunStartPointParameters:
     using epic/story identifiers from the command line.
     """
 
-    def test_epic_parameter_in_help(self) -> None:
+    def test_epic_parameter_in_help(self, cli_isolated_env: Path) -> None:
         """--epic flag appears in help text."""
         result = runner.invoke(app, ["run", "--help"])
         assert result.exit_code == 0
         assert "--epic" in result.output
         assert "-e" in result.output
 
-    def test_story_parameter_in_help(self) -> None:
+    def test_story_parameter_in_help(self, cli_isolated_env: Path) -> None:
         """--story flag appears in help text."""
         result = runner.invoke(app, ["run", "--help"])
         assert result.exit_code == 0
         assert "--story" in result.output
         assert "-s" in result.output
 
-    def test_epic_parameter_accepted(self) -> None:
+    def test_epic_parameter_accepted(self, cli_isolated_env: Path) -> None:
         """--epic flag is accepted without error."""
         result = runner.invoke(app, ["run", "--epic", "22", "--help"])
         assert result.exit_code == 0
 
-    def test_epic_short_form_accepted(self) -> None:
+    def test_epic_short_form_accepted(self, cli_isolated_env: Path) -> None:
         """-e short form is accepted."""
         result = runner.invoke(app, ["run", "-e", "22", "--help"])
         assert result.exit_code == 0
 
-    def test_story_parameter_accepted(self) -> None:
+    def test_story_parameter_accepted(self, cli_isolated_env: Path) -> None:
         """--story flag is accepted."""
         result = runner.invoke(app, ["run", "--epic", "22", "--story", "3", "--help"])
         assert result.exit_code == 0
 
-    def test_story_short_form_accepted(self) -> None:
+    def test_story_short_form_accepted(self, cli_isolated_env: Path) -> None:
         """-s short form is accepted."""
         result = runner.invoke(app, ["run", "-e", "22", "-s", "3", "--help"])
         assert result.exit_code == 0

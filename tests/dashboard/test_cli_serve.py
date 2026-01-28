@@ -46,7 +46,7 @@ def mock_asyncio_run():
 class TestServeCommandExists:
     """Tests for serve command registration and help output."""
 
-    def test_serve_command_in_help(self) -> None:
+    def test_serve_command_in_help(self, cli_isolated_env: Path) -> None:
         """GIVEN user runs help
         WHEN they check available commands
         THEN serve command is listed.
@@ -58,7 +58,7 @@ class TestServeCommandExists:
         assert result.exit_code == 0
         assert "serve" in result.output.lower()
 
-    def test_serve_help_shows_all_options(self) -> None:
+    def test_serve_help_shows_all_options(self, cli_isolated_env: Path) -> None:
         """GIVEN user runs serve --help
         WHEN they view options
         THEN --port, --host, --verbose, --project are listed.
@@ -75,7 +75,7 @@ class TestServeCommandExists:
         # Short forms
         assert "-p" in result.output  # --port short form
 
-    def test_serve_help_does_not_have_h_short_for_host(self) -> None:
+    def test_serve_help_does_not_have_h_short_for_host(self, cli_isolated_env: Path) -> None:
         """GIVEN user runs serve --help
         WHEN they check short forms
         THEN -h is NOT a short form for --host (conflicts with --help).
@@ -407,7 +407,7 @@ class TestServeVerboseLogging:
         # THEN: --verbose is listed
         assert "--verbose" in result.output
 
-    def test_serve_verbose_short_form(self) -> None:
+    def test_serve_verbose_short_form(self, cli_isolated_env: Path) -> None:
         """GIVEN user runs serve -v
         WHEN checking help
         THEN -v short form exists.
@@ -484,7 +484,7 @@ class TestServeInvalidProject:
 class TestServePortAutoDiscovery:
     """Tests for port auto-discovery integration (Story 16.11)."""
 
-    def test_serve_help_shows_no_auto_port_flag(self) -> None:
+    def test_serve_help_shows_no_auto_port_flag(self, cli_isolated_env: Path) -> None:
         """GIVEN user runs serve --help
         WHEN they view options
         THEN --no-auto-port flag is listed.

@@ -320,7 +320,7 @@ class TestCliTokenBudget:
         assert result.exit_code == EXIT_TOKEN_BUDGET_ERROR
         assert "24,512" in result.output
 
-    def test_help_shows_max_tokens_option(self) -> None:
+    def test_help_shows_max_tokens_option(self, cli_isolated_env: Path) -> None:
         """--help shows --max-tokens option."""
         result = runner.invoke(app, ["compile", "--help"])
         assert result.exit_code == 0
