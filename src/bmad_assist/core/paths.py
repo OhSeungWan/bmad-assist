@@ -148,15 +148,21 @@ class ProjectPaths:
     def epics_dir(self) -> Path:
         """Directory for epic definition files.
 
-        Prioritizes project_knowledge/epics/ (sharded source docs) over
-        planning_artifacts/epics/ (generated). This ensures compiled prompts
-        include actual epic files from docs/epics/ instead of stale copies.
+        Resolution order:
+        1. Config override: epics (e.g., "docs/development_process/epics")
+        2. Standard sharded: project_knowledge/epics/ (e.g., docs/epics/)
+        3. Fallback: planning_artifacts/epics/ (generated)
         """
-        # Prefer sharded epics in project_knowledge (docs/epics/)
+        # 1. Check for explicit config override
+        if "epics" in self._config:
+            return self._resolve_path(self._config["epics"])
+
+        # 2. Prefer sharded epics in project_knowledge (docs/epics/)
         sharded_dir = self.project_knowledge / "epics"
         if sharded_dir.exists() and sharded_dir.is_dir():
             return sharded_dir
-        # Fallback to planning_artifacts (generated epics)
+
+        # 3. Fallback to planning_artifacts (generated epics)
         return self.planning_artifacts / "epics"
 
     @cached_property

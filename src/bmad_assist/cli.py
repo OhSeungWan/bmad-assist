@@ -84,9 +84,15 @@ def _load_epic_data(
         FileNotFoundError: If BMAD docs directory doesn't exist.
 
     """
-    # Determine bmad_path: always use docs/ for read_project_state() to find sprint-status.yaml
-    # Note: bmad_paths.epics points to epics files (docs/epics/), but sprint-status is in docs/
-    bmad_path = project_path / "docs"
+    # Determine bmad_path from config.bmad_paths.epics parent directory
+    # This supports non-standard paths like docs/development_process/epics/
+    if config.bmad_paths and config.bmad_paths.epics:
+        epics_path = Path(config.bmad_paths.epics)
+        # Use parent of epics path (e.g., docs/development_process/ from docs/development_process/epics)
+        bmad_path = project_path / epics_path.parent
+    else:
+        # Fallback to standard docs/ path
+        bmad_path = project_path / "docs"
 
     logger.debug("Loading BMAD project state from: %s", bmad_path)
 
@@ -422,12 +428,15 @@ def run(
         logger.debug("Configuration loaded successfully")
 
         # Initialize project paths singleton
-        paths_config = {
+        paths_config: dict[str, str | None] = {
             "output_folder": loaded_config.paths.output_folder,
             "planning_artifacts": loaded_config.paths.planning_artifacts,
             "implementation_artifacts": loaded_config.paths.implementation_artifacts,
             "project_knowledge": loaded_config.paths.project_knowledge,
         }
+        # Add bmad_paths.epics if configured (supports custom epic locations)
+        if loaded_config.bmad_paths and loaded_config.bmad_paths.epics:
+            paths_config["epics"] = loaded_config.bmad_paths.epics
         project_paths = init_paths(project_path, paths_config)
         project_paths.ensure_directories()
         logger.debug("Project paths initialized: %s", project_paths)
