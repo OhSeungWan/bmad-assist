@@ -326,7 +326,7 @@ def _parse_fallback_story_sections(
             )
         return []
 
-    stories = []
+    stories: list[EpicStory] = []
     for i, header in enumerate(headers):
         # Get this header's "area" (until next header or end)
         area_start = header.end()
