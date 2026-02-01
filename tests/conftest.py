@@ -123,6 +123,20 @@ providers:
 
 
 @pytest.fixture(autouse=True)
+def disable_notifications():
+    """Reset notification dispatcher before and after each test.
+
+    Prevents any real notifications from being sent during tests.
+    Tests that need real notifications should mock the providers explicitly.
+    """
+    from bmad_assist.notifications.dispatcher import reset_dispatcher
+
+    reset_dispatcher()
+    yield
+    reset_dispatcher()
+
+
+@pytest.fixture(autouse=True)
 def disable_patch_compilation(request):
     """Skip patch compilation during tests to avoid LLM calls.
 
