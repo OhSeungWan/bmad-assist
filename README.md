@@ -32,16 +32,16 @@ BMAD (Breakthrough Method of Agile AI Driven Development) is a structured approa
 
 ## Features
 
-- **Multi-LLM Orchestration** - Claude Code, Gemini CLI, Codex, OpenCode, Amp, Cursor Agent, GitHub Copilot, Kimi CLI
-- **Evidence Score System** - Mathematical validation scoring with anti-bias checks
-- **Workflow Compiler** - Build single comprehensive prompts with resolved variables, embedded context files, and execution instructions - minimizes tool usage and LLM turns
+- **Multi-LLM Orchestration** - Claude Code, Gemini CLI, Codex, OpenCode, Amp, Cursor Agent, GitHub Copilot, Kimi CLI working in parallel
+- **Bundled Workflows** - BMAD workflows included and ready to use out of the box
+- **Workflow Compiler** - Builds single comprehensive prompts with resolved variables and embedded context - minimizes tool usage and LLM turns
+- **Python State Tracking** - Deterministic sequencing maintains sprint status internally instead of relying on LLM inference
+- **Evidence Score System** - Mathematical validation scoring with anti-bias checks for reliable quality assessment
+- **Antipatterns Module** - Learns from validation and code review findings, injects lessons into subsequent prompts to prevent recurring mistakes
 - **Strategic Context Loading** - Config-driven loading of PRD/Architecture per workflow with intelligent truncation to token limits
-- **Patch System** - Remove interactive elements, variable resolution, and knowledge gathering from BMAD workflows - these are handled deterministically in Python for automation
-- **Bundled Workflows** - BMAD workflows used by bmad-assist included, ready to use
-- **Antipatterns Module** - Incremental learning from validation and code review findings. Critical/high issues are extracted into `epic-N-story-antipatterns.md` and `epic-N-code-antipatterns.md`, then injected into subsequent `create-story` and `dev-story` prompts to prevent recurring mistakes
-- **Experiment Framework** - Benchmarking system with fixture isolation and statistical comparisons (Mann-Whitney U test, Cohen's d effect size) for rigorous A/B testing of configurations
-- **AST-aware Truncation** - Intelligent file truncation based on code structure (classes, functions) to fit token budgets without losing semantic context
-- **Python State Tracking** - Deterministic sequencing via `get_next_story_id()` maintains sprint status internally instead of relying on LLM inference for story progression
+- **Patch System** - Removes interactive elements from BMAD workflows for fully automated execution
+- **AST-aware Truncation** - Intelligent file truncation based on code structure (classes, functions) to fit token budgets
+- **Experiment Framework** - Benchmarking with fixture isolation and statistical comparisons (Mann-Whitney U, Cohen's d) for A/B testing
 
 ## Installation
 
