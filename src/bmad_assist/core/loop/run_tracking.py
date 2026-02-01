@@ -43,6 +43,29 @@ class PhaseStatus(str, Enum):
     TIMEOUT = "timeout"
 
 
+class PhaseEventType(str, Enum):
+    """Type of phase event for CSV timeline."""
+
+    STARTED = "started"
+    COMPLETED = "completed"
+
+
+class PhaseEvent(BaseModel):
+    """Phase event for CSV timeline (start or completion)."""
+
+    event_type: PhaseEventType
+    phase: str
+    timestamp: datetime
+    provider: str
+    model: str
+    epic: EpicId | None = None
+    story: int | str | None = None
+    # Only set for COMPLETED events:
+    duration_ms: int | None = None
+    status: PhaseStatus | None = None  # success/error/timeout
+    error_type: str | None = None
+
+
 class PhaseInvocation(BaseModel):
     """Single phase execution record."""
 
@@ -54,6 +77,15 @@ class PhaseInvocation(BaseModel):
     model: str
     status: PhaseStatus
     error_type: str | None = None
+
+
+class CurrentPhase(BaseModel):
+    """Currently executing phase (for crash diagnostics)."""
+
+    phase: str
+    started_at: datetime
+    provider: str
+    model: str
 
 
 class RunLog(BaseModel):
@@ -68,7 +100,9 @@ class RunLog(BaseModel):
     epic: EpicId | None = None
     story: int | str | None = None
     project_path: str | None = None
+    current_phase: CurrentPhase | None = None  # Set on phase start, cleared on end
     phases: list[PhaseInvocation] = Field(default_factory=list)
+    phase_events: list[PhaseEvent] = Field(default_factory=list)  # Timeline for CSV
 
 
 # F3: Sensitive flag patterns (for two-pass masking)
@@ -186,7 +220,9 @@ def _sanitize_csv_value(value: str | None) -> str:
 
 
 def _write_csv(run_log: RunLog, path: Path) -> None:
-    """Write run log as CSV with run-level metadata and phase rows.
+    """Write run log as CSV with run-level metadata and phase event rows.
+
+    Uses phase_events for full timeline (started + completed events).
 
     Args:
         run_log: Run log to export.
@@ -207,38 +243,34 @@ def _write_csv(run_log: RunLog, path: Path) -> None:
         writer.writerow(
             [
                 "run_id",
-                "run_started_at",
-                "run_status",
+                "event_type",
+                "timestamp",
+                "phase",
                 "epic",
                 "story",
-                "phase",
-                "phase_started",
-                "phase_ended",
-                "duration_ms",
                 "provider",
                 "model",
-                "phase_status",
+                "duration_ms",
+                "status",
                 "error_type",
             ]
         )
 
-        # Phase rows
-        for phase in run_log.phases:
+        # Phase event rows (chronological timeline)
+        for event in run_log.phase_events:
             writer.writerow(
                 [
                     run_log.run_id,
-                    _format_datetime(run_log.started_at),
-                    run_log.status.value,
-                    _sanitize_csv_value(str(run_log.epic)),
-                    _sanitize_csv_value(str(run_log.story)),
-                    phase.phase,
-                    _format_datetime(phase.started_at),
-                    _format_datetime(phase.ended_at),
-                    phase.duration_ms or 0,
-                    phase.provider,
-                    phase.model,
-                    phase.status.value,
-                    phase.error_type or "",
+                    event.event_type.value,
+                    _format_datetime(event.timestamp),
+                    event.phase,
+                    _sanitize_csv_value(str(event.epic)),
+                    _sanitize_csv_value(str(event.story)),
+                    event.provider,
+                    event.model,
+                    event.duration_ms or "",
+                    event.status.value if event.status else "",
+                    event.error_type or "",
                 ]
             )
 

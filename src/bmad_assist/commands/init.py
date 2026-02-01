@@ -70,6 +70,12 @@ def init_command(
         "--reset-workflows",
         help="Overwrite all workflows with bundled versions (destructive!)",
     ),
+    wizard: bool = typer.Option(
+        False,
+        "--wizard",
+        "-w",
+        help="Run interactive configuration wizard after initialization",
+    ),
 ) -> None:
     """Initialize a project for bmad-assist.
 
@@ -84,6 +90,7 @@ def init_command(
     Examples:
         bmad-assist init                    # Initialize current directory
         bmad-assist init -p ./my-project    # Initialize specific project
+        bmad-assist init --wizard           # Initialize and configure interactively
         bmad-assist init --dry-run          # Preview changes without applying
         bmad-assist init --reset-workflows  # Restore bundled workflow versions
 
@@ -102,6 +109,18 @@ def init_command(
         _error(f"Path is not a directory: {project_path}")
         raise typer.Exit(code=EXIT_ERROR)
 
+    # Run interactive config wizard FIRST if requested (before any other setup)
+    if wizard and not dry_run:
+        from bmad_assist.core.config_generator import run_config_wizard
+
+        try:
+            run_config_wizard(project_path, console)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Wizard cancelled[/yellow]")
+            raise typer.Exit(code=130) from None
+
+        console.print()
+
     # Confirm destructive reset operation
     if reset_workflows:
         console.print("[yellow]⚠️  WARNING: --reset-workflows will overwrite ALL local workflow customizations![/yellow]") # noqa: E501
@@ -118,6 +137,9 @@ def init_command(
         # For dry run, just show what would happen
         from bmad_assist.git import check_gitignore
         from bmad_assist.workflows import list_bundled_workflows
+
+        if wizard:
+            console.print("  [dim]Would run configuration wizard[/dim]")
 
         bmad_dir = project_path / ".bmad-assist"
         if not bmad_dir.exists():

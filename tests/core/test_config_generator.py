@@ -281,39 +281,39 @@ class TestBuildConfig:
     def test_build_config_contains_provider(self) -> None:
         """AC4: Built config contains provider."""
         generator = ConfigGenerator(Console())
-        config = generator._build_config("claude-subprocess", "opus", [], None)
+        config = generator._build_config("test-project", "Test User", "claude-subprocess", "opus", [{"provider": "gemini", "model": "gemini-2.5-flash"}], {"provider": "claude-subprocess", "model": "haiku"})
         assert config["providers"]["master"]["provider"] == "claude-subprocess"
 
     def test_build_config_contains_model(self) -> None:
         """AC4: Built config contains model."""
         generator = ConfigGenerator(Console())
-        config = generator._build_config("claude-subprocess", "opus", [], None)
+        config = generator._build_config("test-project", "Test User", "claude-subprocess", "opus", [{"provider": "gemini", "model": "gemini-2.5-flash"}], {"provider": "claude-subprocess", "model": "haiku"})
         assert config["providers"]["master"]["model"] == "opus"
 
     def test_build_config_no_state_path(self) -> None:
         """AC9: Built config does NOT include state_path (uses project-based default)."""
         generator = ConfigGenerator(Console())
-        config = generator._build_config("claude-subprocess", "opus", [], None)
+        config = generator._build_config("test-project", "Test User", "claude-subprocess", "opus", [{"provider": "gemini", "model": "gemini-2.5-flash"}], {"provider": "claude-subprocess", "model": "haiku"})
         # state_path is not set - get_state_path() uses project_root instead
         assert "state_path" not in config
 
     def test_build_config_has_default_timeout(self) -> None:
-        """AC9: Built config has default timeout of 300."""
+        """AC9: Built config has default timeout of 600."""
         generator = ConfigGenerator(Console())
-        config = generator._build_config("claude-subprocess", "opus", [], None)
-        assert config["timeout"] == 300
+        config = generator._build_config("test-project", "Test User", "claude-subprocess", "opus", [{"provider": "gemini", "model": "gemini-2.5-flash"}], {"provider": "claude-subprocess", "model": "haiku"})
+        assert config["timeouts"]["default"] == 600
 
     def test_build_config_omits_empty_multi(self) -> None:
         """AC14: Empty multi-validators list is omitted from config."""
         generator = ConfigGenerator(Console())
-        config = generator._build_config("claude-subprocess", "opus", [], None)
+        config = generator._build_config("test-project", "Test User", "claude-subprocess", "opus", [], {"provider": "claude-subprocess", "model": "haiku"})
         assert "multi" not in config["providers"]
 
     def test_build_config_includes_multi_when_provided(self) -> None:
         """Multi-validators included when provided."""
         generator = ConfigGenerator(Console())
         validators = [{"provider": "gemini", "model": "gemini-2.5-flash"}]
-        config = generator._build_config("claude-subprocess", "opus", validators, None)
+        config = generator._build_config("test-project", "Test User", "claude-subprocess", "opus", validators, {"provider": "claude-subprocess", "model": "haiku"})
         assert "multi" in config["providers"]
         assert len(config["providers"]["multi"]) == 1
 
@@ -321,14 +321,14 @@ class TestBuildConfig:
         """Helper provider included when provided."""
         generator = ConfigGenerator(Console())
         helper = {"provider": "claude-subprocess", "model": "haiku"}
-        config = generator._build_config("claude-subprocess", "opus", [], helper)
+        config = generator._build_config("test-project", "Test User", "claude-subprocess", "opus", [{"provider": "gemini", "model": "gemini-2.5-flash"}], helper)
         assert "helper" in config["providers"]
         assert config["providers"]["helper"]["model"] == "haiku"
 
     def test_build_config_kimi_includes_thinking(self) -> None:
         """AC11: Kimi provider includes thinking: true."""
         generator = ConfigGenerator(Console())
-        config = generator._build_config("kimi", "kimi-code/kimi-for-coding", [], None)
+        config = generator._build_config("test-project", "Test User", "kimi", "kimi-code/kimi-for-coding", [{"provider": "gemini", "model": "gemini-2.5-flash"}], {"provider": "claude-subprocess", "model": "haiku"})
         assert config["providers"]["master"]["thinking"] is True
 
 
@@ -356,8 +356,10 @@ class TestQuestionaryWizard:
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.confirm")
     @patch("questionary.select")
+    @patch("questionary.text")
     def test_ctrl_c_exits_with_code_130(
         self,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_confirm: MagicMock,
         mock_interactive: MagicMock,
@@ -365,7 +367,10 @@ class TestQuestionaryWizard:
     ) -> None:
         """AC4: Ctrl+C exits with code 130."""
         mock_interactive.return_value = True
-        # Simulate Ctrl+C by returning None
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
+        # Mock text prompts for project_name and user_name
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
+        # Simulate Ctrl+C by returning None on select
         mock_select.return_value.ask.return_value = None
 
         generator = ConfigGenerator(Console())
@@ -378,8 +383,10 @@ class TestQuestionaryWizard:
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.confirm")
     @patch("questionary.select")
+    @patch("questionary.text")
     def test_overwrite_declined_exits_with_130(
         self,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_confirm: MagicMock,
         mock_interactive: MagicMock,
@@ -387,6 +394,7 @@ class TestQuestionaryWizard:
     ) -> None:
         """AC5: Declining overwrite exits with code 130."""
         mock_interactive.return_value = True
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
         # Create existing config
         config_path = tmp_path / "bmad-assist.yaml"
         config_path.write_text("providers:\n  master:\n    provider: claude\n    model: opus\n")
@@ -404,8 +412,10 @@ class TestQuestionaryWizard:
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.confirm")
     @patch("questionary.select")
+    @patch("questionary.text")
     def test_wizard_creates_config_file(
         self,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_confirm: MagicMock,
         mock_interactive: MagicMock,
@@ -413,16 +423,19 @@ class TestQuestionaryWizard:
     ) -> None:
         """AC1: Wizard creates valid config file."""
         mock_interactive.return_value = True
-        # Mock selections: provider, model, skip multi (done), skip helper, confirm save
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
+        # Mock selections: provider, model, add validator, done, helper provider/model
         mock_select.return_value.ask.side_effect = [
-            "claude-subprocess",  # provider
-            "opus",  # model
-            "done",  # skip multi-validators
+            "claude-subprocess",  # master provider
+            "opus",  # master model
+            "add",  # add validator (minimum 1 required)
+            "gemini",  # validator provider
+            "gemini-2.5-flash",  # validator model
+            "done",  # done with validators
+            "claude-subprocess",  # helper provider (required)
+            "haiku",  # helper model
         ]
-        mock_confirm.return_value.ask.side_effect = [
-            False,  # no helper
-            True,  # save config
-        ]
+        mock_confirm.return_value.ask.return_value = True  # save config
 
         generator = ConfigGenerator(Console())
         config_path = generator.run(tmp_path)
@@ -432,6 +445,10 @@ class TestQuestionaryWizard:
             config = yaml.safe_load(f)
         assert config["providers"]["master"]["provider"] == "claude-subprocess"
         assert config["providers"]["master"]["model"] == "opus"
+        assert "multi" in config["providers"]
+        assert len(config["providers"]["multi"]) == 1
+        assert config["providers"]["helper"]["provider"] == "claude-subprocess"
+        assert config["providers"]["helper"]["model"] == "haiku"
 
 
 # =============================================================================
@@ -445,8 +462,10 @@ class TestConfigGeneration:
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.confirm")
     @patch("questionary.select")
+    @patch("questionary.text")
     def test_generates_yaml_file(
         self,
+        mock_text: MagicMock,
         mock_q_select: MagicMock,
         mock_q_confirm: MagicMock,
         mock_interactive: MagicMock,
@@ -454,12 +473,18 @@ class TestConfigGeneration:
     ) -> None:
         """AC4: Generated config is a YAML file."""
         mock_interactive.return_value = True
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
         mock_q_select.return_value.ask.side_effect = [
             "claude-subprocess",
             "opus",
+            "add",  # add validator (minimum 1 required)
+            "gemini",
+            "gemini-2.5-flash",
             "done",
+            "claude-subprocess",  # helper provider (required)
+            "haiku",  # helper model
         ]
-        mock_q_confirm.return_value.ask.side_effect = [False, True]
+        mock_q_confirm.return_value.ask.return_value = True  # save config
 
         config_path = run_config_wizard(tmp_path, Console())
 
@@ -469,8 +494,10 @@ class TestConfigGeneration:
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.confirm")
     @patch("questionary.select")
+    @patch("questionary.text")
     def test_generates_valid_yaml(
         self,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_confirm: MagicMock,
         mock_interactive: MagicMock,
@@ -478,12 +505,18 @@ class TestConfigGeneration:
     ) -> None:
         """AC4: Generated config is valid YAML."""
         mock_interactive.return_value = True
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
         mock_select.return_value.ask.side_effect = [
             "claude-subprocess",
             "opus",
+            "add",  # add validator (minimum 1 required)
+            "gemini",
+            "gemini-2.5-flash",
             "done",
+            "claude-subprocess",  # helper provider (required)
+            "haiku",  # helper model
         ]
-        mock_confirm.return_value.ask.side_effect = [False, True]
+        mock_confirm.return_value.ask.return_value = True  # save config
 
         config_path = run_config_wizard(tmp_path, Console())
 
@@ -495,8 +528,10 @@ class TestConfigGeneration:
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.confirm")
     @patch("questionary.select")
+    @patch("questionary.text")
     def test_yaml_has_providers_section(
         self,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_confirm: MagicMock,
         mock_interactive: MagicMock,
@@ -504,12 +539,18 @@ class TestConfigGeneration:
     ) -> None:
         """AC4: Generated YAML has providers section."""
         mock_interactive.return_value = True
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
         mock_select.return_value.ask.side_effect = [
             "claude-subprocess",
             "opus",
+            "add",  # add validator (minimum 1 required)
+            "gemini",
+            "gemini-2.5-flash",
             "done",
+            "claude-subprocess",  # helper provider (required)
+            "haiku",  # helper model
         ]
-        mock_confirm.return_value.ask.side_effect = [False, True]
+        mock_confirm.return_value.ask.return_value = True  # save config
 
         config_path = run_config_wizard(tmp_path, Console())
 
@@ -521,8 +562,10 @@ class TestConfigGeneration:
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.confirm")
     @patch("questionary.select")
+    @patch("questionary.text")
     def test_yaml_has_header_comments(
         self,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_confirm: MagicMock,
         mock_interactive: MagicMock,
@@ -530,12 +573,18 @@ class TestConfigGeneration:
     ) -> None:
         """AC4: Generated YAML has header comments."""
         mock_interactive.return_value = True
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
         mock_select.return_value.ask.side_effect = [
             "claude-subprocess",
             "opus",
+            "add",  # add validator (minimum 1 required)
+            "gemini",
+            "gemini-2.5-flash",
             "done",
+            "claude-subprocess",  # helper provider (required)
+            "haiku",  # helper model
         ]
-        mock_confirm.return_value.ask.side_effect = [False, True]
+        mock_confirm.return_value.ask.return_value = True  # save config
 
         config_path = run_config_wizard(tmp_path, Console())
 
@@ -554,14 +603,17 @@ class TestCancellation:
 
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.select")
+    @patch("questionary.text")
     def test_ctrl_c_propagates(
         self,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_interactive: MagicMock,
         tmp_path: Path,
     ) -> None:
         """AC8: Ctrl+C (None from questionary) exits with 130."""
         mock_interactive.return_value = True
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
         mock_select.return_value.ask.return_value = None  # Simulates Ctrl+C
 
         with pytest.raises(typer.Exit) as exc_info:
@@ -571,14 +623,17 @@ class TestCancellation:
 
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.select")
+    @patch("questionary.text")
     def test_no_partial_file_on_ctrl_c(
         self,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_interactive: MagicMock,
         tmp_path: Path,
     ) -> None:
         """AC8: No partial config file on Ctrl+C."""
         mock_interactive.return_value = True
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
         mock_select.return_value.ask.return_value = None
         config_path = tmp_path / CONFIG_FILENAME
 
@@ -599,8 +654,10 @@ class TestAtomicWrite:
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.confirm")
     @patch("questionary.select")
+    @patch("questionary.text")
     def test_file_created_atomically(
         self,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_confirm: MagicMock,
         mock_interactive: MagicMock,
@@ -608,12 +665,18 @@ class TestAtomicWrite:
     ) -> None:
         """AC11: Config file is created atomically."""
         mock_interactive.return_value = True
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
         mock_select.return_value.ask.side_effect = [
             "claude-subprocess",
             "opus",
+            "add",  # add validator (minimum 1 required)
+            "gemini",
+            "gemini-2.5-flash",
             "done",
+            "claude-subprocess",  # helper provider (required)
+            "haiku",  # helper model
         ]
-        mock_confirm.return_value.ask.side_effect = [False, True]
+        mock_confirm.return_value.ask.return_value = True  # save config
 
         config_path = run_config_wizard(tmp_path, Console())
 
@@ -626,8 +689,10 @@ class TestAtomicWrite:
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.confirm")
     @patch("questionary.select")
+    @patch("questionary.text")
     def test_no_temp_files_left_on_success(
         self,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_confirm: MagicMock,
         mock_interactive: MagicMock,
@@ -635,12 +700,18 @@ class TestAtomicWrite:
     ) -> None:
         """AC11: No temp files left behind on success."""
         mock_interactive.return_value = True
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
         mock_select.return_value.ask.side_effect = [
             "claude-subprocess",
             "opus",
+            "add",  # add validator (minimum 1 required)
+            "gemini",
+            "gemini-2.5-flash",
             "done",
+            "claude-subprocess",  # helper provider (required)
+            "haiku",  # helper model
         ]
-        mock_confirm.return_value.ask.side_effect = [False, True]
+        mock_confirm.return_value.ask.return_value = True  # save config
 
         run_config_wizard(tmp_path, Console())
 
@@ -650,10 +721,12 @@ class TestAtomicWrite:
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.confirm")
     @patch("questionary.select")
+    @patch("questionary.text")
     @patch("bmad_assist.core.config_generator.os.rename")
     def test_temp_file_cleanup_on_rename_failure(
         self,
         mock_rename: MagicMock,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_confirm: MagicMock,
         mock_interactive: MagicMock,
@@ -661,12 +734,18 @@ class TestAtomicWrite:
     ) -> None:
         """AC11: Temp file cleaned up if rename fails."""
         mock_interactive.return_value = True
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
         mock_select.return_value.ask.side_effect = [
             "claude-subprocess",
             "opus",
+            "add",  # add validator (minimum 1 required)
+            "gemini",
+            "gemini-2.5-flash",
             "done",
+            "claude-subprocess",  # helper provider (required)
+            "haiku",  # helper model
         ]
-        mock_confirm.return_value.ask.side_effect = [False, True]
+        mock_confirm.return_value.ask.return_value = True  # save config
         mock_rename.side_effect = OSError("Rename failed")
 
         with pytest.raises(OSError):
@@ -688,8 +767,10 @@ class TestRunConfigWizard:
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.confirm")
     @patch("questionary.select")
+    @patch("questionary.text")
     def test_returns_path_to_config(
         self,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_confirm: MagicMock,
         mock_interactive: MagicMock,
@@ -697,12 +778,18 @@ class TestRunConfigWizard:
     ) -> None:
         """run_config_wizard returns path to generated config."""
         mock_interactive.return_value = True
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
         mock_select.return_value.ask.side_effect = [
             "claude-subprocess",
             "opus",
+            "add",  # add validator (minimum 1 required)
+            "gemini",
+            "gemini-2.5-flash",
             "done",
+            "claude-subprocess",  # helper provider (required)
+            "haiku",  # helper model
         ]
-        mock_confirm.return_value.ask.side_effect = [False, True]
+        mock_confirm.return_value.ask.return_value = True  # save config
 
         result = run_config_wizard(tmp_path, Console())
 
@@ -728,7 +815,7 @@ class TestDisplayMethods:
     def test_display_summary_does_not_raise(self) -> None:
         """_display_summary executes without error."""
         generator = ConfigGenerator(Console())
-        config = generator._build_config("claude-subprocess", "opus", [], None)
+        config = generator._build_config("test-project", "Test User", "claude-subprocess", "opus", [{"provider": "gemini", "model": "gemini-2.5-flash"}], {"provider": "claude-subprocess", "model": "haiku"})
         # Should not raise
         generator._display_summary(config)
 
@@ -741,7 +828,7 @@ class TestDisplayMethods:
     def test_show_summary_does_not_raise(self) -> None:
         """_show_summary executes without error."""
         generator = ConfigGenerator(Console())
-        config = generator._build_config("claude-subprocess", "opus", [], None)
+        config = generator._build_config("test-project", "Test User", "claude-subprocess", "opus", [{"provider": "gemini", "model": "gemini-2.5-flash"}], {"provider": "claude-subprocess", "model": "haiku"})
         # Should not raise
         generator._show_summary(config, Path("/tmp/test.yaml"))
 
@@ -757,8 +844,10 @@ class TestEdgeCases:
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.confirm")
     @patch("questionary.select")
+    @patch("questionary.text")
     def test_config_in_subdirectory(
         self,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_confirm: MagicMock,
         mock_interactive: MagicMock,
@@ -769,12 +858,18 @@ class TestEdgeCases:
         subdir.mkdir()
 
         mock_interactive.return_value = True
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
         mock_select.return_value.ask.side_effect = [
             "claude-subprocess",
             "opus",
+            "add",  # add validator (minimum 1 required)
+            "gemini",
+            "gemini-2.5-flash",
             "done",
+            "claude-subprocess",  # helper provider (required)
+            "haiku",  # helper model
         ]
-        mock_confirm.return_value.ask.side_effect = [False, True]
+        mock_confirm.return_value.ask.return_value = True  # save config
 
         config_path = run_config_wizard(subdir, Console())
 
@@ -784,61 +879,84 @@ class TestEdgeCases:
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.confirm")
     @patch("questionary.select")
-    def test_multi_validator_skip_immediately(
+    @patch("questionary.text")
+    def test_multi_validator_minimum_one_required(
         self,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_confirm: MagicMock,
         mock_interactive: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """User skips multi-validators without adding any."""
+        """User must add at least one validator (no skip option until one added)."""
         mock_interactive.return_value = True
-        mock_select.return_value.ask.side_effect = [
-            "gemini",  # master provider
-            "gemini-2.5-flash",  # master model
-            "done",  # skip multi-validators immediately
-        ]
-        mock_confirm.return_value.ask.side_effect = [False, True]  # no helper, save
-
-        config_path = run_config_wizard(tmp_path, Console())
-
-        config = yaml.safe_load(config_path.read_text())
-        assert "multi" not in config["providers"]
-
-    @patch("bmad_assist.core.config_generator._is_interactive")
-    @patch("questionary.confirm")
-    @patch("questionary.select")
-    def test_multi_validator_add_then_remove_all(
-        self,
-        mock_select: MagicMock,
-        mock_confirm: MagicMock,
-        mock_interactive: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """User adds validators then removes them all."""
-        mock_interactive.return_value = True
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
         mock_select.return_value.ask.side_effect = [
             "claude-subprocess",  # master provider
             "opus",  # master model
-            "add",  # add validator
+            "add",  # must add validator (no skip option)
             "gemini",  # validator provider
             "gemini-2.5-flash",  # validator model
-            "remove",  # remove validator
-            0,  # select first to remove
-            "done",  # done with no validators
+            "done",  # now done is available
+            "claude-subprocess",  # helper provider (required)
+            "haiku",  # helper model
         ]
-        mock_confirm.return_value.ask.side_effect = [False, True]
+        mock_confirm.return_value.ask.return_value = True  # save config
 
         config_path = run_config_wizard(tmp_path, Console())
 
         config = yaml.safe_load(config_path.read_text())
-        assert "multi" not in config["providers"]
+        assert "multi" in config["providers"]
+        assert len(config["providers"]["multi"]) == 1
+        assert "helper" in config["providers"]
 
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.confirm")
     @patch("questionary.select")
+    @patch("questionary.text")
+    def test_multi_validator_add_two_remove_one(
+        self,
+        mock_text: MagicMock,
+        mock_select: MagicMock,
+        mock_confirm: MagicMock,
+        mock_interactive: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """User adds two validators then removes one (keeping minimum one)."""
+        mock_interactive.return_value = True
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
+        mock_select.return_value.ask.side_effect = [
+            "claude-subprocess",  # master provider
+            "opus",  # master model
+            "add",  # add first validator
+            "gemini",  # validator provider
+            "gemini-2.5-flash",  # validator model
+            "add",  # add second validator
+            "codex",  # second validator provider
+            "o3",  # second validator model
+            "remove",  # remove one (only available with 2+)
+            0,  # select first to remove
+            "done",  # done with one validator remaining
+            "claude-subprocess",  # helper provider (required)
+            "haiku",  # helper model
+        ]
+        mock_confirm.return_value.ask.return_value = True  # save config
+
+        config_path = run_config_wizard(tmp_path, Console())
+
+        config = yaml.safe_load(config_path.read_text())
+        assert "multi" in config["providers"]
+        assert len(config["providers"]["multi"]) == 1
+        # The remaining one should be codex (removed gemini at index 0)
+        assert config["providers"]["multi"][0]["provider"] == "codex"
+
+    @patch("bmad_assist.core.config_generator._is_interactive")
+    @patch("questionary.confirm")
+    @patch("questionary.select")
+    @patch("questionary.text")
     def test_multi_validator_add_multiple(
         self,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_confirm: MagicMock,
         mock_interactive: MagicMock,
@@ -846,6 +964,7 @@ class TestEdgeCases:
     ) -> None:
         """User adds multiple validators."""
         mock_interactive.return_value = True
+        mock_text.return_value.ask.side_effect = ["test-project", "Test User"]
         mock_select.return_value.ask.side_effect = [
             "claude-subprocess",  # master provider
             "opus",  # master model
@@ -856,8 +975,10 @@ class TestEdgeCases:
             "codex",  # validator 2 provider
             "o3-mini",  # validator 2 model
             "done",  # done
+            "claude-subprocess",  # helper provider (required)
+            "haiku",  # helper model
         ]
-        mock_confirm.return_value.ask.side_effect = [False, True]
+        mock_confirm.return_value.ask.return_value = True  # save config
 
         config_path = run_config_wizard(tmp_path, Console())
 
@@ -866,3 +987,4 @@ class TestEdgeCases:
         assert len(config["providers"]["multi"]) == 2
         assert config["providers"]["multi"][0]["provider"] == "gemini"
         assert config["providers"]["multi"][1]["provider"] == "codex"
+        assert "helper" in config["providers"]

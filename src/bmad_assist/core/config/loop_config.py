@@ -59,6 +59,10 @@ def _try_load_loop_config_from_yaml(path: Path) -> LoopConfig | None:
     Returns None if file doesn't exist, doesn't contain 'loop' key,
     or validation fails. Logs warnings on validation failures.
 
+    Special value "default" returns DEFAULT_LOOP_CONFIG immediately,
+    stopping the fallback chain. This allows projects to explicitly
+    reset to defaults without inheriting from parent configs.
+
     Args:
         path: Path to YAML file (bmad-assist.yaml or config.yaml).
 
@@ -74,9 +78,16 @@ def _try_load_loop_config_from_yaml(path: Path) -> LoopConfig | None:
     if loop_data is None:
         return None
 
+    # Special marker to use defaults and stop fallback chain
+    if loop_data == "default":
+        logger.debug("Using DEFAULT_LOOP_CONFIG from explicit 'default' marker in %s", path)
+        return DEFAULT_LOOP_CONFIG
+
     if not isinstance(loop_data, dict):
         logger.warning(
-            "Invalid loop config in %s: expected dict, got %s", path, type(loop_data).__name__
+            "Invalid loop config in %s: expected dict or 'default', got %s",
+            path,
+            type(loop_data).__name__,
         )
         return None
 

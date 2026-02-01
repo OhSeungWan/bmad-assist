@@ -167,16 +167,6 @@ def _show_diff(src: Path, dst: Path, console: Console) -> None:
         console.print(f"[red]Could not show diff: {e}[/red]")
 
 
-def _show_help(console: Console) -> None:
-    """Display help for prompt options."""
-    console.print("\n[bold]Options:[/bold]")
-    console.print("  [a] Overwrite ALL - replace all differing files with bundled versions")
-    console.print("  [s] Skip all     - keep your local versions (default)")
-    console.print("  [i] Interactive  - prompt for each file individually")
-    console.print("  [d] Show diff    - display differences, then prompt again")
-    console.print("  [?] Help         - show this message\n")
-
-
 def _prompt_overwrite_batch(
     differing_files: list[tuple[Path, Path]],
     console: Console,
@@ -208,15 +198,19 @@ def _prompt_overwrite_batch(
     if count > 5:
         console.print(f"  ... and {count - 5} more")
 
+    console.print("\n[bold]Options:[/bold]")
+    console.print("  \\[a] Overwrite all  - replace all with bundled versions")
+    console.print("  \\[s] Skip all       - keep your local versions [dim](default)[/dim]")
+    console.print("  \\[i] Interactive    - prompt for each file")
+    console.print("  \\[d] Show diff      - display differences first")
+
     while True:
         choice = Prompt.ask(
-            "\nWhat would you like to do?",
-            choices=["a", "s", "i", "d", "?"],
+            "\nYour choice",
+            choices=["a", "s", "i", "d"],
             default="s",
+            show_choices=False,
         )
-        if choice == "?":
-            _show_help(console)
-            continue
         if choice == "d":
             # Show diff for first file, then re-prompt
             src, dst = differing_files[0]
@@ -250,15 +244,11 @@ def _prompt_overwrite_single(
 
     while True:
         choice = Prompt.ask(
-            f"Overwrite {rel_path}?",
-            choices=["y", "n", "d", "?"],
+            f"Overwrite {rel_path}? \\[y]es / \\[n]o / \\[d]iff",
+            choices=["y", "n", "d"],
             default="n",
+            show_choices=False,
         )
-        if choice == "?":
-            console.print("  [y] Yes - overwrite with bundled version")
-            console.print("  [n] No  - keep local version (default)")
-            console.print("  [d] Diff - show differences")
-            continue
         if choice == "d":
             _show_diff(src, dst, console)
             continue

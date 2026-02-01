@@ -57,6 +57,9 @@ from bmad_assist.core.loop.interactive import checkpoint_and_prompt, is_skip_sto
 from bmad_assist.core.loop.locking import _running_lock
 from bmad_assist.core.loop.notifications import _dispatch_event
 from bmad_assist.core.loop.run_tracking import (
+    CurrentPhase,
+    PhaseEvent,
+    PhaseEventType,
     PhaseInvocation,
     PhaseStatus,
     RunLog,
@@ -362,6 +365,13 @@ def run_loop(
             project_path=str(project_path),
         )
 
+        # Initial save with status=RUNNING (crash resilience)
+        try:
+            csv_enabled = os.environ.get("BMAD_CSV_OUTPUT") == "1"
+            save_run_log(run_log, project_path, as_csv=csv_enabled)
+        except Exception as e:
+            logger.warning("Failed to save initial run log: %s", e)
+
         # Dashboard: Create lock file for process detection
         with _running_lock(project_path):
             try:
@@ -634,6 +644,36 @@ def _run_loop_body(
             story=state.current_story,
         )
 
+        # CLI Observability: Record phase START in run log (crash diagnostics)
+        if run_log is not None:
+            phase_name = state.current_phase.name if state.current_phase else "UNKNOWN"
+            phase_start_time = state.phase_started_at or datetime.now(UTC)
+            run_log.current_phase = CurrentPhase(
+                phase=phase_name,
+                started_at=phase_start_time,
+                provider=config.providers.master.provider,
+                model=config.providers.master.model,
+            )
+            run_log.epic = state.current_epic
+            run_log.story = state.current_story
+            # Add STARTED event for CSV timeline
+            run_log.phase_events.append(
+                PhaseEvent(
+                    event_type=PhaseEventType.STARTED,
+                    phase=phase_name,
+                    timestamp=phase_start_time,
+                    provider=config.providers.master.provider,
+                    model=config.providers.master.model,
+                    epic=state.current_epic,
+                    story=state.current_story,
+                )
+            )
+            try:
+                csv_enabled = os.environ.get("BMAD_CSV_OUTPUT") == "1"
+                save_run_log(run_log, project_path, as_csv=csv_enabled)
+            except Exception as e:
+                logger.warning("Failed to save run log at phase start: %s", e)
+
         # AC2: Execute current phase
         result = execute_phase(state)
 
@@ -663,9 +703,10 @@ def _run_loop_body(
             else:
                 phase_status = PhaseStatus.ERROR
 
+            phase_name = state.current_phase.name if state.current_phase else "UNKNOWN"
             run_log.phases.append(
                 PhaseInvocation(
-                    phase=state.current_phase.name if state.current_phase else "UNKNOWN",
+                    phase=phase_name,
                     started_at=phase_started,
                     ended_at=phase_ended,
                     duration_ms=duration_ms,
@@ -675,9 +716,33 @@ def _run_loop_body(
                     error_type=result.error[:100] if result.error else None,
                 )
             )
+            # Add COMPLETED event for CSV timeline
+            run_log.phase_events.append(
+                PhaseEvent(
+                    event_type=PhaseEventType.COMPLETED,
+                    phase=phase_name,
+                    timestamp=phase_ended,
+                    provider=config.providers.master.provider,
+                    model=config.providers.master.model,
+                    epic=state.current_epic,
+                    story=state.current_story,
+                    duration_ms=duration_ms,
+                    status=phase_status,
+                    error_type=result.error[:100] if result.error else None,
+                )
+            )
+            # Clear current_phase now that it's recorded in phases list
+            run_log.current_phase = None
             # Update run_log with current epic/story
             run_log.epic = state.current_epic
             run_log.story = state.current_story
+
+            # Per-phase save for crash resilience (atomic write)
+            try:
+                csv_enabled = os.environ.get("BMAD_CSV_OUTPUT") == "1"
+                save_run_log(run_log, project_path, as_csv=csv_enabled)
+            except Exception as e:
+                logger.warning("Failed to save run log after phase: %s", e)
 
         # Story 22.9: Emit dashboard workflow_status event with completed/failed status
         # This complements the "in-progress" emission at phase start

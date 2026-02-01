@@ -2,13 +2,27 @@
 
 All notable changes to bmad-assist are documented in this file.
 
+## [0.4.16] - 2026-02-01
+
+### Fixed
+- **Run Tracking Improvements**: Phase events timeline for CSV export with explicit STARTED/COMPLETED events (thanks [@mattbrun](https://github.com/mattbrun)); phase start recording for crash diagnostics (current_phase field); per-phase atomic saves for crash resilience
+- **Config Flexibility**: Support `loop: "default"` marker to explicitly use default loop config; support `phase_models: null` marker to clear phase-specific overrides
+- **Config Wizard**: Helper provider and minimum one multi-validator now required; project/user name prompts; sensible defaults for new projects
+- **Benchmarking**: Apply `parallel_delay` to extraction providers (was starting all at once)
+- **Config Wizard**: Generate modern `timeouts.default` instead of legacy `timeout` field
+- **Project Setup**: Show letter meanings inline in workflow conflict prompts (was cryptic `[a/s/i/d/?]`)
+- **Init Command**: Show options inline instead of cryptic shortcuts
+- **TEA Standalone**: Disable CWD config loading to prevent workspace config override
+- **Code Quality**: Resolve all ruff lint errors and mypy strict type checking errors
+
+
 ## [0.4.15] - 2026-02-01
 
 ### Added
 - **Bundled TEA Knowledge Base** - All 34 knowledge fragments now ship with bmad-assist package, enabling TEA workflows to run without `_bmad/tea/testarch/` in target projects
 - **TEA Master Switch** - `testarch.enabled` config option to completely disable all TEA functionality
 - **Interactive Config Wizard** - `bmad-assist init --wizard` for guided configuration setup
-- **Config Verify Command** - `bmad-assist verify` to validate configuration files
+- **Config Verify Command** - `bmad-assist config verify` to validate configuration files
 - **TEA Standalone Banners** - Visual phase banners and notifications for TEA standalone workflows
 - **TEA Prompt Saving** - Unit tests for context enhancement and prompt saving
 
@@ -52,7 +66,7 @@ All notable changes to bmad-assist are documented in this file.
 ### Fixed
 - **Notifications:** Eliminate duplicate `phase_completed` events, add TEA phase support with proper labels
 - **Workflow paths:** Two bugs in workflow path resolution
-- **Placeholders:** Standardize format to `{project-root}` across codebase
+- **Placeholders:** Standardize format to `{project-root}` across codebase (thanks @Snowreg)
 - **Patch compiler:** Add testarch workflow name mapping (testarch-atdd → tea-atdd)
 - **Loop messages:** Remove misleading "guardian halt" message on normal phase failure
 - **Parser:** Support non-standard story formats with Priority anchor

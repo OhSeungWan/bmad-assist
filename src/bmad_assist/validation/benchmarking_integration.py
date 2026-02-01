@@ -52,6 +52,8 @@ from bmad_assist.benchmarking import (
 )
 from bmad_assist.benchmarking.extraction import ExtractedMetrics, ExtractionContext
 from bmad_assist.core.types import EpicId
+from bmad_assist.core.async_utils import delayed_invoke
+from bmad_assist.core.config.loaders import parse_parallel_delay
 from bmad_assist.validation.anonymizer import ValidationOutput
 from bmad_assist.validation.synthesis_parser import extract_synthesis_metrics
 
@@ -445,7 +447,7 @@ async def _run_parallel_extraction(
         settings_path = config.providers.helper.settings_path
         extraction_settings_file = str(settings_path) if settings_path else None
 
-    for output in successful_outputs:
+    for idx, output in enumerate(successful_outputs):
         context = ExtractionContext(
             story_epic=epic_num,
             story_num=story_num,
@@ -456,7 +458,11 @@ async def _run_parallel_extraction(
             model=extraction_model,
             settings_file=extraction_settings_file,
         )
-        task = asyncio.create_task(_safe_extract_metrics(output.content, context))
+        # Staggered start: each task waits idx * delay before starting
+        # Parse delay at runtime for each task (randomization per-call if range configured)
+        delay = parse_parallel_delay(config.parallel_delay) * idx if config else 0
+        coro = _safe_extract_metrics(output.content, context)
+        task = asyncio.create_task(delayed_invoke(delay, coro))
         extraction_tasks.append(task)
 
     # Run all extractions in parallel

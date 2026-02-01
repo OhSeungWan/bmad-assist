@@ -1,7 +1,7 @@
 """Main Config model that aggregates all configuration sections."""
 
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -107,9 +107,10 @@ class Config(BaseModel):
         default=None,
         description="QA execution configuration (optional)",
     )
-    loop: LoopConfig | None = Field(
+    loop: LoopConfig | Literal["default"] | None = Field(
         default=None,
-        description="Loop phase configuration (optional, uses DEFAULT_LOOP_CONFIG if not set)",
+        description="Loop phase configuration. Use 'default' to explicitly use DEFAULT_LOOP_CONFIG "
+        "and prevent inheriting from parent configs. None means load via fallback chain.",
     )
     warnings: WarningsConfig | None = Field(
         default=None,

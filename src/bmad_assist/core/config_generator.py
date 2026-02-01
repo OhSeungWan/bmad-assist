@@ -231,6 +231,12 @@ class ConfigGenerator:
 
         self._display_welcome()
 
+        # Prompt for project basics first
+        project_name = self._prompt_project_name(project_path)
+        user_name = self._prompt_user_name()
+
+        self.console.print()
+
         # Prompt for master provider and model
         provider = self._select_provider("Select master provider")
         model = self._select_model(provider)
@@ -238,11 +244,13 @@ class ConfigGenerator:
         # Prompt for multi-validators
         multi_validators = self._select_multi_validators()
 
-        # Prompt for helper provider (optional)
+        # Prompt for helper provider (required)
         helper_config = self._select_helper_provider()
 
         # Build config dictionary
-        config = self._build_config(provider, model, multi_validators, helper_config)
+        config = self._build_config(
+            project_name, user_name, provider, model, multi_validators, helper_config
+        )
 
         # Display summary and confirm
         self._show_summary(config, config_path)
@@ -315,11 +323,12 @@ providers:
 
         return cast(str, _check_cancelled(result, self.console))
 
-    def _select_model(self, provider: str) -> str:
+    def _select_model(self, provider: str, default_override: str | None = None) -> str:
         """Select a model for the chosen provider.
 
         Args:
             provider: Provider key.
+            default_override: Override the provider's default model (e.g., "haiku" for helper).
 
         Returns:
             Selected model name.
@@ -327,7 +336,7 @@ providers:
         """
         provider_info = PROVIDER_MODELS[provider]
         models = provider_info["models"]
-        default = provider_info["default"]
+        default = default_override if default_override and default_override in models else provider_info["default"]
 
         choices = [questionary.Choice(title=model, value=model) for model in models]
 
@@ -339,18 +348,73 @@ providers:
 
         return cast(str, _check_cancelled(result, self.console))
 
+    def _prompt_project_name(self, project_path: Path) -> str:
+        """Prompt for project name with smart default from directory name.
+
+        Args:
+            project_path: Path to project directory.
+
+        Returns:
+            Project name string.
+
+        """
+        default_name = project_path.name
+
+        result = questionary.text(
+            "Project name:",
+            default=default_name,
+        ).ask()
+
+        return cast(str, _check_cancelled(result, self.console))
+
+    def _prompt_user_name(self) -> str:
+        """Prompt for user name with smart default from git or OS.
+
+        Returns:
+            User name string.
+
+        """
+        import subprocess
+
+        # Try git config first
+        default_name = ""
+        with contextlib.suppress(Exception):
+            result = subprocess.run(
+                ["git", "config", "user.name"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                default_name = result.stdout.strip()
+
+        # Fall back to OS username
+        if not default_name:
+            import getpass
+            default_name = getpass.getuser()
+
+        result = questionary.text(
+            "Your name:",
+            default=default_name,
+        ).ask()
+
+        return cast(str, _check_cancelled(result, self.console))
+
     def _select_multi_validators(self) -> list[dict[str, Any]]:
         """Select multi-validators using add/remove loop.
 
+        At least one validator is required for story validation and code review
+        phases to work properly (master + validators run in parallel).
+
         Returns:
-            List of validator configurations (may be empty).
+            List of validator configurations (at least one).
 
         """
         validators: list[dict[str, Any]] = []
 
         self.console.print()
-        self.console.print("[bold]Multi-Validators[/bold] (optional)")
-        self.console.print("[dim]Add validators for parallel code review/validation[/dim]")
+        self.console.print("[bold]Multi-Validators[/bold] [yellow](minimum 1 required)[/yellow]")
+        self.console.print("[dim]Validators run alongside master during validation and code review[/dim]")
         self.console.print()
 
         while True:
@@ -359,20 +423,22 @@ providers:
                 questionary.Choice(title="Add validator", value="add"),
             ]
             if validators:
+                # Only allow remove if more than 1 validator
+                if len(validators) > 1:
+                    action_choices.append(
+                        questionary.Choice(
+                            title=f"Remove validator ({len(validators)} configured)", value="remove"
+                        )
+                    )
                 action_choices.append(
                     questionary.Choice(
-                        title=f"Remove validator ({len(validators)} configured)", value="remove"
+                        title=f"Done ({len(validators)} validator{'s' if len(validators) > 1 else ''})",
+                        value="done",
                     )
                 )
-            action_choices.append(
-                questionary.Choice(
-                    title=f"Done ({len(validators)} validators)" if validators else "Skip",
-                    value="done",
-                )
-            )
 
             action = questionary.select(
-                "Multi-validator configuration:",
+                "Multi-validator configuration:" if validators else "Add at least one validator:",
                 choices=action_choices,
             ).ask()
             _check_cancelled(action, self.console)
@@ -423,29 +489,24 @@ providers:
 
         return validators
 
-    def _select_helper_provider(self) -> dict[str, Any] | None:
-        """Select optional helper provider.
+    def _select_helper_provider(self) -> dict[str, Any]:
+        """Select helper provider (required).
+
+        Helper is used for LLM extraction and benchmarking.
+        Default is claude-subprocess with haiku model (fast and cheap).
 
         Returns:
-            Helper configuration dict or None if skipped.
+            Helper configuration dict.
 
         """
         self.console.print()
-        self.console.print("[bold]Helper Provider[/bold] (optional)")
-        self.console.print("[dim]Used for LLM extraction and benchmarking[/dim]")
+        self.console.print("[bold]Helper Provider[/bold] [yellow](required)[/yellow]")
+        self.console.print("[dim]Used for LLM extraction and benchmarking (haiku recommended)[/dim]")
         self.console.print()
 
-        configure = questionary.confirm(
-            "Configure helper provider?",
-            default=False,
-        ).ask()
-        _check_cancelled(configure, self.console)
-
-        if not configure:
-            return None
-
         provider = self._select_provider("Select helper provider")
-        model = self._select_model(provider)
+        # Default to haiku for helper (fast and cheap)
+        model = self._select_model(provider, default_override="haiku" if provider == "claude-subprocess" else None)
 
         helper_config: dict[str, Any] = {
             "provider": provider,
@@ -460,18 +521,22 @@ providers:
 
     def _build_config(
         self,
+        project_name: str,
+        user_name: str,
         provider: str,
         model: str,
         multi_validators: list[dict[str, Any]],
-        helper_config: dict[str, Any] | None,
+        helper_config: dict[str, Any],
     ) -> dict[str, Any]:
         """Build configuration dictionary with selected values.
 
         Args:
+            project_name: Name of the project.
+            user_name: Name of the user.
             provider: Master provider key.
             model: Master model name.
-            multi_validators: List of validator configurations.
-            helper_config: Helper provider configuration or None.
+            multi_validators: List of validator configurations (minimum 1).
+            helper_config: Helper provider configuration (required).
 
         Returns:
             Configuration dictionary ready for YAML serialization.
@@ -488,17 +553,29 @@ providers:
 
         providers_config: dict[str, Any] = {"master": master_config}
 
-        # Only add multi section if validators were configured
+        # Add multi validators only if provided (wizard enforces minimum 1)
         if multi_validators:
             providers_config["multi"] = multi_validators
 
-        # Add helper if configured
-        if helper_config:
-            providers_config["helper"] = helper_config
+        # Add helper (required)
+        providers_config["helper"] = helper_config
 
         return {
+            "project_name": project_name,
+            "user_name": user_name,
             "providers": providers_config,
-            "timeout": 300,
+            "phase_models": None,  # Explicit null - use providers, don't inherit from parent
+            "loop": "default",  # Use DEFAULT_LOOP_CONFIG, don't inherit TEA phases from parent
+            "timeouts": {"default": 600},
+            "benchmarking": {
+                "enabled": True,
+            },
+            "testarch": {
+                "enabled": False,
+            },
+            "notifications": {
+                "enabled": False,
+            },
         }
 
     def _show_summary(self, config: dict[str, Any], config_path: Path) -> None:
@@ -514,6 +591,10 @@ providers:
         table = Table(title="Configuration Summary", show_header=True)
         table.add_column("Setting", style="cyan")
         table.add_column("Value", style="green")
+
+        # Project basics
+        table.add_row("Project Name", config["project_name"])
+        table.add_row("User Name", config["user_name"])
 
         master = config["providers"]["master"]
         provider_display = PROVIDER_MODELS.get(master["provider"], {}).get(
@@ -540,7 +621,16 @@ providers:
         else:
             table.add_row("Helper Provider", "[dim]None[/dim]")
 
-        table.add_row("Timeout", f"{config['timeout']} seconds")
+        table.add_row("Timeout", f"{config['timeouts']['default']} seconds")
+
+        # Feature flags
+        benchmarking = config.get("benchmarking", {}).get("enabled", False)
+        testarch = config.get("testarch", {}).get("enabled", False)
+        notifications = config.get("notifications", {}).get("enabled", False)
+        table.add_row("Benchmarking", "[green]enabled[/green]" if benchmarking else "[dim]disabled[/dim]")
+        table.add_row("TEA (testarch)", "[green]enabled[/green]" if testarch else "[dim]disabled[/dim]")
+        table.add_row("Notifications", "[green]enabled[/green]" if notifications else "[dim]disabled[/dim]")
+
         table.add_row("Output Path", str(config_path))
 
         self.console.print(table)
@@ -568,7 +658,7 @@ providers:
         table.add_row("Model", master["model"])
         state_path = config.get("state_path", "{project}/.bmad-assist/state.yaml")
         table.add_row("State Path", state_path)
-        table.add_row("Timeout", f"{config['timeout']} seconds")
+        table.add_row("Timeout", f"{config['timeouts']['default']} seconds")
         table.add_row("Config File", CONFIG_FILENAME)
 
         self.console.print(table)
