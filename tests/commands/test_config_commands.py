@@ -37,16 +37,16 @@ class TestConfigWizardCommand:
         assert "Non-interactive" in result.output or "template" in result.output.lower()
 
     @patch("bmad_assist.core.config_generator._is_interactive")
-    @patch("questionary.select")
+    @patch("questionary.text")
     def test_ctrl_c_exits_with_code_130(
         self,
-        mock_select: MagicMock,
+        mock_text: MagicMock,
         mock_interactive: MagicMock,
         tmp_path: Path,
     ) -> None:
         """Ctrl+C exits with code 130."""
         mock_interactive.return_value = True
-        mock_select.return_value.ask.return_value = None  # Simulate Ctrl+C
+        mock_text.return_value.ask.return_value = None  # Simulate Ctrl+C on first text prompt
 
         result = runner.invoke(app, ["config", "wizard", "--project", str(tmp_path)])
 
@@ -64,8 +64,10 @@ class TestConfigWizardCommand:
     @patch("bmad_assist.core.config_generator._is_interactive")
     @patch("questionary.confirm")
     @patch("questionary.select")
+    @patch("questionary.text")
     def test_wizard_creates_config(
         self,
+        mock_text: MagicMock,
         mock_select: MagicMock,
         mock_confirm: MagicMock,
         mock_interactive: MagicMock,
@@ -73,13 +75,25 @@ class TestConfigWizardCommand:
     ) -> None:
         """Wizard creates valid config file."""
         mock_interactive.return_value = True
+        # Text prompts: project_name, user_name
+        mock_text.return_value.ask.side_effect = [
+            "test-project",
+            "Test User",
+        ]
+        # Select prompts: master provider, master model,
+        # multi-validator action (add), validator provider, validator model,
+        # multi-validator action (done), helper provider, helper model
         mock_select.return_value.ask.side_effect = [
-            "claude-subprocess",
-            "opus",
-            "done",  # skip multi-validators
+            "claude-subprocess",  # master provider
+            "opus",  # master model
+            "add",  # multi-validator: add first
+            "gemini",  # validator provider
+            "gemini-2.5-flash",  # validator model
+            "done",  # multi-validator: done
+            "claude-subprocess",  # helper provider
+            "haiku",  # helper model
         ]
         mock_confirm.return_value.ask.side_effect = [
-            False,  # no helper
             True,  # save config
         ]
 

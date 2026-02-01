@@ -51,9 +51,9 @@ from bmad_assist.benchmarking import (
     extract_metrics_async,
 )
 from bmad_assist.benchmarking.extraction import ExtractedMetrics, ExtractionContext
-from bmad_assist.core.types import EpicId
 from bmad_assist.core.async_utils import delayed_invoke
 from bmad_assist.core.config.loaders import parse_parallel_delay
+from bmad_assist.core.types import EpicId
 from bmad_assist.validation.anonymizer import ValidationOutput
 from bmad_assist.validation.synthesis_parser import extract_synthesis_metrics
 
