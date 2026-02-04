@@ -1,0 +1,31 @@
+# Transform Domain Checklist for Boundary Analysis
+# Covers data transformation, parsing, serialization, pipelines edge cases
+
+checklist:
+  - id: "TF-BOUNDARY-001"
+    category: "encoding_issues"
+    question: "Are encoding issues handled during transformation?"
+    description: "Text encoding (UTF-8, etc.) should be validated and handled gracefully"
+    severity_if_violated: "error"
+    domain: "transform"
+
+  - id: "TF-BOUNDARY-002"
+    category: "schema_validation"
+    question: "Is input schema validated before transformation?"
+    description: "Unexpected input structures can cause transformation failures"
+    severity_if_violated: "error"
+    domain: "transform"
+
+  - id: "TF-BOUNDARY-003"
+    category: "large_payload_handling"
+    question: "Are large payloads handled without memory issues?"
+    description: "Streaming or chunking should be used for large data transformations"
+    severity_if_violated: "warning"
+    domain: "transform"
+
+  - id: "TF-BOUNDARY-004"
+    category: "circular_reference"
+    question: "Are circular references detected during serialization?"
+    description: "Serialization of objects with circular references can cause infinite loops"
+    severity_if_violated: "error"
+    domain: "transform"

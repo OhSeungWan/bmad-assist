@@ -123,7 +123,9 @@ def init_command(
 
     # Confirm destructive reset operation
     if reset_workflows:
-        console.print("[yellow]⚠️  WARNING: --reset-workflows will overwrite ALL local workflow customizations![/yellow]") # noqa: E501
+        console.print(
+            "[yellow]⚠️  WARNING: --reset-workflows will overwrite ALL local workflow customizations![/yellow]"
+        )  # noqa: E501
         if not Confirm.ask("Continue?", default=False):
             console.print("[dim]Cancelled.[/dim]")
             raise typer.Exit(code=0)
@@ -175,7 +177,12 @@ def init_command(
 
     # Summary
     console.print()
-    if result.workflows_copied or result.config_created or result.gitignore_updated or result.dirs_created: # noqa: E501
+    if (
+        result.workflows_copied
+        or result.config_created
+        or result.gitignore_updated
+        or result.dirs_created
+    ):  # noqa: E501
         _success("Project initialized successfully")
         if result.workflows_copied:
             console.print(f"  Workflows copied: {len(result.workflows_copied)}")
@@ -184,6 +191,8 @@ def init_command(
 
     # Exit with warning code if workflows were skipped
     if result.has_skipped:
-        console.print(f"\n[yellow]⚠️  {len(result.workflows_skipped)} workflow(s) skipped (local differs from bundled)[/yellow]") # noqa: E501
+        console.print(
+            f"\n[yellow]⚠️  {len(result.workflows_skipped)} workflow(s) skipped (local differs from bundled)[/yellow]"
+        )  # noqa: E501
         console.print("[yellow]   Use --reset-workflows to restore bundled versions[/yellow]")
         raise typer.Exit(code=EXIT_WARNING)

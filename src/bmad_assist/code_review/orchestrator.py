@@ -56,6 +56,12 @@ from bmad_assist.core.extraction import CODE_REVIEW_MARKERS, extract_report
 from bmad_assist.core.io import get_original_cwd, save_prompt
 from bmad_assist.core.paths import get_paths
 from bmad_assist.core.types import EpicId
+from bmad_assist.deep_verify.core.types import DeepVerifyValidationResult
+from bmad_assist.deep_verify.integration import (
+    _resolve_code_files,
+    run_deep_verify_code_review,
+    save_dv_findings_for_synthesis,
+)
 from bmad_assist.providers import get_provider
 from bmad_assist.providers.base import BaseProvider
 from bmad_assist.validation.anonymizer import (
@@ -559,6 +565,38 @@ async def run_code_review_phase(
 
     tasks: list[asyncio.Task[_ReviewerResult]] = []
 
+    # [NEW] Add Deep Verify tasks for code files
+    dv_enabled = (
+        hasattr(config, "deep_verify") and config.deep_verify and config.deep_verify.enabled
+    )
+    dv_tasks_info: list[tuple[asyncio.Task[DeepVerifyValidationResult], Path, str]] = []
+    if dv_enabled:
+        logger.debug("Deep Verify enabled - discovering code files")
+        code_files = _resolve_code_files(project_path, epic_num, story_num)
+        if code_files:
+            logger.info("Running Deep Verify on %d code files", len(code_files))
+            for file_path, language in code_files:
+                try:
+                    code_content = file_path.read_text(encoding="utf-8")
+                    dv_coro = run_deep_verify_code_review(
+                        file_path=file_path,
+                        code_content=code_content,
+                        config=config,
+                        project_path=project_path,
+                        epic_num=epic_num,
+                        story_num=story_num,
+                        timeout=timeout,
+                    )
+                    # Create task and track with file info
+                    dv_task = asyncio.create_task(dv_coro)
+                    dv_tasks_info.append((dv_task, file_path, language))
+                except OSError as e:
+                    logger.warning("Failed to read file for DV: %s - %s", file_path, e)
+        else:
+            logger.debug("No code files found for Deep Verify")
+    else:
+        logger.debug("Deep Verify disabled or not configured")
+
     # Add multi providers (from phase_models if configured, else global providers.multi)
     # Color index based on provider order for visual distinction
     multi_configs_raw = get_phase_provider_config(config, "code_review")
@@ -623,22 +661,26 @@ async def run_code_review_phase(
         master_task = asyncio.create_task(delayed_invoke(master_delay, master_coro))
         tasks.append(master_task)
     else:
-        logger.debug(
-            "phase_models.code_review defined - master NOT auto-added"
-        )
+        logger.debug("phase_models.code_review defined - master NOT auto-added")
 
     logger.info("Invoking %d reviewers in parallel", len(tasks))
 
-    # Step 3: Run all reviewers in parallel
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Step 3: Run all reviewers (and DV tasks) in parallel
+    # Combine regular reviewer tasks with DV tasks
+    all_tasks = tasks + [t[0] for t in dv_tasks_info]
+    results = await asyncio.gather(*all_tasks, return_exceptions=True)
 
-    # Step 4: Collect successful results
+    # Split results: regular reviewers vs DV
+    reviewer_results: list[_ReviewerResult | BaseException] = results[: len(tasks)]  # type: ignore[assignment]
+    dv_results = results[len(tasks) :]
+
+    # Step 4: Collect successful results (regular reviewers)
     successful_outputs: list[ValidationOutput] = []
     successful_deterministic: list[DeterministicMetrics] = []
     successful_reviewers: list[str] = []
     failed_reviewers: list[str] = []
 
-    for result in results:
+    for result in reviewer_results:
         if isinstance(result, BaseException):
             logger.error("Unexpected exception in reviewer: %s", result)
             continue
@@ -662,6 +704,27 @@ async def run_code_review_phase(
     # Step 5: Anonymize reviews
     anonymized, mapping = anonymize_validations(successful_outputs, run_timestamp=run_timestamp)
     logger.debug("Anonymizing %d review outputs", len(successful_outputs))
+
+    # Process DV results and save to cache (using session_id from mapping)
+    dv_findings_saved = 0
+    for idx, dv_result in enumerate(dv_results):
+        file_path, language = dv_tasks_info[idx][1], dv_tasks_info[idx][2]
+        if isinstance(dv_result, Exception):
+            logger.warning("DV task failed for %s: %s", file_path, dv_result)
+            continue
+        if isinstance(dv_result, DeepVerifyValidationResult):
+            try:
+                save_dv_findings_for_synthesis(
+                    result=dv_result,
+                    project_path=project_path,
+                    session_id=mapping.session_id,
+                    file_path=file_path,
+                    language=language,
+                )
+                dv_findings_saved += 1
+                logger.debug("Saved DV findings for %s", file_path)
+            except OSError as e:
+                logger.warning("Failed to save DV findings for %s: %s", file_path, e)
     for reviewer_id, meta in mapping.mapping.items():
         logger.debug("Assigned %s to %s/%s", reviewer_id, meta["provider"], meta["model"])
     logger.debug("Anonymization complete. Session ID: %s", mapping.session_id)

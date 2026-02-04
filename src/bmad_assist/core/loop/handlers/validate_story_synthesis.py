@@ -147,8 +147,9 @@ class ValidateStorySynthesisHandler(BaseHandler):
         # Load anonymized validations from cache
         # Story 22.8 AC#4: Unpack tuple with failed_validators
         # TIER 2: Also loads pre-calculated evidence_score
+        # Story 26.16: Also loads Deep Verify result
         try:
-            anonymized_validations, _, _evidence_score = load_validations_for_synthesis(
+            anonymized_validations, _, _evidence_score, dv_data = load_validations_for_synthesis(
                 session_id,
                 self.project_path,
             )
@@ -170,17 +171,31 @@ class ValidateStorySynthesisHandler(BaseHandler):
 
         # Build compiler context with validations
         # Use get_original_cwd() to preserve original CWD when running as subprocess
+        # Story 26.16: Include Deep Verify findings in synthesis context
+        resolved_vars: dict[str, Any] = {
+            "epic_num": epic_num,
+            "story_num": story_num,
+            "session_id": session_id,
+            "anonymized_validations": anonymized_validations,
+        }
+
+        # Add DV findings to synthesis context if available
+        if dv_data is not None:
+            from bmad_assist.deep_verify.core.types import serialize_validation_result
+
+            resolved_vars["deep_verify_findings"] = serialize_validation_result(dv_data)
+            logger.debug(
+                "Including Deep Verify findings in synthesis: verdict=%s, findings=%d",
+                dv_data.verdict.value,
+                len(dv_data.findings),
+            )
+
         context = CompilerContext(
             project_root=self.project_path,
             output_folder=paths.implementation_artifacts,
             project_knowledge=paths.project_knowledge,
             cwd=get_original_cwd(),
-            resolved_variables={
-                "epic_num": epic_num,
-                "story_num": story_num,
-                "session_id": session_id,
-                "anonymized_validations": anonymized_validations,
-            },
+            resolved_variables=resolved_vars,
         )
 
         # Compile synthesis workflow
@@ -231,9 +246,12 @@ class ValidateStorySynthesisHandler(BaseHandler):
 
             # Story 22.8 AC#4: Unpack tuple with failed_validators
             # TIER 2: Also loads pre-calculated evidence_score for synthesis context
-            anonymized_validations, failed_validators, evidence_score_data = load_validations_for_synthesis( # noqa: E501
-                session_id,
-                self.project_path,
+            # Story 26.16: Also loads Deep Verify result
+            anonymized_validations, failed_validators, evidence_score_data, _dv_data = (
+                load_validations_for_synthesis(  # noqa: E501
+                    session_id,
+                    self.project_path,
+                )
             )
             validators_used = [v.validator_id for v in anonymized_validations]
 

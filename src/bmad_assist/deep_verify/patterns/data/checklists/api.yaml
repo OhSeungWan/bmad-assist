@@ -1,0 +1,31 @@
+# API Domain Checklist for Boundary Analysis
+# Covers HTTP endpoints, REST, webhooks, external service integration edge cases
+
+checklist:
+  - id: "API-BOUNDARY-001"
+    category: "rate_limiting"
+    question: "Does the API handle rate limiting gracefully?"
+    description: "Rate limits should be enforced to prevent abuse and ensure fair resource allocation"
+    severity_if_violated: "error"
+    domain: "api"
+
+  - id: "API-BOUNDARY-002"
+    category: "timeout_handling"
+    question: "Are API timeouts properly handled?"
+    description: "External API calls should have appropriate timeouts to prevent hanging indefinitely"
+    severity_if_violated: "error"
+    domain: "api"
+
+  - id: "API-BOUNDARY-003"
+    category: "response_validation"
+    question: "Are API responses validated before processing?"
+    description: "External API responses should be validated to handle unexpected formats or missing fields"
+    severity_if_violated: "error"
+    domain: "api"
+
+  - id: "API-BOUNDARY-004"
+    category: "error_status_codes"
+    question: "Are HTTP error status codes handled appropriately?"
+    description: "4xx and 5xx responses should be handled with appropriate retry or fallback logic"
+    severity_if_violated: "warning"
+    domain: "api"

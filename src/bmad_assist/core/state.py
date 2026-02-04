@@ -176,8 +176,6 @@ class Phase(Enum):
     QA_PLAN_EXECUTE = "qa_plan_execute"
 
 
-
-
 class PreflightStateEntry(BaseModel):
     """State entry for testarch preflight completion tracking.
 

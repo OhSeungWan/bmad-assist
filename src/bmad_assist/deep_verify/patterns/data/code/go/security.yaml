@@ -1,0 +1,108 @@
+patterns:
+  # Example:
+  #   query := "SELECT * FROM users WHERE id = " + userID  // BAD: SQL injection
+  #   db.Query(query)
+  - id: "SEC-001-CODE-GO"
+    domain: "security"
+    severity: "critical"
+    signals:
+      - 'regex:\b(SELECT|INSERT|UPDATE|DELETE|DROP)\b.*\+\s*\w+'
+      - 'regex:\bQuery\s*\(.*\+\s*\w+'
+      - 'regex:\bExec\s*\(.*\+\s*\w+'
+    description: "SQL query string concatenation - SQL injection vulnerability"
+    remediation: "Use parameterized queries with placeholders (? or $1) and db.Query/Exec with arguments"
+
+  # Example:
+  #   import "math/rand"
+  #   token := rand.Int()  // BAD: Not cryptographically secure
+  - id: "SEC-002-CODE-GO"
+    domain: "security"
+    severity: "critical"
+    signals:
+      - '"math/rand"'
+      - "math/rand"
+      - 'regex:\brand\.Int\(\)'
+      - 'regex:\brand\.Intn\('
+      - 'regex:\brand\.Float\d+'
+    description: "Insecure random number generation using math/rand for cryptographic purposes"
+    remediation: "Use crypto/rand for security-sensitive operations like tokens, keys, nonces"
+
+  # Example:
+  #   hash := md5.Sum(data)  // BAD: Weak hashing algorithm
+  #   hash := sha1.Sum(data)  // BAD: Also weak
+  - id: "SEC-003-CODE-GO"
+    domain: "security"
+    severity: "critical"
+    signals:
+      - '"crypto/md5"'
+      - '"crypto/sha1"'
+      - "md5.Sum"
+      - "sha1.Sum"
+      - 'regex:\b(md5|sha1)\.Sum\('
+    description: "Weak cryptographic algorithm (MD5/SHA1) used - vulnerable to collision attacks"
+    remediation: "Use SHA-256 or SHA-3 for hashing, bcrypt/argon2 for passwords"
+
+  # Example:
+  #   path := "/data/" + userInput  // BAD: Path traversal risk
+  #   os.Open(path)
+  - id: "SEC-004-CODE-GO"
+    domain: "security"
+    severity: "critical"
+    signals:
+      - 'regex:\bfilepath\.Join\s*\(.*\+\s*\w+'
+      - 'regex:\bos\.Open\s*\(\s*.*\+\s*\w+'
+      - 'regex:\bioutil\.ReadFile\s*\(\s*.*\+\s*\w+'
+      - 'regex:\b\.\./'
+    description: "File path constructed with unsanitized user input - path traversal vulnerability"
+    remediation: "Use filepath.Clean, validate against allowlist, and prevent directory traversal"
+
+  # Example:
+  #   cmd := exec.Command("sh", "-c", userInput)  // BAD: Command injection
+  - id: "SEC-005-CODE-GO"
+    domain: "security"
+    severity: "critical"
+    signals:
+      - 'regex:\bexec\.Command\s*\('
+      - '"os/exec"'
+      - 'os/exec'
+      - 'regex:\bsh\s*,\s*"-c"'
+      - 'regex:\bbash\s*,\s*"-c"'
+    description: "Command injection via exec.Command with unsanitized user input"
+    remediation: "Avoid shell execution, use exec.Command with separate arguments, validate inputs"
+
+  # Example:
+  #   jwtToken := "eyJhbG..."  // BAD: Hardcoded token
+  - id: "SEC-006-CODE-GO"
+    domain: "security"
+    severity: "error"
+    signals:
+      - 'regex:\bpassword\s*:=\s*"'
+      - 'regex:\bsecret\s*:=\s*"'
+      - 'regex:\btoken\s*:=\s*"'
+      - 'regex:\bapi[_-]?key\s*:=\s*"'
+      - 'regex:\bjwt\s*:=\s*"'
+      - 'regex:\bcredential\s*:=\s*"'
+    description: "Hardcoded credential or secret in source code"
+    remediation: "Use environment variables, secret management services, or encrypted configuration"
+
+  # Example:
+  #   tls.Config{InsecureSkipVerify: true}  // BAD: Disables certificate verification
+  - id: "SEC-007-CODE-GO"
+    domain: "security"
+    severity: "critical"
+    signals:
+      - "InsecureSkipVerify: true"
+      - 'regex:\bInsecureSkipVerify\s*:\s*true\b'
+    description: "TLS certificate verification disabled - MITM vulnerability"
+    remediation: "Never disable TLS verification in production; use proper certificates"
+
+  # Example:
+  #   http.Get("http://api.example.com/")  // BAD: Unencrypted HTTP
+  - id: "SEC-008-CODE-GO"
+    domain: "security"
+    severity: "error"
+    signals:
+      - 'regex:\bhttp://[a-zA-Z0-9]'
+      - '"http://'
+    description: "Unencrypted HTTP connection - data transmitted in plaintext"
+    remediation: "Use HTTPS for all network communications, especially for sensitive data"

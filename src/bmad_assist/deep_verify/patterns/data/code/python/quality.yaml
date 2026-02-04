@@ -1,0 +1,115 @@
+patterns:
+  # Example:
+  #   try:
+  #       do_something()
+  #   except:  # BAD: Catches everything including KeyboardInterrupt
+  #       pass
+  - id: "CQ-001-CODE-PY"
+    domain: "transform"
+    severity: "error"
+    signals:
+      - "except:"
+    description: "Bare except clause catches BaseException including KeyboardInterrupt and SystemExit"
+    remediation: "Use specific exception types (except ValueError:) or at least `except Exception:`"
+
+  # Example:
+  #   def foo(items=[]):  # BAD: Mutable default
+  #       items.append(1)
+  #       return items
+  #   def bar(opts={}):  # BAD: Also mutable
+  - id: "CQ-002-CODE-PY"
+    domain: "transform"
+    severity: "error"
+    signals:
+      - "=[]):"
+      - "items.append"
+      - "return items"
+    description: "Mutable default argument (list, dict, or set) - shared across all function calls"
+    remediation: "Use None as default, initialize mutable object inside function"
+
+  # Example:
+  #   logger.info("Value is %s" % value)  # BAD: Eager string formatting
+  - id: "CQ-003-CODE-PY"
+    domain: "transform"
+    severity: "warning"
+    signals:
+      - ".info("  
+      - ".debug("
+      - '%s" %'
+      - "%s' %"
+    description: "Logging with eager string formatting - evaluated even if log level filtered"
+    remediation: "Use lazy formatting: logger.info('Value is %s', value)"
+
+  # Example:
+  #   f = open("file.txt", "r")  # BAD: No context manager
+  #   data = f.read()
+  #   f.close()  # May not execute on exception
+  - id: "CQ-004-CODE-PY"
+    domain: "transform"
+    severity: "error"
+    signals:
+      - "open("
+      - ".close()"
+    description: "File opened without context manager - resource leak risk"
+    remediation: "Use `with open(...) as f:` to ensure proper closure"
+
+  # Example:
+  #   if x is "":  # BAD: Identity vs equality
+  #       pass
+  - id: "CQ-005-CODE-PY"
+    domain: "transform"
+    severity: "warning"
+    signals:
+      - "is None"
+      - "is True"
+      - "is False"
+    description: "Using 'is' for string or literal comparison - may not work as expected"
+    remediation: "Use '==' for value comparison, 'is' only for None/True/False identity"
+
+  # Example:
+  #   if x == None:  # BAD: Should use 'is None'
+  #       pass
+  - id: "CQ-006-CODE-PY"
+    domain: "transform"
+    severity: "warning"
+    signals:
+      - "== None"
+      - "!= None"
+    description: "Using == None instead of 'is None' - PEP 8 violation"
+    remediation: "Use 'is None' or 'is not None' for None checks"
+
+  # Example:
+  #   except Exception as e:
+  #       print(e)  # BAD: Silent failure
+  - id: "CQ-007-CODE-PY"
+    domain: "transform"
+    severity: "error"
+    signals:
+      - "except:"
+      - "pass"
+    description: "Empty or minimal exception handler - silent failure"
+    remediation: "Log the exception, re-raise, or handle meaningfully"
+
+  # Example:
+  #   data = requests.get(url).json()  # BAD: No error handling
+  - id: "CQ-008-CODE-PY"
+    domain: "transform"
+    severity: "error"
+    signals:
+      - ".json()"
+      - "requests.get"
+      - "requests.post"
+    description: "HTTP request without error handling - may crash on network errors"
+    remediation: "Check response status code or use response.raise_for_status()"
+
+  # Example:
+  #   return [x for x in items if x.active]  # OK
+  #   return filter(lambda x: x.active, items)  # BAD: Returns iterator in Py3
+  - id: "CQ-009-CODE-PY"
+    domain: "transform"
+    severity: "warning"
+    signals:
+      - "filter(lambda"
+      - "map(lambda"
+    description: "filter/map with lambda - less readable than list comprehension"
+    remediation: "Use list comprehension or generator expression for clarity"

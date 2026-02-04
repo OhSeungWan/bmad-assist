@@ -57,18 +57,10 @@ LLM_OPTIMIZATION_PATTERN = re.compile(
 )
 
 # Evidence Score finding counts (Deep Verify format)
-CRITICAL_FINDING_PATTERN = re.compile(
-    r"\|\s*🔴\s*CRITICAL\s*\|\s*(\d+)\s*\|", re.IGNORECASE
-)
-IMPORTANT_FINDING_PATTERN = re.compile(
-    r"\|\s*🟠\s*IMPORTANT\s*\|\s*(\d+)\s*\|", re.IGNORECASE
-)
-MINOR_FINDING_PATTERN = re.compile(
-    r"\|\s*🟡\s*MINOR\s*\|\s*(\d+)\s*\|", re.IGNORECASE
-)
-CLEAN_PASS_PATTERN = re.compile(
-    r"\|\s*🟢\s*CLEAN PASS\s*\|\s*(\d+)\s*\|", re.IGNORECASE
-)
+CRITICAL_FINDING_PATTERN = re.compile(r"\|\s*🔴\s*CRITICAL\s*\|\s*(\d+)\s*\|", re.IGNORECASE)
+IMPORTANT_FINDING_PATTERN = re.compile(r"\|\s*🟠\s*IMPORTANT\s*\|\s*(\d+)\s*\|", re.IGNORECASE)
+MINOR_FINDING_PATTERN = re.compile(r"\|\s*🟡\s*MINOR\s*\|\s*(\d+)\s*\|", re.IGNORECASE)
+CLEAN_PASS_PATTERN = re.compile(r"\|\s*🟢\s*CLEAN PASS\s*\|\s*(\d+)\s*\|", re.IGNORECASE)
 
 # Evidence Score patterns (Deep Verify format)
 EVIDENCE_SCORE_TABLE_PATTERN = re.compile(
@@ -81,7 +73,7 @@ EVIDENCE_SCORE_HEADING_PATTERN = re.compile(
 
 # Evidence Score verdict pattern
 EVIDENCE_VERDICT_PATTERN = re.compile(
-    r"\|\s*\*?\*?-?\d+(?:\.\d+)?\*?\*?\s*\|\s*\*?\*?(REJECT|MAJOR REWORK|READY|EXCELLENT)\*?\*?\s*\|", # noqa: E501
+    r"\|\s*\*?\*?-?\d+(?:\.\d+)?\*?\*?\s*\|\s*\*?\*?(REJECT|MAJOR REWORK|READY|EXCELLENT)\*?\*?\s*\|",  # noqa: E501
     re.IGNORECASE,
 )
 
@@ -132,11 +124,7 @@ class ValidatorMetrics:
     @property
     def total_evidence_findings(self) -> int:
         """Total findings using Evidence Score categories."""
-        return (
-            self.critical_finding_count
-            + self.important_finding_count
-            + self.minor_finding_count
-        )
+        return self.critical_finding_count + self.important_finding_count + self.minor_finding_count
 
 
 @dataclass
@@ -328,9 +316,7 @@ def calculate_aggregate_metrics(
     evidence_score_min = min(evidence_scores) if evidence_scores else None
     evidence_score_max = max(evidence_scores) if evidence_scores else None
     evidence_score_avg = statistics.mean(evidence_scores) if evidence_scores else None
-    evidence_score_stdev = (
-        statistics.stdev(evidence_scores) if len(evidence_scores) >= 2 else None
-    )
+    evidence_score_stdev = statistics.stdev(evidence_scores) if len(evidence_scores) >= 2 else None
 
     # Sum legacy category totals
     total_critical = sum(v.critical_count for v in validators)
@@ -352,12 +338,8 @@ def calculate_aggregate_metrics(
     validators_with_optimization = sum(1 for v in validators if v.optimization_count > 0)
 
     # Count validators with Evidence Score findings
-    validators_with_critical_findings = sum(
-        1 for v in validators if v.critical_finding_count > 0
-    )
-    validators_with_important_findings = sum(
-        1 for v in validators if v.important_finding_count > 0
-    )
+    validators_with_critical_findings = sum(1 for v in validators if v.critical_finding_count > 0)
+    validators_with_important_findings = sum(1 for v in validators if v.important_finding_count > 0)
 
     # Collect verdicts
     verdicts = [v.verdict for v in validators if v.verdict]

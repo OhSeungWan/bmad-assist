@@ -1,0 +1,25 @@
+artifact_id: "dv-004"
+source: "synthetic"
+artifact_type: "code"
+language: "go"
+content_file: "artifacts/go/dv-004.go"
+
+expected_domains:
+  - domain: "messaging"
+    confidence: 0.9
+
+expected_findings:
+  - pattern_id: "CC-002"
+    severity: "warning"
+    title: "Resource leak potential"
+    description: "Channel may block indefinitely without timeout"
+    method_id: "#153"
+    domain: "messaging"
+    line_number: 27
+
+known_false_positives: []
+
+metadata:
+  lines_of_code: 42
+  complexity: "low"
+  has_race_condition: false

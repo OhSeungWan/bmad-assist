@@ -15,28 +15,32 @@ logger = logging.getLogger(__name__)
 
 # Phase classification for per-phase model configuration
 # Single-LLM phases use MasterProviderConfig (one provider executes)
-SINGLE_LLM_PHASES: frozenset[str] = frozenset({
-    # Core workflow phases
-    "create_story",
-    "validate_story_synthesis",
-    "dev_story",
-    "code_review_synthesis",
-    "retrospective",
-    # Testarch phases
-    "atdd",
-    "test_review",
-    # QA phases
-    "qa_plan_generate",
-    "qa_plan_execute",
-})
+SINGLE_LLM_PHASES: frozenset[str] = frozenset(
+    {
+        # Core workflow phases
+        "create_story",
+        "validate_story_synthesis",
+        "dev_story",
+        "code_review_synthesis",
+        "retrospective",
+        # Testarch phases
+        "atdd",
+        "test_review",
+        # QA phases
+        "qa_plan_generate",
+        "qa_plan_execute",
+    }
+)
 
 # Multi-LLM phases use list[MultiProviderConfig] (parallel execution)
 # NOTE: When phase_models defines a multi-LLM phase, user has FULL control over the list.
 # Master is NOT auto-added. When falling back to global providers.multi, master IS auto-added.
-MULTI_LLM_PHASES: frozenset[str] = frozenset({
-    "validate_story",
-    "code_review",
-})
+MULTI_LLM_PHASES: frozenset[str] = frozenset(
+    {
+        "validate_story",
+        "code_review",
+    }
+)
 
 # All known phases (union of single and multi)
 ALL_KNOWN_PHASES: frozenset[str] = SINGLE_LLM_PHASES | MULTI_LLM_PHASES
@@ -253,8 +257,7 @@ def parse_phase_models(raw: dict[str, object]) -> PhaseModelsConfig:
         if phase_name not in ALL_KNOWN_PHASES:
             valid_list = ", ".join(sorted(ALL_KNOWN_PHASES))
             raise ConfigError(
-                f"Unknown phase '{phase_name}' in phase_models. "
-                f"Valid phases: {valid_list}"
+                f"Unknown phase '{phase_name}' in phase_models. Valid phases: {valid_list}"
             )
 
         # Parse based on phase category
@@ -268,9 +271,7 @@ def parse_phase_models(raw: dict[str, object]) -> PhaseModelsConfig:
             try:
                 single_config = MasterProviderConfig(**value)
             except Exception as e:
-                raise ConfigError(
-                    f"Invalid config for phase '{phase_name}': {e}"
-                ) from e
+                raise ConfigError(f"Invalid config for phase '{phase_name}': {e}") from e
             _validate_settings_path(single_config.settings, phase_name)
             result[phase_name] = single_config
 
@@ -278,19 +279,15 @@ def parse_phase_models(raw: dict[str, object]) -> PhaseModelsConfig:
             # Multi-LLM: expect list (array)
             if not isinstance(value, list):
                 raise ConfigError(
-                    f"Phase '{phase_name}' is multi-LLM, expected array not "
-                    f"{type(value).__name__}"
+                    f"Phase '{phase_name}' is multi-LLM, expected array not {type(value).__name__}"
                 )
             if len(value) == 0:
-                raise ConfigError(
-                    f"Phase '{phase_name}' requires at least 1 provider"
-                )
+                raise ConfigError(f"Phase '{phase_name}' requires at least 1 provider")
             configs: list[MultiProviderConfig] = []
             for i, item in enumerate(value):
                 if not isinstance(item, dict):
                     raise ConfigError(
-                        f"Phase '{phase_name}' item {i}: expected object not "
-                        f"{type(item).__name__}"
+                        f"Phase '{phase_name}' item {i}: expected object not {type(item).__name__}"
                     )
                 try:
                     multi_config = MultiProviderConfig(**item)
@@ -321,9 +318,7 @@ def _validate_settings_path(settings: str | None, context: str) -> None:
 
     expanded = Path(settings).expanduser()
     if not expanded.exists():
-        raise ConfigError(
-            f"Settings file not found: {settings} (in phase_models.{context})"
-        )
+        raise ConfigError(f"Settings file not found: {settings} (in phase_models.{context})")
 
 
 def get_phase_provider_config(

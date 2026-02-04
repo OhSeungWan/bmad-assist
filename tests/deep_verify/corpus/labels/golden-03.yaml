@@ -1,0 +1,18 @@
+artifact_id: "golden-03"
+source: "synthetic"
+artifact_type: "code"
+language: "go"
+content_file: "artifacts/go/golden-03.go"
+
+expected_domains:
+  - domain: "storage"
+    confidence: 0.8
+
+expected_findings: []
+
+known_false_positives: []
+
+metadata:
+  lines_of_code: 5
+  complexity: "low"
+  has_race_condition: false

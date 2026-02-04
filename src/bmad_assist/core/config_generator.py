@@ -336,7 +336,11 @@ providers:
         """
         provider_info = PROVIDER_MODELS[provider]
         models = provider_info["models"]
-        default = default_override if default_override and default_override in models else provider_info["default"]
+        default = (
+            default_override
+            if default_override and default_override in models
+            else provider_info["default"]
+        )
 
         choices = [questionary.Choice(title=model, value=model) for model in models]
 
@@ -391,6 +395,7 @@ providers:
         # Fall back to OS username
         if not default_name:
             import getpass
+
             default_name = getpass.getuser()
 
         result = questionary.text(
@@ -414,7 +419,9 @@ providers:
 
         self.console.print()
         self.console.print("[bold]Multi-Validators[/bold] [yellow](minimum 1 required)[/yellow]")
-        self.console.print("[dim]Validators run alongside master during validation and code review[/dim]")
+        self.console.print(
+            "[dim]Validators run alongside master during validation and code review[/dim]"
+        )
         self.console.print()
 
         while True:
@@ -501,12 +508,16 @@ providers:
         """
         self.console.print()
         self.console.print("[bold]Helper Provider[/bold] [yellow](required)[/yellow]")
-        self.console.print("[dim]Used for LLM extraction and benchmarking (haiku recommended)[/dim]")
+        self.console.print(
+            "[dim]Used for LLM extraction and benchmarking (haiku recommended)[/dim]"
+        )
         self.console.print()
 
         provider = self._select_provider("Select helper provider")
         # Default to haiku for helper (fast and cheap)
-        model = self._select_model(provider, default_override="haiku" if provider == "claude-subprocess" else None)
+        model = self._select_model(
+            provider, default_override="haiku" if provider == "claude-subprocess" else None
+        )
 
         helper_config: dict[str, Any] = {
             "provider": provider,
@@ -627,9 +638,15 @@ providers:
         benchmarking = config.get("benchmarking", {}).get("enabled", False)
         testarch = config.get("testarch", {}).get("enabled", False)
         notifications = config.get("notifications", {}).get("enabled", False)
-        table.add_row("Benchmarking", "[green]enabled[/green]" if benchmarking else "[dim]disabled[/dim]")
-        table.add_row("TEA (testarch)", "[green]enabled[/green]" if testarch else "[dim]disabled[/dim]")
-        table.add_row("Notifications", "[green]enabled[/green]" if notifications else "[dim]disabled[/dim]")
+        table.add_row(
+            "Benchmarking", "[green]enabled[/green]" if benchmarking else "[dim]disabled[/dim]"
+        )
+        table.add_row(
+            "TEA (testarch)", "[green]enabled[/green]" if testarch else "[dim]disabled[/dim]"
+        )
+        table.add_row(
+            "Notifications", "[green]enabled[/green]" if notifications else "[dim]disabled[/dim]"
+        )
 
         table.add_row("Output Path", str(config_path))
 

@@ -213,7 +213,9 @@ def _generate_conventional_message(
     # RETROSPECTIVE uses epic-based scope; other phases use story-based scope
     if phase == Phase.RETROSPECTIVE:
         # Extract epic from story_id (e.g., "22.11" -> "22", "testarch.1" -> "testarch")
-        epic_id = story_id.split(".")[0] if story_id and "." in story_id else (story_id or "unknown") # noqa: E501
+        epic_id = (
+            story_id.split(".")[0] if story_id and "." in story_id else (story_id or "unknown")
+        )  # noqa: E501
         scope = f"epic-{epic_id}"
         description = f"archive epic {epic_id} retrospective"
     else:

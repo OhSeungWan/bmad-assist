@@ -226,7 +226,9 @@ def safe_read_file(path: Path, project_root: Path | None = None) -> str:
             resolved_root = project_root.resolve()
             is_in_project = resolved.is_relative_to(resolved_root)
             # Allow bundled workflows (installed in bmad_assist/workflows/)
-            is_bundled = "bmad_assist/workflows" in str(resolved) or "bmad_assist\\workflows" in str(resolved) # noqa: E501
+            is_bundled = "bmad_assist/workflows" in str(
+                resolved
+            ) or "bmad_assist\\workflows" in str(resolved)  # noqa: E501
             if not is_in_project and not is_bundled:
                 logger.warning("Path outside project root, skipping: %s", path)
                 return ""
@@ -505,7 +507,9 @@ def load_workflow_template(
         is_in_project = resolved_template.is_relative_to(resolved_root)
 
         # Allow bundled workflows (installed in bmad_assist/workflows/)
-        is_bundled = "bmad_assist/workflows" in str(resolved_template) or "bmad_assist\\workflows" in str(resolved_template) # noqa: E501
+        is_bundled = "bmad_assist/workflows" in str(
+            resolved_template
+        ) or "bmad_assist\\workflows" in str(resolved_template)  # noqa: E501
 
         if not is_in_project and not is_bundled:
             raise CompilerError(
@@ -590,23 +594,29 @@ def find_project_context_file(context: CompilerContext) -> Path | None:
 
     # Priority 1: External project_knowledge path (if configured)
     if context.project_knowledge is not None:
-        candidates.extend([
-            context.project_knowledge / "project-context.md",
-            context.project_knowledge / "project_context.md",
-        ])
+        candidates.extend(
+            [
+                context.project_knowledge / "project-context.md",
+                context.project_knowledge / "project_context.md",
+            ]
+        )
 
     # Priority 2: Output folder
-    candidates.extend([
-        context.output_folder / "project-context.md",
-        context.output_folder / "project_context.md",
-    ])
+    candidates.extend(
+        [
+            context.output_folder / "project-context.md",
+            context.output_folder / "project_context.md",
+        ]
+    )
 
     # Priority 3: Local docs folder (if not using external project_knowledge)
     if context.project_knowledge is None:
-        candidates.extend([
-            context.project_root / "docs" / "project-context.md",
-            context.project_root / "docs" / "project_context.md",
-        ])
+        candidates.extend(
+            [
+                context.project_root / "docs" / "project-context.md",
+                context.project_root / "docs" / "project_context.md",
+            ]
+        )
 
     # Priority 4: Project root (legacy)
     candidates.append(context.project_root / "project_context.md")

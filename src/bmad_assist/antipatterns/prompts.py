@@ -4,7 +4,7 @@ This module is no longer used - antipatterns extraction now uses regex.
 Kept for reference only. Will be removed in future version.
 """
 
-EXTRACTION_PROMPT = '''Extract all VERIFIED issues from this synthesis report.
+EXTRACTION_PROMPT = """Extract all VERIFIED issues from this synthesis report.
 Return ONLY valid YAML (no markdown, no explanation):
 
 ```yaml
@@ -27,4 +27,4 @@ Rules:
 
 SYNTHESIS REPORT:
 {synthesis_content}
-'''
+"""

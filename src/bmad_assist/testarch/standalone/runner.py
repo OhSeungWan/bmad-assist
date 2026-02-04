@@ -135,9 +135,7 @@ class StandaloneRunner:
 
         """
         self.project_root = project_root.resolve()
-        self.output_dir = (
-            output_dir or project_root / "_bmad-output" / "standalone"
-        ).resolve()
+        self.output_dir = (output_dir or project_root / "_bmad-output" / "standalone").resolve()
         self.evidence_output = evidence_output
         self.provider_name = provider_name or "claude-subprocess"
 
@@ -203,23 +201,19 @@ class StandaloneRunner:
                     existing_testarch.update(testarch_overrides)
 
                 # Build update dict - apply provider override if needed
-                update_dict: dict[str, Any] = {
-                    "testarch": TestarchConfig(**existing_testarch)
-                }
+                update_dict: dict[str, Any] = {"testarch": TestarchConfig(**existing_testarch)}
                 if provider_overrides:
                     update_dict["providers"] = config.providers.model_copy(
-                        update={"master": config.providers.master.model_copy(update=provider_overrides)}
+                        update={
+                            "master": config.providers.master.model_copy(update=provider_overrides)
+                        }
                     )
 
                 return config.model_copy(update=update_dict)
             except ConfigError as e:
-                logger.debug(
-                    "Failed to load existing config, using defaults: %s", e
-                )
+                logger.debug("Failed to load existing config, using defaults: %s", e)
             except Exception as e:
-                logger.debug(
-                    "Unexpected error loading config, using defaults: %s", e
-                )
+                logger.debug("Unexpected error loading config, using defaults: %s", e)
 
         # Apply overrides to base testarch settings
         if testarch_overrides:
@@ -352,9 +346,7 @@ class StandaloneRunner:
                     # Check for skip result - handler may skip if already run
                     if not output_content and result.outputs.get("skipped"):
                         # Still dispatch notification for skipped workflows
-                        _dispatch_tea_notification(
-                            workflow_id, project_name, duration_ms
-                        )
+                        _dispatch_tea_notification(workflow_id, project_name, duration_ms)
                         return {
                             "success": True,
                             "output_path": None,
@@ -367,14 +359,10 @@ class StandaloneRunner:
                         output_content = str(result.outputs)
 
                     # Save report
-                    report_path = self._save_standalone_report(
-                        workflow_id, output_content
-                    )
+                    report_path = self._save_standalone_report(workflow_id, output_content)
 
                     # Dispatch completion notification
-                    _dispatch_tea_notification(
-                        workflow_id, project_name, duration_ms
-                    )
+                    _dispatch_tea_notification(workflow_id, project_name, duration_ms)
 
                     return {
                         "success": True,
@@ -384,9 +372,7 @@ class StandaloneRunner:
                     }
                 else:
                     # Dispatch notification even for failures
-                    _dispatch_tea_notification(
-                        workflow_id, project_name, duration_ms
-                    )
+                    _dispatch_tea_notification(workflow_id, project_name, duration_ms)
                     return {
                         "success": False,
                         "output_path": None,
@@ -397,9 +383,7 @@ class StandaloneRunner:
             except Exception as e:
                 # Calculate duration even for exceptions
                 duration_ms = int((time.monotonic() - start_time) * 1000)
-                _dispatch_tea_notification(
-                    workflow_id, project_name, duration_ms
-                )
+                _dispatch_tea_notification(workflow_id, project_name, duration_ms)
                 logger.error("Standalone %s failed: %s", workflow_id, e)
                 return {
                     "success": False,
@@ -523,7 +507,9 @@ class StandaloneRunner:
 
         # Map CLI mode to TestarchConfig mode setting
         # "create" -> "on" (force execution), other modes pass through for handler checking
-        testarch_overrides: dict[str, Any] = {"framework_mode": "on"} if mode == "create" else {"framework_mode": mode}
+        testarch_overrides: dict[str, Any] = (
+            {"framework_mode": "on"} if mode == "create" else {"framework_mode": mode}
+        )
         return self._execute_handler(
             FrameworkHandler, "framework", testarch_overrides=testarch_overrides
         )
@@ -549,7 +535,9 @@ class StandaloneRunner:
         from bmad_assist.testarch.handlers import CIHandler
 
         # Map CLI mode to TestarchConfig mode setting
-        testarch_overrides: dict[str, Any] = {"ci_mode": "on"} if mode == "create" else {"ci_mode": mode}
+        testarch_overrides: dict[str, Any] = (
+            {"ci_mode": "on"} if mode == "create" else {"ci_mode": mode}
+        )
 
         # Pass ci_platform via extra_state_fields for handler access
         extra_state_fields: dict[str, Any] | None = None
@@ -557,7 +545,8 @@ class StandaloneRunner:
             extra_state_fields = {"ci_platform_override": ci_platform}
 
         return self._execute_handler(
-            CIHandler, "ci",
+            CIHandler,
+            "ci",
             testarch_overrides=testarch_overrides,
             extra_state_fields=extra_state_fields,
         )
@@ -611,7 +600,9 @@ class StandaloneRunner:
         from bmad_assist.testarch.handlers import AutomateHandler
 
         # Map CLI mode to TestarchConfig mode setting
-        testarch_overrides: dict[str, Any] = {"automate_mode": "on"} if mode == "create" else {"automate_mode": mode}
+        testarch_overrides: dict[str, Any] = (
+            {"automate_mode": "on"} if mode == "create" else {"automate_mode": mode}
+        )
 
         # Pass component via extra_state_fields for handler access
         extra_state_fields: dict[str, Any] | None = None
@@ -619,7 +610,8 @@ class StandaloneRunner:
             extra_state_fields = {"automation_component": component}
 
         return self._execute_handler(
-            AutomateHandler, "automate",
+            AutomateHandler,
+            "automate",
             testarch_overrides=testarch_overrides,
             extra_state_fields=extra_state_fields,
         )
@@ -645,7 +637,9 @@ class StandaloneRunner:
         from bmad_assist.testarch.handlers import NFRAssessHandler
 
         # Map CLI mode to TestarchConfig mode setting
-        testarch_overrides: dict[str, Any] = {"nfr_assess_mode": "on"} if mode == "create" else {"nfr_assess_mode": mode}
+        testarch_overrides: dict[str, Any] = (
+            {"nfr_assess_mode": "on"} if mode == "create" else {"nfr_assess_mode": mode}
+        )
 
         # Pass category via extra_state_fields for handler access
         extra_state_fields: dict[str, Any] | None = None
@@ -653,7 +647,8 @@ class StandaloneRunner:
             extra_state_fields = {"nfr_category": category}
 
         return self._execute_handler(
-            NFRAssessHandler, "nfr-assess",
+            NFRAssessHandler,
+            "nfr-assess",
             testarch_overrides=testarch_overrides,
             extra_state_fields=extra_state_fields,
         )

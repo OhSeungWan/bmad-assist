@@ -23,6 +23,7 @@ from bmad_assist.core.config.models.providers import (
     ProviderConfig,
     parse_phase_models,
 )
+from bmad_assist.deep_verify.config import DeepVerifyConfig
 from bmad_assist.notifications.config import NotificationConfig
 from bmad_assist.testarch.config import TestarchConfig
 
@@ -52,6 +53,7 @@ class Config(BaseModel):
         benchmarking: Benchmarking/metrics extraction configuration.
         notifications: Notification system configuration (optional).
         testarch: Testarch module configuration (optional).
+        deep_verify: Deep Verify module configuration (optional).
         sprint: Sprint-status management configuration (optional).
         workflow_variant: Workflow variant identifier for A/B testing.
 
@@ -98,6 +100,10 @@ class Config(BaseModel):
     testarch: TestarchConfig | None = Field(
         default=None,
         description="Testarch module configuration (optional)",
+    )
+    deep_verify: DeepVerifyConfig | None = Field(
+        default=None,
+        description="Deep Verify module configuration (optional)",
     )
     sprint: SprintConfig | None = Field(
         default=None,

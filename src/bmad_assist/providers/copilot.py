@@ -280,9 +280,7 @@ class CopilotProvider(BaseProvider):
                     if should_print_progress():
                         shown_model = display_model or effective_model
                         tag = format_tag("START", color_index)
-                        write_progress(
-                            f"{tag} Invoking Copilot CLI (model={shown_model})..."
-                        )
+                        write_progress(f"{tag} Invoking Copilot CLI (model={shown_model})...")
 
                     try:
                         returncode = process.wait(timeout=effective_timeout)
@@ -312,9 +310,7 @@ class CopilotProvider(BaseProvider):
 
                 except FileNotFoundError as e:
                     logger.error("Copilot CLI not found in PATH")
-                    raise ProviderError(
-                        "Copilot CLI not found. Is 'copilot' in PATH?"
-                    ) from e
+                    raise ProviderError("Copilot CLI not found. Is 'copilot' in PATH?") from e
 
                 duration_ms = int((time.perf_counter() - start_time) * 1000)
                 stdout_content = "".join(stdout_chunks)
@@ -323,9 +319,7 @@ class CopilotProvider(BaseProvider):
                 if returncode != 0:
                     exit_status = ExitStatus.from_code(returncode)
                     stderr_truncated = (
-                        stderr_content[:STDERR_TRUNCATE_LENGTH]
-                        if stderr_content
-                        else "(empty)"
+                        stderr_content[:STDERR_TRUNCATE_LENGTH] if stderr_content else "(empty)"
                     )
 
                     logger.error(
@@ -336,10 +330,7 @@ class CopilotProvider(BaseProvider):
                         stderr_truncated,
                     )
 
-                    message = (
-                        f"Copilot CLI failed with exit code {returncode}: "
-                        f"{stderr_truncated}"
-                    )
+                    message = f"Copilot CLI failed with exit code {returncode}: {stderr_truncated}"
                     error = ProviderExitCodeError(
                         message,
                         exit_code=returncode,
@@ -349,7 +340,10 @@ class CopilotProvider(BaseProvider):
                     )
 
                     # Use shared helper for transient error detection
-                    if is_transient_error(stderr_content, exit_status) and attempt < MAX_RETRIES - 1: # noqa: E501
+                    if (
+                        is_transient_error(stderr_content, exit_status)
+                        and attempt < MAX_RETRIES - 1
+                    ):  # noqa: E501
                         last_error = error
                         continue
 

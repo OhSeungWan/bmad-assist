@@ -1,0 +1,71 @@
+patterns:
+  - id: "CQ-001"
+    domain: "transform"
+    severity: "error"
+    signals:
+      - "unbounded growth"
+      - "unbounded collection"
+      - "memory leak"
+      - >-
+        regex:\bappend\s*\(.*,\s*\*
+      - >-
+        regex:\bmake\s*\(\s*\[\]
+    description: "Unbounded collection growth - potential memory exhaustion"
+    remediation: "Implement size limits, use bounded buffers, or implement eviction policies"
+
+  - id: "CQ-002"
+    domain: "transform"
+    severity: "error"
+    signals:
+      - "resource leak"
+      - "defer"
+      - >-
+        regex:\b(close|Close)\s*\(\)
+      - >-
+        regex:\bos\.Open\s*\(
+      - 'regex:\bnet\.Dial'
+    description: "Potential resource leak (connection, file, goroutine)"
+    remediation: "Ensure all resources are closed with defer or explicit cleanup"
+
+  - id: "CQ-003"
+    domain: "transform"
+    severity: "critical"
+    signals:
+      - "hardcoded credential"
+      - "hardcoded password"
+      - "hardcoded secret"
+      - >-
+        regex:\bpassword\s*=\s*[""'][^""']+
+      - >-
+        regex:\bapi[_-]?key\s*=\s*[""'][^""']+
+    description: "Hardcoded credentials in source code"
+    remediation: "Use environment variables, secret management services, or configuration files"
+
+  - id: "CQ-004"
+    domain: "transform"
+    severity: "critical"
+    signals:
+      - "SQL injection"
+      - "sql injection"
+      - >-
+        regex:\bSELECT\s+.*\+.*FROM
+      - >-
+        regex:\bINSERT\s+INTO\s+.*\+
+      - >-
+        regex:\bfmt\.Sprintf\s*\(\s*[""'].*SELECT
+    description: "SQL injection vulnerability"
+    remediation: "Use parameterized queries/prepared statements instead of string concatenation"
+
+  - id: "CQ-005"
+    domain: "transform"
+    severity: "error"
+    signals:
+      - "unvalidated input"
+      - "no validation"
+      - >-
+        regex:\br\.URL\.Query\(\)\.Get
+      - >-
+        regex:\br\.FormValue\(
+      - 'regex:\br\.Body'
+    description: "Unvalidated user input"
+    remediation: "Validate and sanitize all user input before processing"

@@ -64,12 +64,12 @@ def mask_url(url: str | None, prefix_length: int = URL_PREFIX_LENGTH) -> str:
         idx = url.find(marker, path_start)  # Search only in path portion
         if idx != -1:
             # Show up to and including the marker, then mask
-            return f"{url[:idx + len(marker)]}***"
+            return f"{url[: idx + len(marker)]}***"
 
     # F7 FIX: For short URLs, show scheme+domain+/*** instead of just ***
     if len(url) <= prefix_length:
         if path_start < len(url):
-            return f"{url[:path_start + 1]}***"  # scheme://domain/***
+            return f"{url[: path_start + 1]}***"  # scheme://domain/***
         return f"{url}***"  # No path, just append ***
 
     return f"{url[:prefix_length]}***"

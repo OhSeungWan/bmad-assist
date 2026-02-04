@@ -34,6 +34,10 @@ __all__ = [
     "IsolationError",
     "ManifestError",
     "EvidenceError",
+    "PatternError",
+    "PatternLibraryError",
+    "PatternMatchError",
+    "PatternNotFoundError",
 ]
 
 
@@ -519,3 +523,85 @@ class EvidenceError(BmadAssistError):
     """
 
     pass
+
+
+class PatternError(BmadAssistError):
+    """Base exception for Deep Verify pattern module.
+
+    Raised when:
+    - Pattern validation fails
+    - Pattern matching encounters errors
+    - Pattern library operations fail
+    """
+
+    pass
+
+
+class PatternLibraryError(PatternError):
+    """Error loading or validating pattern library.
+
+    Raised when:
+    - Pattern YAML file has invalid structure
+    - Pattern ID format is invalid
+    - Required pattern fields are missing
+    - Regex pattern has syntax errors
+    - Domain or severity enum values are invalid
+
+    Attributes:
+        file_path: Path to the file that caused the error (if applicable).
+        pattern_id: ID of the pattern that caused the error (if applicable).
+
+    """
+
+    def __init__(
+        self,
+        message: str,
+        file_path: "Path | None" = None,
+        pattern_id: str | None = None,
+    ) -> None:
+        """Initialize PatternLibraryError with context.
+
+        Args:
+            message: Human-readable error message.
+            file_path: Path to the file that caused the error.
+            pattern_id: ID of the pattern that caused the error.
+
+        """
+        super().__init__(message)
+        self.file_path = file_path
+        self.pattern_id = pattern_id
+
+
+class PatternMatchError(PatternError):
+    """Error during pattern matching.
+
+    Raised when:
+    - Signal matching fails due to invalid regex
+    - Text analysis encounters unexpected errors
+    """
+
+    pass
+
+
+class PatternNotFoundError(PatternError):
+    """Pattern ID not found in library.
+
+    Raised when:
+    - Requested pattern ID does not exist in the library
+    - Pattern lookup with raise_on_missing=True fails
+
+    Attributes:
+        pattern_id: The pattern ID that was not found.
+
+    """
+
+    def __init__(self, message: str, pattern_id: str | None = None) -> None:
+        """Initialize PatternNotFoundError with context.
+
+        Args:
+            message: Human-readable error message.
+            pattern_id: The pattern ID that was not found.
+
+        """
+        super().__init__(message)
+        self.pattern_id = pattern_id

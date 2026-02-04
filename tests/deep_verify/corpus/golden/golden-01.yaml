@@ -1,0 +1,27 @@
+artifact_id: "golden-01"
+content_file: "artifacts/go/golden-01.go"
+
+expected_verdict:
+  decision: "REJECT"
+  score: 4.0
+  findings:
+    - id: "F1"
+      severity: "critical"
+      title: "Check-then-act race condition"
+      description: "Unprotected check-then-act pattern detected"
+      method_id: "#153"
+      pattern_id: "CC-004"
+      domain: "concurrency"
+      evidence:
+        - quote: "if c.count >= 0 { c.count++ }"
+          line_number: 14
+          confidence: 0.9
+  domains_detected:
+    - domain: "concurrency"
+      confidence: 0.9
+      signals: ["mutex", "race"]
+  methods_executed: ["#153", "#154"]
+
+tolerance:
+  score: 0.5
+  confidence: 0.1

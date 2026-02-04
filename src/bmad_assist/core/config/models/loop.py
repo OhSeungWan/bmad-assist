@@ -167,24 +167,24 @@ DEFAULT_LOOP_CONFIG: LoopConfig = LoopConfig(
 # or globally via testarch.engagement_model = "off".
 TEA_FULL_LOOP_CONFIG: LoopConfig = LoopConfig(
     epic_setup=[
-        "tea_framework",    # Initialize test framework (Playwright/Cypress)
-        "tea_ci",           # Initialize CI pipeline
+        "tea_framework",  # Initialize test framework (Playwright/Cypress)
+        "tea_ci",  # Initialize CI pipeline
         "tea_test_design",  # System-level test design (first epic)
-        "tea_automate",     # Expand test automation (TEA Lite)
+        "tea_automate",  # Expand test automation (TEA Lite)
     ],
     story=[
         "create_story",
         "validate_story",
         "validate_story_synthesis",
-        "atdd",             # Acceptance TDD before implementation
+        "atdd",  # Acceptance TDD before implementation
         "dev_story",
         "code_review",
         "code_review_synthesis",
-        "test_review",      # Test quality review after code review
+        "test_review",  # Test quality review after code review
     ],
     epic_teardown=[
-        "trace",            # Requirements traceability matrix
-        "tea_nfr_assess",   # NFR assessment (release-level)
+        "trace",  # Requirements traceability matrix
+        "tea_nfr_assess",  # NFR assessment (release-level)
         "retrospective",
     ],
 )

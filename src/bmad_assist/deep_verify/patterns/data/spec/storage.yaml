@@ -1,0 +1,64 @@
+patterns:
+  - id: "DB-001"
+    domain: "storage"
+    severity: "warning"
+    signals:
+      - "missing index"
+      - "full table scan"
+      - >-
+        regex:\bSELECT\s+.*\s+FROM\s+\w+\s+WHERE
+      - 'regex:\bWHERE\s+\w+\s*=\s*\?'
+      - 'regex:\bORDER\s+BY'
+    description: "Missing database index for query pattern"
+    remediation: "Add indexes for frequently queried columns, analyze query patterns"
+
+  - id: "DB-002"
+    domain: "storage"
+    severity: "error"
+    signals:
+      - "N+1 query"
+      - "n+1 problem"
+      - 'regex:\bfor\s+.*:=\s+range\s+'
+      - 'regex:\bfor\s+.*:=\s+0\s*;\s*.*len'
+      - >-
+        regex:\bSELECT\s+.*\s+FROM.*WHERE\s+id\s*=
+    description: "N+1 query problem - queries inside loops"
+    remediation: "Use batch queries with IN clause, or implement data loader pattern"
+
+  - id: "DB-003"
+    domain: "storage"
+    severity: "error"
+    signals:
+      - "check then write"
+      - "exists then insert"
+      - "find then create"
+      - >-
+        regex:\bif\s+.*[Ee]xists\s*\(
+      - >-
+        regex:\bSELECT\s+.*\s+FROM.*IF\s+.*INSERT
+    description: "Time-of-check to time-of-use in storage operations"
+    remediation: "Use unique constraints, transactions, or upsert operations"
+
+  - id: "DB-004"
+    domain: "storage"
+    severity: "error"
+    signals:
+      - "connection pool"
+      - "pool exhaustion"
+      - "max connections"
+      - 'regex:\bSetMaxOpenConns'
+      - 'regex:\bdb\.Open\s*\('
+    description: "Database connection pool exhaustion risk"
+    remediation: "Configure appropriate pool sizes, implement connection timeouts"
+
+  - id: "DB-005"
+    domain: "storage"
+    severity: "warning"
+    signals:
+      - "large blob"
+      - "streaming"
+      - "BLOB"
+      - "BYTEA"
+      - 'regex:\bBLOB\s*\('
+    description: "Large blob without streaming - memory risk"
+    remediation: "Use streaming APIs for large data, implement pagination"

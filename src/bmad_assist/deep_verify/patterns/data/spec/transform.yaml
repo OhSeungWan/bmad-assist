@@ -1,0 +1,61 @@
+patterns:
+  - id: "DT-001"
+    domain: "transform"
+    severity: "error"
+    signals:
+      - "error swallowed"
+      - "error ignored"
+      - 'regex:\b_\s*=\s*'
+      - 'regex://\s*ignore.*error'
+      - >-
+        regex:\br\.Err\(\)\s*\)\s*\{\s*\}
+    description: "Error swallowed silently"
+    remediation: "Handle errors explicitly, log them, or return them to the caller"
+
+  - id: "DT-002"
+    domain: "transform"
+    severity: "error"
+    signals:
+      - "partial transformation"
+      - "partial parse"
+      - 'regex:\bcontinue\b'
+      - 'regex:\bskip\b'
+      - 'regex://\s*skip'
+    description: "Partial transformation - some data may be silently dropped"
+    remediation: "Validate all data is processed, fail on parse errors or track skipped items"
+
+  - id: "DT-003"
+    domain: "transform"
+    severity: "warning"
+    signals:
+      - "type coercion"
+      - "type cast"
+      - "interface{}"
+      - 'regex:\.\(\w+\)'
+      - 'regex:\bany\b'
+    description: "Type coercion issues - potential runtime panics"
+    remediation: "Use type assertions with ok pattern, or prefer concrete types"
+
+  - id: "DT-004"
+    domain: "transform"
+    severity: "error"
+    signals:
+      - "circular reference"
+      - "infinite loop"
+      - "stack overflow"
+      - 'regex:\bjson\.Marshal'
+      - 'regex:\bxml\.Marshal'
+    description: "Circular reference leading to infinite loop or stack overflow"
+    remediation: "Use custom marshalers with cycle detection, or break circular links"
+
+  - id: "DT-005"
+    domain: "transform"
+    severity: "warning"
+    signals:
+      - "memory amplification"
+      - "buffer growth"
+      - 'regex:\bbytes\.Buffer'
+      - 'regex:\bstrings\.Builder'
+      - 'regex:\bGrow\s*\('
+    description: "Memory amplification - large buffer allocations"
+    remediation: "Pre-allocate with appropriate capacity, use streaming for large data"

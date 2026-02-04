@@ -34,9 +34,11 @@ DEFAULT_SECURITY_PATTERNS = (
 )
 
 # Command execution allowlist - exact command tuples only
-ALLOWED_COMMANDS: frozenset[tuple[str, ...]] = frozenset({
-    ("npm", "audit", "--json"),
-})
+ALLOWED_COMMANDS: frozenset[tuple[str, ...]] = frozenset(
+    {
+        ("npm", "audit", "--json"),
+    }
+)
 
 # Default timeout for command execution
 DEFAULT_COMMAND_TIMEOUT = 30
@@ -148,8 +150,10 @@ class SecuritySource(EvidenceSource):
         # Check if we have detailed vulnerability info (new format)
         # The new format has vulnerabilities dict with severity and fixAvailable fields
         vulns = data.get("vulnerabilities", {})
-        has_detailed_vulns = vulns and isinstance(vulns, dict) and any(
-            isinstance(v, dict) and "severity" in v for v in vulns.values()
+        has_detailed_vulns = (
+            vulns
+            and isinstance(vulns, dict)
+            and any(isinstance(v, dict) and "severity" in v for v in vulns.values())
         )
 
         if has_detailed_vulns:
@@ -194,9 +198,7 @@ class SecuritySource(EvidenceSource):
 
             # Sort by severity (critical first)
             severity_order = {"CRITICAL": 0, "HIGH": 1, "MODERATE": 2, "LOW": 3, "INFO": 4}
-            vulnerability_descs.sort(
-                key=lambda x: severity_order.get(x.split("]")[0][1:], 5)
-            )
+            vulnerability_descs.sort(key=lambda x: severity_order.get(x.split("]")[0][1:], 5))
 
             return SecurityEvidence(
                 critical=critical,
@@ -223,8 +225,7 @@ class SecuritySource(EvidenceSource):
         # Count fix_available from advisories
         advisories = data.get("advisories", {})
         fix_available = sum(
-            1 for adv in advisories.values()
-            if adv.get("patched_versions", "") != "<0.0.0"
+            1 for adv in advisories.values() if adv.get("patched_versions", "") != "<0.0.0"
         )
 
         # Build vulnerability descriptions for old format
@@ -237,9 +238,7 @@ class SecuritySource(EvidenceSource):
 
         # Sort by severity
         severity_order = {"CRITICAL": 0, "HIGH": 1, "MODERATE": 2, "LOW": 3, "INFO": 4}
-        old_vulnerability_descs.sort(
-            key=lambda x: severity_order.get(x.split("]")[0][1:], 5)
-        )
+        old_vulnerability_descs.sort(key=lambda x: severity_order.get(x.split("]")[0][1:], 5))
 
         return SecurityEvidence(
             critical=critical,

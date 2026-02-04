@@ -1,0 +1,15 @@
+artifact_id: "golden-05"
+content_file: "artifacts/go/golden-05.go"
+
+expected_verdict:
+  decision: "ACCEPT"
+  score: 0.0
+  findings: []
+  domains_detected:
+    - domain: "storage"
+      confidence: 0.8
+  methods_executed: ["#153", "#154"]
+
+tolerance:
+  score: 0.5
+  confidence: 0.1

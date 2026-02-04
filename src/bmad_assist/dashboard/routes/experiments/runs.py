@@ -365,7 +365,7 @@ async def post_experiment_run(request: Request) -> JSONResponse:
         return JSONResponse(
             {
                 "error": "not_implemented",
-                "message": "Experiment execution via dashboard is not yet supported. Use CLI: `bmad-assist experiment run ...`", # noqa: E501
+                "message": "Experiment execution via dashboard is not yet supported. Use CLI: `bmad-assist experiment run ...`",  # noqa: E501
             },
             status_code=501,
         )

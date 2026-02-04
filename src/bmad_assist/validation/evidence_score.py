@@ -161,9 +161,7 @@ class Verdict(str, Enum):
                 self.value, self.value.replace("_", " ")
             )
         # validation context
-        return {"PASS": "READY", "MAJOR_REWORK": "MAJOR REWORK"}.get(
-            self.value, self.value
-        )
+        return {"PASS": "READY", "MAJOR_REWORK": "MAJOR REWORK"}.get(self.value, self.value)
 
 
 # =============================================================================
@@ -348,9 +346,7 @@ _FINDING_BULLET_PATTERN = re.compile(
 
 # Pattern for CLEAN PASS count
 # | 🟢 CLEAN PASS | 5 |
-_CLEAN_PASS_TABLE_PATTERN = re.compile(
-    r"\|\s*🟢\s*CLEAN PASS\s*\|\s*(\d+)\s*\|", re.IGNORECASE
-)
+_CLEAN_PASS_TABLE_PATTERN = re.compile(r"\|\s*🟢\s*CLEAN PASS\s*\|\s*(\d+)\s*\|", re.IGNORECASE)
 
 # Alternative: "CLEAN PASS: 5" or "5 CLEAN PASS"
 _CLEAN_PASS_TEXT_PATTERN = re.compile(
@@ -364,7 +360,6 @@ _EVIDENCE_SCORE_PATTERN = re.compile(
     r"|\|\s*\*?\*?Evidence Score\*?\*?\s*\|\s*\*?\*?(-?\d+(?:\.\d+)?)\*?\*?\s*\|)",
     re.IGNORECASE,
 )
-
 
 
 def _normalize_description(description: str) -> str:
@@ -563,9 +558,7 @@ def _deduplicate_findings(
                 # Found match - track validator
                 existing_norm = existing.normalized_description
                 if finding.validator_id not in seen_validators.get(existing_norm, set()):
-                    seen_validators.setdefault(existing_norm, set()).add(
-                        finding.validator_id
-                    )
+                    seen_validators.setdefault(existing_norm, set()).add(finding.validator_id)
                     consensus_counts[existing_norm] = len(seen_validators[existing_norm])
 
                 # Replace if higher severity
@@ -644,18 +637,14 @@ def aggregate_evidence_scores(
         findings_by_severity[finding.severity] += 1
 
     # Calculate aggregate score (average of validator scores)
-    avg_score = round(
-        sum(per_validator_scores.values()) / len(per_validator_scores), 1
-    )
+    avg_score = round(sum(per_validator_scores.values()) / len(per_validator_scores), 1)
 
     # Determine aggregate verdict
     aggregate_verdict = determine_verdict(avg_score)
 
     # Calculate consensus ratio
     total_findings = len(deduped_findings)
-    consensus_ratio = (
-        len(consensus_findings) / total_findings if total_findings > 0 else 0.0
-    )
+    consensus_ratio = len(consensus_findings) / total_findings if total_findings > 0 else 0.0
 
     return EvidenceScoreAggregate(
         total_score=avg_score,
@@ -722,7 +711,7 @@ def format_evidence_score_context(
     lines.extend(
         [
             "",
-            "**IMPORTANT:** Use the above pre-calculated Evidence Score and Verdict in your synthesis.", # noqa: E501
+            "**IMPORTANT:** Use the above pre-calculated Evidence Score and Verdict in your synthesis.",  # noqa: E501
             "These values are deterministically computed - DO NOT recalculate.",
             "<!-- END PRE-CALCULATED EVIDENCE SCORE -->",
         ]

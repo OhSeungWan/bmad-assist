@@ -60,9 +60,7 @@ class CoverageEvidence:
     def __post_init__(self) -> None:
         """Validate coverage data."""
         if self.coverage_percent < 0 or self.coverage_percent > 100:
-            raise ValueError(
-                f"coverage_percent must be 0-100, got {self.coverage_percent}"
-            )
+            raise ValueError(f"coverage_percent must be 0-100, got {self.coverage_percent}")
         if self.total_lines < 0:
             raise ValueError(f"total_lines must be non-negative, got {self.total_lines}")
         if self.covered_lines < 0:
@@ -376,9 +374,7 @@ class EvidenceContext:
                 max_vulns = 10
                 vuln_count = len(self.security.vulnerabilities)
                 if vuln_count > max_vulns:
-                    lines.append(
-                        f"**Top Vulnerabilities (showing {max_vulns} of {vuln_count}):**"
-                    )
+                    lines.append(f"**Top Vulnerabilities (showing {max_vulns} of {vuln_count}):**")
                 else:
                     lines.append("**Top Vulnerabilities:**")
                 for i, v in enumerate(self.security.vulnerabilities[:max_vulns], 1):

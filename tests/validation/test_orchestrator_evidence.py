@@ -264,7 +264,7 @@ class TestEvidenceScoreCachePersistence:
         cache_file = cache_dir / f"validations-{session_id}.json"
         cache_data = json.loads(cache_file.read_text())
 
-        assert cache_data["cache_version"] == 2
+        assert cache_data["cache_version"] == 3
         assert "evidence_score" in cache_data
         assert cache_data["evidence_score"]["total_score"] == 3.5
         assert cache_data["evidence_score"]["verdict"] == "PASS"
@@ -291,7 +291,7 @@ class TestEvidenceScoreCachePersistence:
             evidence_aggregate=evidence,
         )
 
-        _, _, evidence_data = load_validations_for_synthesis(
+        _, _, evidence_data, _ = load_validations_for_synthesis(
             session_id, tmp_path
         )
 
@@ -328,7 +328,7 @@ class TestEvidenceScoreCachePersistence:
         cache_file.write_text(json.dumps(malformed_v2_data))
 
         # Should succeed with None evidence_score (backward compatible)
-        validations, failed_validators, evidence_score = load_validations_for_synthesis(
+        validations, failed_validators, evidence_score, _ = load_validations_for_synthesis(
             session_id, tmp_path
         )
 
@@ -495,7 +495,7 @@ class TestEndToEndEvidenceScoreFlow:
         )
 
         # Load from cache
-        _, _, evidence_data = load_validations_for_synthesis(session_id, tmp_path)
+        _, _, evidence_data, _ = load_validations_for_synthesis(session_id, tmp_path)
 
         # Verify data survived roundtrip
         assert evidence_data is not None

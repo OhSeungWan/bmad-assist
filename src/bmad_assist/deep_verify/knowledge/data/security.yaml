@@ -1,0 +1,398 @@
+# Security domain knowledge base
+# Covers OWASP Top 10 2021, CWE Top 25, and secure coding standards
+
+knowledge_base:
+  version: "1.0"
+  domain: "security"
+  description: "Security domain knowledge base - OWASP Top 10, CWE patterns, secure coding standards"
+
+  rules:
+    # ============================================================================
+    # OWASP Top 10 2021
+    # ============================================================================
+
+    - id: "SEC-OWASP-A01"
+      domain: "security"
+      category: "standards"
+      title: "Broken Access Control"
+      description: |
+        Access control enforces policy such that users cannot act outside
+        of their intended permissions. Failures typically lead to unauthorized
+        information disclosure, modification, or destruction of all data.
+
+        Common vulnerabilities:
+        - Violation of least privilege or deny by default
+        - Bypassing access control checks by modifying URL or API parameters
+        - Insecure direct object references (IDOR)
+        - CORS misconfiguration allowing unauthorized API access
+        - Force browsing to authenticated pages as unauthenticated user
+      severity: "critical"
+      references:
+        - "https://owasp.org/Top10/A01_2021-Broken_Access_Control/"
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Access_Control_Cheat_Sheet.html"
+
+    - id: "SEC-OWASP-A02"
+      domain: "security"
+      category: "standards"
+      title: "Cryptographic Failures"
+      description: |
+        Failures related to cryptography (or lack thereof) which often lead
+        to exposure of sensitive data. This includes:
+        - Data transmitted in clear text (HTTP, FTP, SMTP)
+        - Weak or deprecated cryptographic algorithms (MD5, SHA1, DES)
+        - Improper key management or hardcoded keys
+        - Insufficient randomness for security purposes
+        - Passwords stored using weak hashing (without salt or using fast hashes)
+      severity: "critical"
+      references:
+        - "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html"
+
+    - id: "SEC-OWASP-A03"
+      domain: "security"
+      category: "standards"
+      title: "Injection"
+      description: |
+        Injection flaws occur when untrusted data is sent to an interpreter
+        as part of a command or query. The attacker's hostile data can trick
+        the interpreter into executing unintended commands or accessing data
+        without proper authorization.
+
+        Common injection types:
+        - SQL Injection (SQLi)
+        - NoSQL Injection
+        - Command Injection
+        - LDAP Injection
+        - Expression Language (EL) Injection
+        - XPath Injection
+      severity: "critical"
+      references:
+        - "https://owasp.org/Top10/A03_2021-Injection/"
+        - "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+
+    - id: "SEC-OWASP-A04"
+      domain: "security"
+      category: "standards"
+      title: "Insecure Design"
+      description: |
+        Insecure design is a broad category representing different weaknesses,
+        expressed as "missing or ineffective control design." It requires
+        threat modeling, secure design patterns, and reference architectures.
+
+        Examples include:
+        - Missing rate limiting on authentication endpoints
+        - Business logic flaws allowing abuse of application workflows
+        - Lack of integrity checks on critical data
+        - Client-side enforcement of server-side security controls
+      severity: "error"
+      references:
+        - "https://owasp.org/Top10/A04_2021-Insecure_Design/"
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Threat_Modeling_Cheat_Sheet.html"
+
+    - id: "SEC-OWASP-A05"
+      domain: "security"
+      category: "standards"
+      title: "Security Misconfiguration"
+      description: |
+        Security misconfiguration is the most commonly seen vulnerability.
+        This is commonly a result of insecure default configurations,
+        incomplete or ad hoc configurations, open cloud storage,
+        misconfigured HTTP headers, or verbose error messages.
+
+        Common issues:
+        - Unnecessary features enabled or installed
+        - Default accounts and passwords still enabled
+        - Error handling reveals stack traces or sensitive info
+        - Outdated or vulnerable components
+        - Missing security headers (CSP, HSTS, X-Frame-Options)
+      severity: "error"
+      references:
+        - "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Security_Headers_Cheat_Sheet.html"
+
+    - id: "SEC-OWASP-A06"
+      domain: "security"
+      category: "standards"
+      title: "Vulnerable and Outdated Components"
+      description: |
+        Components (libraries, frameworks, modules) run with the same privileges
+        as the application. If a vulnerable component is exploited, it can
+        facilitate serious data loss or server takeover.
+
+        Key concerns:
+        - Using components with known vulnerabilities
+        - Not scanning for vulnerabilities regularly
+        - Not upgrading or patching components promptly
+        - Developers not testing compatibility of updated libraries
+      severity: "error"
+      references:
+        - "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
+        - "https://owasp.org/www-community/Component_Analysis"
+
+    - id: "SEC-OWASP-A07"
+      domain: "security"
+      category: "standards"
+      title: "Identification and Authentication Failures"
+      description: |
+        Confirmation of the user's identity, authentication, and session
+        management is critical to protect against authentication-related attacks.
+
+        Common weaknesses:
+        - Permits automated attacks (credential stuffing, brute force)
+        - Allows weak or well-known passwords
+        - Missing or ineffective multi-factor authentication
+        - Session fixation or session hijacking vulnerabilities
+        - Authentication tokens/predictable session IDs exposed in URLs
+      severity: "critical"
+      references:
+        - "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html"
+
+    - id: "SEC-OWASP-A08"
+      domain: "security"
+      category: "standards"
+      title: "Software and Data Integrity Failures"
+      description: |
+        Software and data integrity failures relate to code and infrastructure
+        that does not protect against integrity violations. This includes:
+        - Insecure deserialization of untrusted data
+        - Unsigned or unverified updates/patches
+        - CI/CD pipelines without integrity verification
+        - Auto-update functionality without signature verification
+      severity: "error"
+      references:
+        - "https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/"
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html"
+
+    - id: "SEC-OWASP-A09"
+      domain: "security"
+      category: "standards"
+      title: "Security Logging and Monitoring Failures"
+      description: |
+        Without logging and monitoring, breaches cannot be detected.
+        Insufficient logging, detection, monitoring, and active response
+        occurs any time:
+        - Auditable events (logins, failed logins, transactions) are not logged
+        - Logs are only stored locally or not protected from tampering
+        - No alerting for suspicious activity
+        - Logs do not include enough detail for forensic analysis
+      severity: "error"
+      references:
+        - "https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/"
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html"
+
+    - id: "SEC-OWASP-A10"
+      domain: "security"
+      category: "standards"
+      title: "Server-Side Request Forgery (SSRF)"
+      description: |
+        SSRF flaws occur whenever a web application is fetching a remote
+        resource without validating the user-supplied URL. It allows an
+        attacker to coerce the application to send a crafted request to
+        an unexpected destination, even when protected by a firewall or VPN.
+
+        Common SSRF vectors:
+        - URL schemas (file://, dict://, ftp://, gopher://)
+        - DNS rebinding attacks
+        - Bypassing IP allowlists via redirects
+        - Accessing internal services (metadata APIs, internal admin panels)
+      severity: "critical"
+      references:
+        - "https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_(SSRF)/"
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html"
+
+    # ============================================================================
+    # CWE Top 25 Critical Patterns
+    # ============================================================================
+
+    - id: "SEC-CWE-089"
+      domain: "security"
+      category: "standards"
+      title: "SQL Injection (CWE-89)"
+      description: |
+        The software constructs all or part of an SQL command using
+        externally-influenced input from an upstream component, but it does
+        not neutralize or incorrectly neutralizes special elements that could
+        modify the intended SQL command.
+
+        Indicators:
+        - String concatenation or interpolation in SQL queries
+        - User input directly used in database queries
+        - Lack of parameterized queries/prepared statements
+        - Dynamic query construction
+      severity: "critical"
+      references:
+        - "https://cwe.mitre.org/data/definitions/89.html"
+        - "https://owasp.org/www-community/attacks/SQL_Injection"
+
+    - id: "SEC-CWE-078"
+      domain: "security"
+      category: "standards"
+      title: "OS Command Injection (CWE-78)"
+      description: |
+        The software constructs all or part of an OS command using
+        externally-influenced input from an upstream component, but it does
+        not neutralize or incorrectly neutralizes special elements that could
+        modify the intended OS command.
+
+        Indicators:
+        - User input passed to system(), exec(), subprocess calls
+        - Shell command construction with external data
+        - Use of shell=True in subprocess calls
+        - Command injection via backticks or shell operators
+      severity: "critical"
+      references:
+        - "https://cwe.mitre.org/data/definitions/78.html"
+        - "https://owasp.org/www-community/attacks/Command_Injection"
+
+    - id: "SEC-CWE-094"
+      domain: "security"
+      category: "standards"
+      title: "Code Injection (CWE-94)"
+      description: |
+        The software constructs all or part of a code segment using
+        externally-influenced input from an upstream component, but it does
+        not neutralize or incorrectly neutralizes special elements that could
+        modify the syntax or behavior of the intended code segment.
+
+        Indicators:
+        - eval(), exec() with user input
+        - Dynamic code execution functions
+        - Template injection vulnerabilities
+        - Deserialization of untrusted data
+      severity: "critical"
+      references:
+        - "https://cwe.mitre.org/data/definitions/94.html"
+        - "https://owasp.org/www-community/vulnerabilities/Code_Injection"
+
+    - id: "SEC-CWE-022"
+      domain: "security"
+      category: "standards"
+      title: "Path Traversal (CWE-22)"
+      description: |
+        The software uses external input to construct a pathname that is
+        intended to identify a file or directory that is located underneath
+        a restricted parent directory, but the software does not properly
+        neutralize special elements within the pathname.
+
+        Indicators:
+        - User input used in file path construction
+        - Lack of path validation and sanitization
+        - Zip slip vulnerabilities
+        - Directory traversal sequences (../, ..\\) not filtered
+      severity: "error"
+      references:
+        - "https://cwe.mitre.org/data/definitions/22.html"
+        - "https://owasp.org/www-community/attacks/Path_Traversal"
+
+    - id: "SEC-CWE-079"
+      domain: "security"
+      category: "standards"
+      title: "Cross-site Scripting (XSS) (CWE-79)"
+      description: |
+        The software does not neutralize or incorrectly neutralizes
+        user-controllable input before it is placed in output that is
+        used as a web page that is served to other users.
+
+        Types: Stored, Reflected, DOM-based XSS
+
+        Indicators:
+        - User input rendered in HTML without encoding
+        - JavaScript context injection
+        - Lack of Content Security Policy (CSP)
+        - innerHTML/dangerouslySetInnerHTML with untrusted data
+      severity: "error"
+      references:
+        - "https://cwe.mitre.org/data/definitions/79.html"
+        - "https://owasp.org/www-community/attacks/xss/"
+
+    # ============================================================================
+    # Secure Coding Standards
+    # ============================================================================
+
+    - id: "SEC-AUTH-001"
+      domain: "security"
+      category: "best_practices"
+      title: "Missing Authentication Check"
+      description: |
+        Sensitive operations must verify that the user is authenticated
+        before proceeding. Missing authentication checks can allow
+        unauthenticated access to protected resources.
+
+        Ensure:
+        - All protected endpoints verify authentication
+        - Authentication middleware is applied consistently
+        - API endpoints don't bypass authentication checks
+      severity: "critical"
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html"
+
+    - id: "SEC-AUTH-002"
+      domain: "security"
+      category: "best_practices"
+      title: "Missing Authorization Check"
+      description: |
+        Even when authenticated, users should only be able to access
+        resources they are authorized for. Missing authorization checks
+        can lead to IDOR (Insecure Direct Object Reference) vulnerabilities.
+
+        Ensure:
+        - Verify user has permission for the requested resource
+        - Don't rely on client-side authorization checks
+        - Implement proper access control lists (ACLs)
+      severity: "critical"
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html"
+
+    - id: "SEC-CRYPTO-001"
+      domain: "security"
+      category: "best_practices"
+      title: "Hardcoded Credentials"
+      description: |
+        Hardcoded passwords, API keys, secrets, or cryptographic keys
+        in source code pose a significant security risk. They can be
+        exposed through code repositories, decompilation, or leaks.
+
+        Remediation:
+        - Use environment variables or secure vaults
+        - Implement secrets management (AWS Secrets Manager, HashiCorp Vault)
+        - Rotate credentials regularly
+      severity: "critical"
+      references:
+        - "https://cwe.mitre.org/data/definitions/798.html"
+        - "https://owasp.org/www-community/vulnerabilities/Use_of_hard-coded_password"
+
+    - id: "SEC-INPUT-001"
+      domain: "security"
+      category: "best_practices"
+      title: "Unvalidated Redirects and Forwards"
+      description: |
+        Web applications frequently redirect and forward users to other
+        pages and websites. Without proper validation, attackers can
+        redirect victims to phishing or malware sites.
+
+        Remediation:
+        - Avoid using user input for redirects
+        - If necessary, validate against a whitelist of allowed URLs
+        - Use mapping IDs instead of direct URLs
+      severity: "error"
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html"
+
+    - id: "SEC-CONFIG-001"
+      domain: "security"
+      category: "best_practices"
+      title: "Insecure Default Configuration"
+      description: |
+        Default configurations are often set for convenience rather than
+        security. Production deployments must review and harden all
+        default settings.
+
+        Common issues:
+        - Debug mode enabled in production
+        - Default credentials not changed
+        - Overly permissive CORS settings
+        - Verbose error messages revealing implementation details
+      severity: "error"
+      references:
+        - "https://cwe.mitre.org/data/definitions/276.html"

@@ -1,0 +1,18 @@
+artifact_id: "dv-006"
+source: "synthetic"
+artifact_type: "code"
+language: "go"
+content_file: "artifacts/go/dv-006.go"
+
+expected_domains:
+  - domain: "security"
+    confidence: 0.75
+
+expected_findings: []
+
+known_false_positives: []
+
+metadata:
+  lines_of_code: 25
+  complexity: "low"
+  has_race_condition: false

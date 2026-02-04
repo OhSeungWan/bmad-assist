@@ -117,9 +117,7 @@ def init_handlers(config: "Config", project_path: Path) -> None:
             ) from None
 
         if phase not in _handler_instances:
-            raise ConfigError(
-                f"Phase '{phase_name}' in loop config has no registered handler"
-            )
+            raise ConfigError(f"Phase '{phase_name}' in loop config has no registered handler")
 
     logger.debug("Validated loop config: all %d phases have handlers", len(all_config_phases))
 

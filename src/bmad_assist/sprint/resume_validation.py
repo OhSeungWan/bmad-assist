@@ -195,7 +195,10 @@ def validate_resume_state(
         # Fallback for tests or early startup when singleton not initialized
         # Check multiple locations for consistency with state_reader.py
         fallback_candidates = [
-            project_path / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml",  # New # noqa: E501
+            project_path
+            / "_bmad-output"
+            / "implementation-artifacts"
+            / "sprint-status.yaml",  # New # noqa: E501
             project_path / "docs" / "sprint-artifacts" / "sprint-status.yaml",  # Legacy
             project_path / "docs" / "sprint-status.yaml",  # Legacy (direct)
         ]
@@ -357,9 +360,7 @@ def validate_resume_state(
             try:
                 epic_stories = epic_stories_loader(current_epic)
             except Exception as e:
-                raise StateError(
-                    f"Failed to load stories for epic {current_epic}: {e}"
-                ) from e
+                raise StateError(f"Failed to load stories for epic {current_epic}: {e}") from e
 
             # Find next story - use empty string fallback if current_story is None
             current_story = current_state.current_story or ""

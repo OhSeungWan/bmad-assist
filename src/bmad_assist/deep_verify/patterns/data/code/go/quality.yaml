@@ -1,0 +1,103 @@
+patterns:
+  # Example:
+  #   err := doSomething()
+  #   // BAD: Ignoring error return value
+  - id: "CQ-001-CODE-GO"
+    domain: "transform"
+    severity: "error"
+    signals:
+      - 'regex:\b_\s*=\s*\w+\(.*\)'
+      - 'regex:\b_\s*:=\s*\w+\('
+    description: "Error return value ignored using blank identifier"
+    remediation: "Always handle errors - check and return or log them appropriately"
+
+  # Example:
+  #   for _, item := range items {
+  #       defer cleanup(item)  // BAD: defer inside loop accumulates
+  #   }
+  - id: "CQ-002-CODE-GO"
+    domain: "transform"
+    severity: "error"
+    signals:
+      - "for "
+      - "defer "
+    description: "defer inside loop causes resource leaks - defers execute at function exit"
+    remediation: "Move defer outside loop, or use an inline function call inside the loop"
+
+  # Example:
+  #   http.Client{Timeout: 30 * time.Second}  // BAD: Hardcoded timeout
+  - id: "CQ-003-CODE-GO"
+    domain: "transform"
+    severity: "warning"
+    signals:
+      - "Timeout:"
+      - 'regex:\bTimeout\s*:\s*\d+'
+      - 'regex:\btime\.Second\s*\*\s*\d+'
+      - 'regex:\d+\s*\*\s*time\.(Second|Minute|Hour)'
+    description: "Hardcoded timeout value makes code inflexible"
+    remediation: "Use configurable timeout values from context or configuration"
+
+  # Example:
+  #   type Worker interface { Work() }
+  #   type worker struct {}  // BAD: Single implementation interface
+  #   func (w *worker) Work() {}
+  - id: "CQ-004-CODE-GO"
+    domain: "transform"
+    severity: "warning"
+    signals:
+      - 'regex:\btype\s+\w+\s+interface\s*\{'
+      - 'regex:interface\s*\{[^}]*\}'
+    description: "Interface may have only one implementation - unnecessary abstraction"
+    remediation: "Remove interface until multiple implementations are needed (YAGNI)"
+
+  # Example:
+  #   var data interface{}  // BAD: Empty interface loses type safety
+  #   data = getAnything()
+  - id: "CQ-005-CODE-GO"
+    domain: "transform"
+    severity: "warning"
+    signals:
+      - "interface{}"
+      - 'regex:\binterface\s*\{\s*\}'
+    description: "Empty interface{} usage without type assertion loses compile-time type safety"
+    remediation: "Use concrete types, generics, or type assertions with proper checks"
+
+  # Example:
+  #   file, _ := os.Open("file.txt")
+  #   // ... use file ...
+  #   // BAD: file.Close() not called or deferred
+  - id: "CQ-006-CODE-GO"
+    domain: "transform"
+    severity: "error"
+    signals:
+      - "os.Open("
+      - "os.Create("
+      - 'regex:\bos\.Open\('
+      - 'regex:\bos\.Create\('
+    description: "File opened but may not be closed - resource leak"
+    remediation: "Use defer f.Close() immediately after opening, or use a helper function"
+
+  # Example:
+  #   slice := make([]int, 0)
+  #   for i := 0; i < 10000; i++ {
+  #       slice = append(slice, i)  // BAD: Multiple allocations
+  #   }
+  - id: "CQ-007-CODE-GO"
+    domain: "transform"
+    severity: "warning"
+    signals:
+      - 'regex:\bmake\s*\(\s*\[\s*\]'
+      - 'regex:\bappend\s*\('
+    description: "Slice append without pre-allocation may cause multiple reallocations"
+    remediation: "Pre-allocate slice with make([]T, 0, capacity) when size is known"
+
+  # Example:
+  #   fmt.Sprintf("%s", s)  // BAD: Unnecessary Sprintf for simple string
+  - id: "CQ-008-CODE-GO"
+    domain: "transform"
+    severity: "info"
+    signals:
+      - 'regex:\bfmt\.Sprintf\s*\(\s*"[^"]*%s[^"]*"\s*,\s*\w+\s*\)'
+      - "fmt.Sprintf("
+    description: "fmt.Sprintf used for simple string operations - unnecessary overhead"
+    remediation: "Use simple concatenation (+) or strings.Builder for better performance"

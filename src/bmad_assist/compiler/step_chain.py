@@ -45,10 +45,7 @@ def parse_step_file(step_path: Path) -> StepIR:
     try:
         content = step_path.read_text(encoding="utf-8")
     except OSError as e:
-        raise CompilerError(
-            f"Cannot read step file: {step_path}\n"
-            f"  Error: {e}"
-        ) from e
+        raise CompilerError(f"Cannot read step file: {step_path}\n  Error: {e}") from e
 
     # Parse frontmatter
     frontmatter: dict[str, str] = {}
@@ -59,7 +56,7 @@ def parse_step_file(step_path: Path) -> StepIR:
         end_pos = content.find("---", 3)
         if end_pos != -1:
             frontmatter_str = content[3:end_pos].strip()
-            raw_content = content[end_pos + 3:].lstrip("\n")
+            raw_content = content[end_pos + 3 :].lstrip("\n")
 
             if frontmatter_str:
                 try:
@@ -154,9 +151,7 @@ def build_step_chain(
         # Check max depth
         if len(chain) >= max_depth:
             chain_path = " -> ".join(s.name or str(s.path.name) for s in chain)
-            raise CompilerError(
-                f"Step chain exceeds maximum depth (20). Chain: {chain_path}"
-            )
+            raise CompilerError(f"Step chain exceeds maximum depth (20). Chain: {chain_path}")
 
         # Parse current step
         visited.add(current_path)
@@ -259,9 +254,7 @@ def compile_step_chain(
     # Check first step for knowledge index
     first_step_ir = steps[0]
     if first_step_ir.knowledge_index:
-        ki_path = resolve_knowledge_index(
-            project_root, first_step_ir.knowledge_index
-        )
+        ki_path = resolve_knowledge_index(project_root, first_step_ir.knowledge_index)
         if ki_path:
             context_files.append(ki_path)
             # Add to resolved variables for substitution

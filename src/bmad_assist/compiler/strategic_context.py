@@ -100,14 +100,14 @@ def _truncate_content(content: str, target_tokens: int) -> tuple[str, int]:
     best_cut = target_chars  # Default cut point
 
     # Strategy 1: Find last markdown header (## or ###) in search region
-    header_pattern = re.compile(r'\n#{2,3}\s+[^\n]+\n')
+    header_pattern = re.compile(r"\n#{2,3}\s+[^\n]+\n")
     headers = list(header_pattern.finditer(search_region))
     if headers:
         # Cut before the last header in search region
         best_cut = search_start + headers[-1].start()
     else:
         # Strategy 2: Find last blank line (paragraph boundary)
-        blank_line_pattern = re.compile(r'\n\s*\n')
+        blank_line_pattern = re.compile(r"\n\s*\n")
         blanks = list(blank_line_pattern.finditer(search_region))
         if blanks:
             best_cut = search_start + blanks[-1].end()
@@ -115,7 +115,7 @@ def _truncate_content(content: str, target_tokens: int) -> tuple[str, int]:
             # Strategy 3: Find last word boundary near target
             # Look for space or punctuation
             for i in range(min(target_chars, len(content) - 1), search_start, -1):
-                if content[i] in ' \n\t.,;:!?':
+                if content[i] in " \n\t.,;:!?":
                     best_cut = i + 1
                     break
 
@@ -507,4 +507,3 @@ def load_antipatterns(
     except (OSError, UnicodeDecodeError) as e:
         logger.warning("Failed to read antipatterns: %s", e)
         return {}
-

@@ -286,9 +286,7 @@ class TestDesignHandler(TestarchBaseHandler):
                     "skipped": True,
                     "reason": f"system-level test-design already exists: {files_str}",
                     "design_level": "system",
-                    "test_design_mode": getattr(
-                        self.config.testarch, "test_design_mode", "auto"
-                    )
+                    "test_design_mode": getattr(self.config.testarch, "test_design_mode", "auto")
                     if self.config.testarch
                     else "auto",
                 }
@@ -297,10 +295,10 @@ class TestDesignHandler(TestarchBaseHandler):
             if self._has_epic_level_output(epic_id):
                 paths = get_paths()
                 safe_epic = re.sub(r'[\\/:*?"<>|]', "-", str(epic_id))
-                epic_path = paths.output_folder / "test-designs" / f"test-design-epic-{safe_epic}.md"
-                logger.info(
-                    "Epic-level test-design already exists for epic %s, skipping", epic_id
+                epic_path = (
+                    paths.output_folder / "test-designs" / f"test-design-epic-{safe_epic}.md"
                 )
+                logger.info("Epic-level test-design already exists for epic %s, skipping", epic_id)
                 return PhaseResult.ok(
                     {
                         "skipped": True,

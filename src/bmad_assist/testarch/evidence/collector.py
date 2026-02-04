@@ -201,9 +201,7 @@ class EvidenceContextCollector:
             if test_results_config is not None and not test_results_config.enabled:
                 test_results = None
             else:
-                test_results = test_results_source.collect(
-                    self._project_root, test_results_config
-                )
+                test_results = test_results_source.collect(self._project_root, test_results_config)
 
             # Collect security if enabled
             security_config = config.security if config else None
@@ -217,9 +215,7 @@ class EvidenceContextCollector:
             if performance_config is not None and not performance_config.enabled:
                 performance = None
             else:
-                performance = performance_source.collect(
-                    self._project_root, performance_config
-                )
+                performance = performance_source.collect(self._project_root, performance_config)
 
             collected_at = datetime.now(UTC).isoformat()
 

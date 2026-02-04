@@ -1,0 +1,107 @@
+patterns:
+  # Example:
+  #   go func() {  // BAD: No wait group tracking
+  #       doWork()
+  #   }()
+  - id: "CC-001-CODE-GO"
+    domain: "concurrency"
+    severity: "critical"
+    signals:
+      - "go func("
+      - 'regex:\bgo\s+\w+\('
+      - 'regex:\bgo\s+func\('
+    description: "Goroutine spawned without proper lifecycle management"
+    remediation: "Use sync.WaitGroup or proper context cancellation tracking to ensure goroutines complete"
+
+  # Example:
+  #   mu.Lock()
+  #   // ... critical section ...
+  #   mu.Unlock()  // BAD: No defer, may not unlock on panic/return
+  - id: "CC-002-CODE-GO"
+    domain: "concurrency"
+    severity: "error"
+    signals:
+      - "sync.Mutex"
+      - ".Lock()"
+    description: "Mutex locked without defer Unlock - risk of deadlock on panic or early return"
+    remediation: "Always use defer immediately after Lock: `mu.Lock(); defer mu.Unlock()`"
+
+  # Example:
+  #   ch <- data  // BAD: No select with default, blocks forever if receiver gone
+  - id: "CC-003-CODE-GO"
+    domain: "concurrency"
+    severity: "error"
+    signals:
+      - 'regex:\b\w+\s*<-\s*\w+'
+      - 'regex:\bmake\s*\(\s*chan\b'
+    description: "Channel operation may block indefinitely without timeout or select/default"
+    remediation: "Use select with default for non-blocking sends, or include timeout cases"
+
+  # Example:
+  #   mu.RLock()
+  #   // ... read data ...
+  #   mu.Lock()  // BAD: Trying to upgrade read lock to write lock
+  - id: "CC-004-CODE-GO"
+    domain: "concurrency"
+    severity: "critical"
+    signals:
+      - "sync.RWMutex"
+      - 'regex:\.RLock\(\).*\.Lock\('
+      - 'regex:\bRWMutex.*RLock.*Lock\b'
+    description: "RWMutex read lock held while attempting to acquire write lock - deadlock risk"
+    remediation: "Release RLock before acquiring Lock, or use a different synchronization strategy"
+
+  # Example:
+  #   ctx, cancel := context.WithTimeout(...)
+  #   go doWork(ctx)
+  #   // BAD: Not checking ctx.Done() in doWork
+  - id: "CC-005-CODE-GO"
+    domain: "concurrency"
+    severity: "error"
+    signals:
+      - "context.WithCancel"
+      - "context.WithTimeout"
+      - "context.WithDeadline"
+      - 'regex:\bctx\.Done\(\)'
+      - 'regex:\bselect\s*{.*<-ctx\.Done'
+    description: "Context created but cancellation signal may not be properly checked"
+    remediation: "Always check ctx.Done() in goroutines and respect cancellation signals"
+
+  # Example:
+  #   var once sync.Once
+  #   once.Do(func() { ... })
+  #   // BAD: Using once.Do for something that runs multiple times
+  - id: "CC-006-CODE-GO"
+    domain: "concurrency"
+    severity: "warning"
+    signals:
+      - "sync.Once"
+      - 'regex:\.Do\(func\('
+    description: "sync.Once used for initialization that may need to run multiple times"
+    remediation: "Ensure sync.Once is appropriate - it only executes once, ever"
+
+  # Example:
+  #   close(ch)  // BAD: Closing channel that might still receive values
+  - id: "CC-007-CODE-GO"
+    domain: "concurrency"
+    severity: "error"
+    signals:
+      - 'regex:\bclose\s*\(\s*\w+\s*\)'
+      - 'regex:\bclose\(ch\)'
+    description: "Channel closed without ensuring all senders are done - panic risk"
+    remediation: "Only close channels from the sender side, use sync.WaitGroup to coordinate"
+
+  # Example:
+  #   var counter int
+  #   go func() { counter++ }()
+  #   go func() { counter++ }()  // BAD: Data race
+  - id: "CC-008-CODE-GO"
+    domain: "concurrency"
+    severity: "critical"
+    signals:
+      - "sync/atomic"
+      - 'regex:\batomic\.AddInt\d+'
+      - 'regex:\batomic\.LoadInt\d+'
+      - 'regex:\batomic\.StoreInt\d+'
+    description: "Shared variable accessed concurrently without synchronization"
+    remediation: "Use sync/atomic for simple counters or sync.Mutex for complex shared state"

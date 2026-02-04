@@ -16,6 +16,7 @@ has write permission to modify the story file.
 
 """
 
+import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,6 +36,7 @@ from bmad_assist.core.loop.types import PhaseResult
 from bmad_assist.core.paths import get_paths
 from bmad_assist.core.state import State
 from bmad_assist.core.types import EpicId
+from bmad_assist.deep_verify.integration import load_dv_findings_from_cache
 from bmad_assist.validation.reports import extract_synthesis_report
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,61 @@ class CodeReviewSynthesisHandler(BaseHandler):
 
         """
         return self._build_common_context(state)
+
+    def _get_dv_findings_from_cache(self, session_id: str) -> dict[str, Any] | None:
+        """Load Deep Verify findings from cache if available.
+
+        Story 26.20: Load DV findings for inclusion in synthesis prompt.
+
+        Args:
+            session_id: The code review session ID.
+
+        Returns:
+            Dict with DV findings data or None if not found/error.
+
+        """
+        try:
+            dv_result = load_dv_findings_from_cache(session_id, self.project_path)
+            if dv_result is None:
+                return None
+
+            # Convert to dict for template rendering
+            return {
+                "verdict": dv_result.verdict.value,
+                "score": dv_result.score,
+                "findings_count": len(dv_result.findings),
+                "critical_count": sum(
+                    1 for f in dv_result.findings if f.severity.value == "critical"
+                ),
+                "error_count": sum(1 for f in dv_result.findings if f.severity.value == "error"),
+                "domains": [
+                    {"domain": d.domain.value, "confidence": d.confidence}
+                    for d in dv_result.domains_detected
+                ],
+                "methods": list(dv_result.methods_executed),
+                "findings": [
+                    {
+                        "id": f.id,
+                        "severity": f.severity.value,
+                        "title": f.title,
+                        "description": f.description,
+                        "method": f.method_id,
+                        "domain": f.domain.value if f.domain else None,
+                        "evidence": [
+                            {
+                                "quote": e.quote,
+                                "line_number": e.line_number,
+                                "confidence": e.confidence,
+                            }
+                            for e in f.evidence
+                        ],
+                    }
+                    for f in dv_result.findings
+                ],
+            }
+        except (OSError, json.JSONDecodeError, KeyError, AttributeError) as e:
+            logger.warning("Failed to load DV findings: %s", e)
+            return None
 
     def _get_session_id_from_cache(self) -> str | None:
         """Find most recent code review session from cache.
@@ -151,6 +208,15 @@ class CodeReviewSynthesisHandler(BaseHandler):
             len(failed_reviewers),
         )
 
+        # Load DV findings if available (Story 26.20)
+        dv_findings = self._get_dv_findings_from_cache(session_id)
+        if dv_findings:
+            logger.info(
+                "Including DV findings in synthesis: verdict=%s, findings=%d",
+                dv_findings["verdict"],
+                dv_findings["findings_count"],
+            )
+
         # Get configured paths
         paths = get_paths()
 
@@ -167,6 +233,7 @@ class CodeReviewSynthesisHandler(BaseHandler):
                 "session_id": session_id,
                 "anonymized_reviews": anonymized_reviews,
                 "failed_reviewers": failed_reviewers,  # AC #4: Include failed reviewers for LLM context # noqa: E501
+                "deep_verify_findings": dv_findings,  # Story 26.20: Include DV findings
             },
         )
 
@@ -219,9 +286,11 @@ class CodeReviewSynthesisHandler(BaseHandler):
             try:
                 # Story 22.7: load_reviews_for_synthesis now returns (reviews, failed_reviewers)
                 # TIER 2: Also loads pre-calculated evidence_score for synthesis context
-                anonymized_reviews, failed_reviewers, evidence_score_data = load_reviews_for_synthesis( # noqa: E501
-                    session_id,
-                    self.project_path,
+                anonymized_reviews, failed_reviewers, evidence_score_data = (
+                    load_reviews_for_synthesis(  # noqa: E501
+                        session_id,
+                        self.project_path,
+                    )
                 )
             except CodeReviewError as e:
                 raise ConfigError(f"Cannot load code reviews: {e}") from e

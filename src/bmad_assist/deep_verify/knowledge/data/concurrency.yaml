@@ -1,0 +1,530 @@
+# Concurrency domain knowledge base
+# Covers Go concurrency patterns, mutex best practices, channel patterns, context propagation
+
+knowledge_base:
+  version: "1.0"
+  domain: "concurrency"
+  description: "Concurrency domain knowledge base - Go concurrency patterns, mutex best practices, channel patterns, context propagation"
+
+  rules:
+    # ============================================================================
+    # Go Concurrency Patterns
+    # ============================================================================
+
+    - id: "CC-PATTERN-001"
+      domain: "concurrency"
+      category: "standards"
+      title: "Goroutine Leak Risk"
+      description: |
+        Goroutines that are started but never terminate cause memory leaks
+        and resource exhaustion. Every goroutine must have a clear exit path.
+
+        Violations:
+        - Goroutines with infinite loops and no exit condition
+        - Blocking operations without timeout or cancellation
+        - Channels that are never closed
+        - Missing synchronization to wait for goroutine completion
+
+        Example leak:
+        ```go
+        go func() {
+            for {  // Never exits!
+                data := <-ch
+                process(data)
+            }
+        }()
+        ```
+
+        Solution: Use context cancellation or close channels to signal exit.
+      severity: "critical"
+      references:
+        - "https://go.dev/blog/pipelines"
+        - "https://go101.org/article/channel-closing.html"
+
+    - id: "CC-PATTERN-002"
+      domain: "concurrency"
+      category: "standards"
+      title: "Unbounded Goroutine Spawn"
+      description: |
+        Creating unbounded numbers of goroutines can exhaust system resources
+        and cause program crashes. Always limit concurrent execution.
+
+        Violations:
+        - Launching goroutines in unbounded loops
+        - Creating goroutines per request without limits
+        - No backpressure mechanism
+
+        Example violation:
+        ```go
+        for _, item := range items {  // Could be millions!
+            go process(item)  // Unbounded!
+        }
+        ```
+
+        Solution: Use worker pools or semaphores to limit concurrency.
+      severity: "critical"
+      references:
+        - "https://go.dev/blog/pipelines"
+        - "https://pkg.go.dev/golang.org/x/sync/semaphore"
+
+    - id: "CC-PATTERN-003"
+      domain: "concurrency"
+      category: "best_practices"
+      title: "Worker Pool Sizing Mismatch"
+      description: |
+        Worker pools must be sized appropriately for the workload.
+        Improper sizing leads to either under-utilization or resource exhaustion.
+
+        Issues:
+        - Pool too small: Work queue builds up, latency increases
+        - Pool too large: Excessive memory usage, context switching overhead
+        - Static sizing: Cannot adapt to varying workloads
+
+        Best practices:
+        - Size based on CPU cores for CPU-bound work
+        - Size based on I/O capacity for I/O-bound work
+        - Consider dynamic/autosizing pools
+      severity: "warning"
+      references:
+        - "https://go.dev/blog/pipelines"
+        - "https://gobyexample.com/worker-pools"
+
+    - id: "CC-PATTERN-004"
+      domain: "concurrency"
+      category: "standards"
+      title: "Fan-Out Without Fan-In"
+      description: |
+        When fanning out work to multiple goroutines, you must always
+        wait for all goroutines to complete (fan-in). Otherwise, work
+        may be lost or resources leaked.
+
+        Violation:
+        ```go
+        for _, task := range tasks {
+            go process(task)  // Launched but never waited for!
+        }
+        // Program exits before goroutines complete
+        ```
+
+        Solution: Use sync.WaitGroup or channels for coordination.
+        ```go
+        var wg sync.WaitGroup
+        for _, task := range tasks {
+            wg.Add(1)
+            go func(t Task) {
+                defer wg.Done()
+                process(t)
+            }(task)
+        }
+        wg.Wait()  // Proper fan-in
+        ```
+      severity: "error"
+      references:
+        - "https://go.dev/blog/pipelines"
+        - "https://gobyexample.com/waitgroups"
+
+    # ============================================================================
+    # Mutex Best Practices
+    # ============================================================================
+
+    - id: "CC-MUTEX-001"
+      domain: "concurrency"
+      category: "standards"
+      title: "Missing defer Unlock"
+      description: |
+        Always use defer for mutex unlock to ensure it happens even if
+        the function panics or has multiple return paths.
+
+        Violation:
+        ```go
+        mu.Lock()
+        doWork()  // If this panics, mutex stays locked!
+        mu.Unlock()  // May not execute
+        ```
+
+        Correct:
+        ```go
+        mu.Lock()
+        defer mu.Unlock()  // Always executes
+        doWork()
+        ```
+
+        Exception: Performance-critical code may use explicit unlock
+        if it can guarantee no panics and single return path.
+      severity: "error"
+      references:
+        - "https://go.dev/doc/effective_go#concurrency"
+        - "https://gobyexample.com/mutexes"
+
+    - id: "CC-MUTEX-002"
+      domain: "concurrency"
+      category: "standards"
+      title: "Lock Ordering Violation"
+      description: |
+        When acquiring multiple locks, always acquire them in the same
+        order across your codebase. Different lock ordering causes deadlock.
+
+        Deadlock scenario:
+        ```go
+        // Goroutine A          // Goroutine B
+        lock1.Lock()            lock2.Lock()
+        lock2.Lock()  // waits  lock1.Lock()  // waits
+        // DEADLOCK!
+        ```
+
+        Solution: Establish a lock hierarchy and always acquire locks
+        in that order. Document the ordering clearly.
+      severity: "critical"
+      references:
+        - "https://en.wikipedia.org/wiki/Dining_philosophers_problem"
+        - "https://go.dev/doc/effective_go#concurrency"
+
+    - id: "CC-MUTEX-003"
+      domain: "concurrency"
+      category: "best_practices"
+      title: "Holding Lock During I/O"
+      description: |
+        Holding a mutex lock during blocking I/O operations serializes
+        all access and defeats the purpose of concurrency.
+
+        Violation:
+        ```go
+        mu.Lock()
+        defer mu.Unlock()
+        result, err := http.Get(url)  // Blocks everyone!
+        process(result)
+        ```
+
+        Solution: Minimize critical section scope.
+        ```go
+        // Fetch data outside lock
+        result, err := http.Get(url)
+
+        mu.Lock()
+        defer mu.Unlock()
+        process(result)  // Only protect shared state
+        ```
+      severity: "warning"
+      references:
+        - "https://go.dev/doc/effective_go#concurrency"
+        - "https://github.com/golang/go/wiki/MutexOrChannel"
+
+    - id: "CC-MUTEX-004"
+      domain: "concurrency"
+      category: "standards"
+      title: "Copying Mutex by Value"
+      description: |
+        sync.Mutex must not be copied after first use. Copying a mutex
+        creates independent locks, leading to race conditions.
+
+        Violations:
+        - Passing struct with mutex by value
+        - Returning struct with mutex by value
+        - Range over slice of structs containing mutexes
+
+        Violation example:
+        ```go
+        type Counter struct {
+            mu    sync.Mutex
+            count int
+        }
+
+        func (c Counter) Increment() {  // Value receiver - COPY!
+            c.mu.Lock()  // Locks the copy!
+            c.count++
+            c.mu.Unlock()
+        }
+        ```
+
+        Solution: Use pointer receivers and vet/copylock linter.
+      severity: "critical"
+      references:
+        - "https://go.dev/doc/effective_go#concurrency"
+        - "https://golang.org/x/tools/go/analysis/passes/copylock"
+
+    # ============================================================================
+    # Channel Patterns
+    # ============================================================================
+
+    - id: "CC-CHANNEL-001"
+      domain: "concurrency"
+      category: "best_practices"
+      title: "Unbuffered Channel Misuse"
+      description: |
+        Unbuffered channels (make(chan T)) synchronize sender and receiver.
+        Buffered channels (make(chan T, n)) allow asynchronous sends up to capacity.
+
+        Use unbuffered when:
+        - Synchronization is required
+        - Guaranteed handoff is needed
+
+        Use buffered when:
+        - Decoupling producer/consumer rates
+        - Preventing goroutine blocking
+        - Implementing semaphores
+
+        Misuse: Using unbuffered channels when buffering would prevent blocking.
+      severity: "warning"
+      references:
+        - "https://go.dev/doc/effective_go#channels"
+        - "https://go101.org/article/channel.html"
+
+    - id: "CC-CHANNEL-002"
+      domain: "concurrency"
+      category: "standards"
+      title: "Closing Closed Channel"
+      description: |
+        Closing an already-closed channel causes a runtime panic.
+        Never close a channel from multiple goroutines or close twice.
+
+        Violation:
+        ```go
+        close(ch)
+        close(ch)  // PANIC: close of closed channel
+        ```
+
+        Rule: Only the sender should close the channel, and only once.
+
+        Safe pattern using sync.Once:
+        ```go
+        var closeOnce sync.Once
+        closeOnce.Do(func() { close(ch) })
+        ```
+      severity: "critical"
+      references:
+        - "https://go.dev/doc/effective_go#channels"
+        - "https://go101.org/article/channel-closing.html"
+
+    - id: "CC-CHANNEL-003"
+      domain: "concurrency"
+      category: "standards"
+      title: "Nil Channel Send"
+      description: |
+        Sending to a nil channel blocks forever. Receiving from a nil
+        channel also blocks forever. This often indicates a bug.
+
+        Violation:
+        ```go
+        var ch chan int  // nil channel
+        ch <- 42  // Blocks forever - DEADLOCK!
+        ```
+
+        Common causes:
+        - Uninitialized channel
+        - Channel set to nil for "disable" (use select instead)
+
+        Solution: Always initialize channels before use, or use closed
+        channels (receive returns zero value immediately).
+      severity: "error"
+      references:
+        - "https://go.dev/ref/spec#Channel_types"
+        - "https://go101.org/article/channel.html"
+
+    - id: "CC-CHANNEL-004"
+      domain: "concurrency"
+      category: "best_practices"
+      title: "Missing Select Default Case"
+      description: |
+        When using select for non-blocking channel operations, always
+        include a default case to prevent blocking.
+
+        Blocking select (waits for one case):
+        ```go
+        select {
+        case v := <-ch:
+            process(v)
+        }  // Blocks until channel has data
+        ```
+
+        Non-blocking select:
+        ```go
+        select {
+        case v := <-ch:
+            process(v)
+        default:
+            // Handle no data available
+        }
+        ```
+
+        Omitting default when non-blocking behavior is intended causes
+        unnecessary blocking or deadlocks.
+      severity: "warning"
+      references:
+        - "https://go.dev/doc/effective_go#channels"
+        - "https://gobyexample.com/non-blocking-channel-operations"
+
+    # ============================================================================
+    # Context Propagation
+    # ============================================================================
+
+    - id: "CC-CONTEXT-001"
+      domain: "concurrency"
+      category: "standards"
+      title: "Missing Context Propagation"
+      description: |
+        Functions that make network calls or long-running operations
+        should accept context.Context as the first parameter to support
+        cancellation and timeouts.
+
+        Violation:
+        ```go
+        func fetchData(url string) (*Data, error) {
+            resp, err := http.Get(url)  // No way to cancel!
+            ...
+        }
+        ```
+
+        Correct:
+        ```go
+        func fetchData(ctx context.Context, url string) (*Data, error) {
+            req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+            resp, err := http.DefaultClient.Do(req)
+            ...
+        }
+        ```
+
+        Context should be passed through the entire call chain.
+      severity: "error"
+      references:
+        - "https://go.dev/blog/context"
+        - "https://go.dev/doc/effective_go#concurrency"
+
+    - id: "CC-CONTEXT-002"
+      domain: "concurrency"
+      category: "standards"
+      title: "Not Checking Context Cancellation"
+      description: |
+        Long-running operations must periodically check ctx.Done() to
+        respect cancellation requests and avoid doing unnecessary work.
+
+        Violation:
+        ```go
+        func process(ctx context.Context, items []Item) {
+            for _, item := range items {
+                heavyProcessing(item)  // Ignores cancellation!
+            }
+        }
+        ```
+
+        Correct:
+        ```go
+        func process(ctx context.Context, items []Item) error {
+            for _, item := range items {
+                select {
+                case <-ctx.Done():
+                    return ctx.Err()
+                default:
+                }
+                heavyProcessing(item)
+            }
+            return nil
+        }
+        ```
+      severity: "error"
+      references:
+        - "https://go.dev/blog/context"
+        - "https://pkg.go.dev/context"
+
+    - id: "CC-CONTEXT-003"
+      domain: "concurrency"
+      category: "best_practices"
+      title: "Deadline Without Propagation"
+      description: |
+        When creating derived contexts with deadlines or timeouts,
+        always respect parent context deadlines. Using shorter timeouts
+        without checking parent deadline wastes work.
+
+        Violation:
+        ```go
+        func callService(ctx context.Context) error {
+            // Parent might have tighter deadline, but we ignore it
+            ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+            defer cancel()
+            return makeRequest(ctx)
+        }
+        ```
+
+        Consider parent's deadline when setting timeouts, or use the
+        shorter of the two deadlines.
+      severity: "warning"
+      references:
+        - "https://go.dev/blog/context"
+        - "https://pkg.go.dev/context"
+
+    # ============================================================================
+    # Sync Primitives
+    # ============================================================================
+
+    - id: "CC-SYNC-001"
+      domain: "concurrency"
+      category: "standards"
+      title: "WaitGroup Counter Mismatch"
+      description: |
+        sync.WaitGroup requires that the number of Done() calls matches
+        the counter set by Add(). Mismatch causes panic (negative counter)
+        or deadlock (counter never reaches zero).
+
+        Violation - Missing Add:
+        ```go
+        var wg sync.WaitGroup
+        go func() {
+            // wg.Add(1) should be called before launching!
+            defer wg.Done()
+            work()
+        }()
+        wg.Wait()  // May wait forever or panic
+        ```
+
+        Violation - Wrong Add count:
+        ```go
+        wg.Add(1)
+        for i := 0; i < 10; i++ {
+            go func() {
+                defer wg.Done()  // 10 Done calls, only 1 Add!
+                work()
+            }()
+        }
+        wg.Wait()  // PANIC: negative WaitGroup counter
+        ```
+
+        Solution: Call Add before launching goroutines, with correct count.
+      severity: "critical"
+      references:
+        - "https://pkg.go.dev/sync#WaitGroup"
+        - "https://gobyexample.com/waitgroups"
+
+    - id: "CC-SYNC-002"
+      domain: "concurrency"
+      category: "best_practices"
+      title: "sync.Once Misuse"
+      description: |
+        sync.Once ensures a function is called exactly once. It's commonly
+        used for lazy initialization. Calling Do with different functions
+        or expecting re-execution are misuse patterns.
+
+        Violation - Expecting re-execution:
+        ```go
+        var once sync.Once
+        once.Do(init)
+        // Later...
+        once.Do(initAgain)  // Won't execute - already done!
+        ```
+
+        Violation - Different functions:
+        ```go
+        var once sync.Once
+        once.Do(func() { setupA() })
+        once.Do(func() { setupB() })  // Won't execute!
+        ```
+
+        Correct usage: One Once per initialization function.
+        ```go
+        var (
+            initAOnce sync.Once
+            initBOnce sync.Once
+        )
+        ```
+      severity: "error"
+      references:
+        - "https://pkg.go.dev/sync#Once"
+        - "https://gobyexample.com/once"

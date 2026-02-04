@@ -177,7 +177,11 @@ class TestResultsSource(EvidenceSource):
         if passed < 0:
             logger.warning(
                 "Inconsistent JUnit data in %s: total=%d, failures=%d, errors=%d, skipped=%d",
-                file_path, total, failures, errors, skipped,
+                file_path,
+                total,
+                failures,
+                errors,
+                skipped,
             )
             passed = 0  # Clamp to avoid negative values
 

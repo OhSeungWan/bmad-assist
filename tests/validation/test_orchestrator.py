@@ -600,13 +600,13 @@ class TestInterHandlerDataPassing:
         cache_file = tmp_path / ".bmad-assist" / "cache" / f"validations-{session_id}.json"
         assert cache_file.exists()
 
-        # Verify v2 format
+        # Verify v3 format (Story 26.16: cache v3 includes Deep Verify data)
         import json
 
         with open(cache_file, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        assert data.get("cache_version") == 2
+        assert data.get("cache_version") == 3
         assert "evidence_score" in data
 
     def test_load_validations_round_trip(self, tmp_path: Path) -> None:
@@ -635,8 +635,8 @@ class TestInterHandlerDataPassing:
             tmp_path,
             evidence_aggregate=self._make_mock_evidence_aggregate(),
         )
-        # TIER 2: Now returns tuple (validations, failed_validators, evidence_score)
-        loaded, failed, evidence_score = load_validations_for_synthesis(session_id, tmp_path)
+        # TIER 2: Now returns tuple (validations, failed_validators, evidence_score, dv_result)
+        loaded, failed, evidence_score, dv_result = load_validations_for_synthesis(session_id, tmp_path)
 
         assert len(loaded) == 2
         assert loaded[0].validator_id == "Validator A"
@@ -645,6 +645,7 @@ class TestInterHandlerDataPassing:
         assert failed == []  # No failed validators in this test
         assert evidence_score is not None
         assert evidence_score["total_score"] == 2.5
+        assert dv_result is None  # No DV result in this test
 
     def test_load_validations_not_found(self, tmp_path: Path) -> None:
         """load_validations_for_synthesis raises ValidationError if not found."""
@@ -1107,7 +1108,7 @@ class TestStory22_8FailedValidatorsInCache:
 
         assert "failed_validators" in data
         assert data["failed_validators"] == ["claude-haiku", "gemini-flash"]
-        assert data.get("cache_version") == 2
+        assert data.get("cache_version") == 3  # Story 26.16: cache v3
 
     def test_save_validations_empty_failed_validators(self, tmp_path: Path) -> None:
         """save_validations_for_synthesis handles empty failed_validators list (omits from cache)."""
@@ -1161,8 +1162,8 @@ class TestStory22_8FailedValidatorsInCache:
             evidence_aggregate=self._make_mock_evidence_aggregate(),
         )
 
-        # TIER 2: Load returns tuple: (validations, failed_validators, evidence_score)
-        loaded_validations, loaded_failed, evidence_score = load_validations_for_synthesis(
+        # TIER 2: Load returns tuple: (validations, failed_validators, evidence_score, dv_result)
+        loaded_validations, loaded_failed, evidence_score, dv_result = load_validations_for_synthesis(
             session_id, tmp_path
         )
 
@@ -1170,6 +1171,7 @@ class TestStory22_8FailedValidatorsInCache:
         assert loaded_validations[0].validator_id == "Validator A"
         assert loaded_failed == ["failed-provider-1", "failed-provider-2"]
         assert evidence_score is not None
+        assert dv_result is None  # No DV result in this test
 
     def test_save_load_round_trip_with_failed_validators(self, tmp_path: Path) -> None:
         """Complete round-trip test for failed_validators through cache (v2 format)."""
@@ -1199,8 +1201,8 @@ class TestStory22_8FailedValidatorsInCache:
             failed_validators=failed,
             evidence_aggregate=self._make_mock_evidence_aggregate(),
         )
-        # TIER 2: Load returns 3-element tuple
-        loaded_validations, loaded_failed, evidence_score = load_validations_for_synthesis(
+        # TIER 2: Load returns 4-element tuple (includes dv_result)
+        loaded_validations, loaded_failed, evidence_score, dv_result = load_validations_for_synthesis(
             session_id, tmp_path
         )
 
@@ -1210,6 +1212,7 @@ class TestStory22_8FailedValidatorsInCache:
         assert loaded_validations[1].validator_id == "Validator B"
         assert loaded_failed == ["timeout-validator", "error-validator"]
         assert evidence_score is not None
+        assert dv_result is None  # No DV result in this test
 
 
 class TestStory22_8SessionIdInValidationReports:

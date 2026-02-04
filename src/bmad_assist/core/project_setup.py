@@ -215,7 +215,9 @@ def _prompt_overwrite_batch(
             # Show diff for first file, then re-prompt
             src, dst = differing_files[0]
             if len(differing_files) > 1:
-                console.print(f"[dim](Showing first of {len(differing_files)} files. Use [i] for per-file diffs.)[/dim]") # noqa: E501
+                console.print(
+                    f"[dim](Showing first of {len(differing_files)} files. Use [i] for per-file diffs.)[/dim]"
+                )  # noqa: E501
             _show_diff(src, dst, console)
             continue
         return OverwriteDecision(choice)
@@ -355,9 +357,7 @@ def _workflow_dirs_identical(src_dir: Path, dst_dir: Path) -> bool:
     return True
 
 
-def _collect_differing_files(
-    src_dir: Path, dst_dir: Path
-) -> list[tuple[Path, Path]]:
+def _collect_differing_files(src_dir: Path, dst_dir: Path) -> list[tuple[Path, Path]]:
     """Collect all files that differ between source and destination.
 
     Args:

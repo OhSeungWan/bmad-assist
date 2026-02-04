@@ -1,0 +1,18 @@
+artifact_id: "dv-048"
+source: "synthetic"
+artifact_type: "spec"
+language: null
+content_file: "artifacts/specs/dv-048.md"
+
+expected_domains:
+  - domain: "security"
+    confidence: 0.8
+
+expected_findings: []
+
+known_false_positives: []
+
+metadata:
+  lines_of_code: 30
+  complexity: "low"
+  has_race_condition: false

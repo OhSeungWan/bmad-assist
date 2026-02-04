@@ -1,0 +1,34 @@
+artifact_id: "dv-002"
+source: "synthetic"
+artifact_type: "code"
+language: "python"
+content_file: "artifacts/python/dv-002.py"
+
+expected_domains:
+  - domain: "security"
+    confidence: 0.95
+
+expected_findings:
+  - pattern_id: "SEC-001"
+    severity: "error"
+    title: "Timing attack vulnerability"
+    description: "Direct string comparison enables timing attacks"
+    method_id: "#153"
+    domain: "security"
+    line_number: 12
+    quote: "return computed == stored_hash"
+  - pattern_id: "CQ-003"
+    severity: "critical"
+    title: "Hardcoded credentials"
+    description: "Hardcoded admin password in source code"
+    method_id: "#153"
+    domain: "security"
+    line_number: 20
+    quote: "admin_password = \"admin123\""
+
+known_false_positives: []
+
+metadata:
+  lines_of_code: 45
+  complexity: "low"
+  has_race_condition: false

@@ -52,8 +52,7 @@ def normalize_mode(mode: str) -> str:
     normalized = MODE_NAMES.get(mode.lower())
     if normalized is None:
         raise CompilerError(
-            f"Unknown workflow mode: '{mode}'\n"
-            f"  Valid modes: c (create), v (validate), e (edit)"
+            f"Unknown workflow mode: '{mode}'\n  Valid modes: c (create), v (validate), e (edit)"
         )
     return normalized
 

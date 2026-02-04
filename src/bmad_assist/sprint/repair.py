@@ -388,7 +388,9 @@ def _repair_sprint_status_impl(
         legacy_path = paths.legacy_sprint_artifacts / "sprint-status.yaml"
     except RuntimeError:
         # Paths not initialized (e.g., in tests) - use project_root defaults
-        sprint_path = project_root / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml" # noqa: E501
+        sprint_path = (
+            project_root / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml"
+        )  # noqa: E501
         legacy_path = project_root / "docs" / "sprint-artifacts" / "sprint-status.yaml"
 
     # Determine effective sprint path and auto_exclude_legacy setting

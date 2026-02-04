@@ -59,6 +59,10 @@ from bmad_assist.core.io import get_original_cwd, save_prompt
 # get_paths() NOT used - validations_dir derived from project_path directly
 # to ensure reports are saved to the correct project (not CLI working directory)
 from bmad_assist.core.types import EpicId
+
+# Story 26.16: Deep Verify integration
+from bmad_assist.deep_verify.core.types import DeepVerifyValidationResult
+from bmad_assist.deep_verify.integration import run_deep_verify_validation
 from bmad_assist.providers import get_provider
 from bmad_assist.providers.base import BaseProvider
 from bmad_assist.validation.anonymizer import (
@@ -84,6 +88,9 @@ logger = logging.getLogger(__name__)
 
 # Type alias for validator invocation result (provider_id, output, deterministic, error)
 _ValidatorResult = tuple[str, ValidationOutput | None, DeterministicMetrics | None, str | None]
+
+# Story 26.16: Union type for gather results (validator results OR DV result)
+_GatherResult = _ValidatorResult | DeepVerifyValidationResult
 
 __all__ = [
     "ValidationError",
@@ -155,6 +162,7 @@ class ValidationPhaseResult:
         failed_validators: List of validators that timed out/failed.
         evaluation_records: Benchmarking records (Story 13.4), one per successful validator.
         evidence_aggregate: Pre-calculated Evidence Score aggregate (TIER 2).
+        deep_verify_result: Deep Verify validation result (Story 26.16) or None.
 
     """
 
@@ -165,6 +173,7 @@ class ValidationPhaseResult:
     failed_validators: list[str] = field(default_factory=list)
     evaluation_records: list["LLMEvaluationRecord"] = field(default_factory=list)
     evidence_aggregate: "EvidenceScoreAggregate | None" = None
+    deep_verify_result: DeepVerifyValidationResult | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for PhaseResult.outputs.
@@ -177,13 +186,26 @@ class ValidationPhaseResult:
             Dictionary with serializable values for PhaseResult.
 
         """
-        return {
+        data: dict[str, Any] = {
             "session_id": self.session_id,
             "validation_count": self.validation_count,
             "validators": self.validators,
             "failed_validators": self.failed_validators,
             # Records passed separately to storage layer
         }
+
+        # Story 26.16: Include Deep Verify summary in outputs
+        if self.deep_verify_result is not None:
+            data["deep_verify"] = {
+                "verdict": self.deep_verify_result.verdict.value,
+                "score": self.deep_verify_result.score,
+                "findings_count": len(self.deep_verify_result.findings),
+                "has_critical": any(
+                    f.severity.value == "critical" for f in self.deep_verify_result.findings
+                ),
+            }
+
+        return data
 
 
 def _calculate_evidence_aggregate(
@@ -557,9 +579,25 @@ async def run_validation_phase(
         master_task = asyncio.create_task(delayed_invoke(master_delay, master_coro))
         tasks.append(master_task)
     else:
-        logger.debug(
-            "phase_models.validate_story defined - master NOT auto-added"
+        logger.debug("phase_models.validate_story defined - master NOT auto-added")
+
+    # Story 26.16: Add Deep Verify task to gather (if enabled)
+    # Check if DV is enabled before adding to avoid unnecessary execution
+    dv_config = getattr(config, "deep_verify", None)
+    dv_enabled = dv_config is not None and dv_config.enabled
+    if dv_enabled:
+        dv_delay = parse_parallel_delay(config.parallel_delay) * len(tasks)
+        dv_coro = run_deep_verify_validation(
+            artifact_text=prompt,
+            config=config,
+            project_path=project_path,
+            epic_num=epic_num,
+            story_num=story_num,
+            timeout=timeout,
         )
+        dv_task = asyncio.create_task(delayed_invoke(dv_delay, dv_coro))
+        tasks.append(dv_task)
+        logger.debug("Added Deep Verify task to parallel execution")
 
     logger.info("Invoking %d validators in parallel", len(tasks))
 
@@ -571,11 +609,17 @@ async def run_validation_phase(
     successful_deterministic: list[DeterministicMetrics] = []  # AC1: paired with outputs
     successful_validators: list[str] = []
     failed_validators: list[str] = []
+    dv_result: DeepVerifyValidationResult | None = None  # Story 26.16: Track DV result
 
     for result in results:
         if isinstance(result, BaseException):
             # Unexpected exception (shouldn't happen with return_exceptions=True)
             logger.error("Unexpected exception in validator: %s", result)
+            continue
+
+        # Story 26.16: Check for DeepVerifyValidationResult BEFORE tuple unpacking
+        if isinstance(result, DeepVerifyValidationResult):
+            dv_result = result
             continue
 
         # result is tuple[str, ValidationOutput | None, DeterministicMetrics | None, str | None]
@@ -604,6 +648,21 @@ async def run_validation_phase(
         logger.info("Validator %s completed successfully", provider_id)
     for provider_id in failed_validators:
         logger.warning("Validator %s failed", provider_id)
+
+    # Story 26.16: Log Deep Verify result summary
+    if dv_result is not None:
+        if dv_result.error:
+            logger.warning(
+                "Deep Verify completed with error: %s",
+                dv_result.error,
+            )
+        else:
+            logger.info(
+                "Deep Verify completed: verdict=%s, score=%.1f, findings=%d",
+                dv_result.verdict.value,
+                dv_result.score,
+                len(dv_result.findings),
+            )
 
     # Step 5: Anonymize validations FIRST (before saving reports)
     # This ensures report filenames use anonymized IDs, not provider names
@@ -779,6 +838,7 @@ async def run_validation_phase(
     evidence_aggregate = _calculate_evidence_aggregate(anonymized)
 
     # AC5: Return evaluation_records in ValidationPhaseResult
+    # Story 26.16: Include Deep Verify result
     return ValidationPhaseResult(
         anonymized_validations=anonymized,
         session_id=mapping.session_id,
@@ -787,6 +847,7 @@ async def run_validation_phase(
         failed_validators=failed_validators,
         evaluation_records=evaluation_records,
         evidence_aggregate=evidence_aggregate,
+        deep_verify_result=dv_result,
     )
 
 
@@ -802,11 +863,12 @@ def save_validations_for_synthesis(
     run_timestamp: datetime | None = None,
     failed_validators: list[str] | None = None,
     evidence_aggregate: "EvidenceScoreAggregate | None" = None,
+    deep_verify_result: DeepVerifyValidationResult | None = None,
 ) -> str:
     """Save anonymized validations for synthesis phase retrieval.
 
     Uses file-based storage at .bmad-assist/cache/validations-{session_id}.json
-    Cache version 2 includes Evidence Score aggregate data.
+    Cache version 3 includes Deep Verify data (Story 26.16).
 
     Args:
         anonymized: List of anonymized validations.
@@ -816,6 +878,7 @@ def save_validations_for_synthesis(
         run_timestamp: Unified timestamp for this validation run. If None, uses now().
         failed_validators: List of validators that failed/timed out (Story 22.8 AC#4).
         evidence_aggregate: Pre-calculated Evidence Score aggregate (TIER 2).
+        deep_verify_result: Deep Verify validation result (Story 26.16).
 
     Returns:
         Session ID for later retrieval.
@@ -836,7 +899,7 @@ def save_validations_for_synthesis(
     timestamp = run_timestamp or datetime.now(UTC)
 
     data: dict[str, Any] = {
-        "cache_version": 2,  # ADR-4: Cache versioning for Evidence Score
+        "cache_version": 3,  # Story 26.16: Cache v3 adds Deep Verify data
         "session_id": session_id,
         "timestamp": timestamp.isoformat(),
         "validations": [
@@ -877,11 +940,17 @@ def save_validations_for_synthesis(
             "unique_count": len(evidence_aggregate.unique_findings),
         }
 
+    # Story 26.16: Store Deep Verify result
+    if deep_verify_result is not None:
+        from bmad_assist.deep_verify.core.types import serialize_validation_result
+
+        data["deep_verify"] = serialize_validation_result(deep_verify_result)
+
     try:
         with open(temp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         os.replace(temp_path, file_path)
-        logger.info("Saved validations for synthesis (v2): %s", file_path)
+        logger.info("Saved validations for synthesis (v3): %s", file_path)
     except OSError:
         if temp_path.exists():
             temp_path.unlink()
@@ -893,7 +962,9 @@ def save_validations_for_synthesis(
 def load_validations_for_synthesis(
     session_id: str,
     project_root: Path,
-) -> tuple[list[AnonymizedValidation], list[str], dict[str, Any] | None]:
+) -> tuple[
+    list[AnonymizedValidation], list[str], dict[str, Any] | None, DeepVerifyValidationResult | None
+]:
     """Load anonymized validations by session ID.
 
     Args:
@@ -901,11 +972,12 @@ def load_validations_for_synthesis(
         project_root: Project root directory.
 
     Returns:
-        Tuple of (validations, failed_validators, evidence_score):
+        Tuple of (validations, failed_validators, evidence_score, deep_verify_result):
         - validations: List of AnonymizedValidation objects.
         - failed_validators: List of validators that failed/timed out (Story 22.8 AC#4).
             Empty list for backward compatibility with old cache files.
         - evidence_score: Pre-calculated Evidence Score dict (TIER 2) or None.
+        - deep_verify_result: DeepVerifyValidationResult (Story 26.16) or None.
 
     Raises:
         ValidationError: If file not found or invalid.
@@ -968,11 +1040,25 @@ def load_validations_for_synthesis(
     # Use 'or' to handle both missing key AND explicit None value in old cache files
     failed_validators = data.get("failed_validators") or []
 
+    # Story 26.16: Load Deep Verify result (v3 cache)
+    deep_verify_result: DeepVerifyValidationResult | None = None
+    if cache_version >= 3:
+        dv_data = data.get("deep_verify")
+        if dv_data is not None:
+            try:
+                from bmad_assist.deep_verify.core.types import deserialize_validation_result
+
+                deep_verify_result = deserialize_validation_result(dv_data)
+                logger.debug("Loaded Deep Verify result from cache v3")
+            except Exception as e:
+                logger.warning("Failed to deserialize Deep Verify data: %s", e)
+
     logger.debug(
-        "Loaded %d validations, %d failed validators, evidence_score=%s for session %s",
+        "Loaded %d validations, %d failed validators, evidence_score=%s, dv_result=%s for session %s",
         len(validations),
         len(failed_validators),
         evidence_score.get("total_score") if evidence_score else None,
+        "present" if deep_verify_result else None,
         session_id,
     )
-    return validations, failed_validators, evidence_score
+    return validations, failed_validators, evidence_score, deep_verify_result

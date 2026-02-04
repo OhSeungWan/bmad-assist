@@ -1,0 +1,438 @@
+# API domain knowledge base
+# Covers REST best practices, HTTP semantics, rate limiting, idempotency, error handling
+
+knowledge_base:
+  version: "1.0"
+  domain: "api"
+  description: "API domain knowledge base - REST best practices, HTTP semantics, rate limiting, idempotency, error handling"
+
+  rules:
+    # ============================================================================
+    # REST Best Practices
+    # ============================================================================
+
+    - id: "API-REST-001"
+      domain: "api"
+      category: "standards"
+      title: "Resource Naming Violation - Non-Nouns or Verbs in URL"
+      description: |
+        REST resources should be named with nouns, not verbs. URLs should use
+        kebab-case (hyphen-separated lowercase) not camelCase or snake_case.
+
+        Example violations:
+        ```
+        GET /getUserData/123
+        GET /user_data/123
+        GET /userData/123
+        ```
+
+        Correct approach:
+        ```
+        GET /users/123
+        GET /users/123/data
+        ```
+
+        Resources represent entities (nouns), not actions (verbs).
+      severity: "error"
+      references:
+        - "https://restfulapi.net/resource-naming/"
+        - "https://tools.ietf.org/html/rfc7231"
+
+    - id: "API-REST-002"
+      domain: "api"
+      category: "standards"
+      title: "HTTP Method Misuse"
+      description: |
+        HTTP methods have specific semantics that should be respected:
+        - GET: Read resource (idempotent, safe, no body)
+        - POST: Create resource (not idempotent)
+        - PUT: Update/replace resource (idempotent)
+        - PATCH: Partial update (not necessarily idempotent)
+        - DELETE: Remove resource (idempotent)
+
+        Common violations:
+        - GET with request body
+        - POST used for updates when PUT/PATCH is appropriate
+        - Using wrong method for the intended operation
+      severity: "error"
+      references:
+        - "https://tools.ietf.org/html/rfc7231#section-4"
+        - "https://restfulapi.net/http-methods/"
+
+    - id: "API-REST-003"
+      domain: "api"
+      category: "standards"
+      title: "Stateless Architecture Violation"
+      description: |
+        REST APIs should be stateless. Each request from client to server must
+        contain all information needed to understand and process the request.
+        Server-side session storage violates this principle.
+
+        Violations:
+        - Server-side sessions storing client state
+        - Relying on session cookies for API authentication
+        - Storing request context between calls on the server
+
+        Solution: Use token-based authentication (JWT, OAuth) with each request.
+      severity: "warning"
+      references:
+        - "https://restfulapi.net/statelessness/"
+        - "https://tools.ietf.org/html/rfc7230#section-2.3"
+
+    - id: "API-REST-004"
+      domain: "api"
+      category: "best_practices"
+      title: "Missing HATEOAS Support"
+      description: |
+        HATEOAS (Hypermedia as the Engine of Application State) provides
+        navigable links in API responses, allowing clients to discover
+        related resources dynamically.
+
+        Without HATEOAS:
+        - Clients must hardcode URLs
+        - API evolution requires client updates
+        - Tight coupling between client and server
+
+        Example HATEOAS response:
+        ```json
+        {
+          "id": 123,
+          "name": "John",
+          "_links": {
+            "self": "/users/123",
+            "orders": "/users/123/orders"
+          }
+        }
+        ```
+      severity: "info"
+      references:
+        - "https://restfulapi.net/hateoas/"
+        - "https://tools.ietf.org/html/rfc5988"
+
+    # ============================================================================
+    # HTTP Semantics
+    # ============================================================================
+
+    - id: "API-HTTP-001"
+      domain: "api"
+      category: "standards"
+      title: "Incorrect HTTP Status Code Usage"
+      description: |
+        Status codes must accurately reflect the operation result.
+
+        Common errors:
+        - Returning 200 OK for errors instead of 4xx/5xx
+        - Using 404 Not Found when 401 Unauthorized is correct
+        - Generic 500 Internal Server Error for all failures
+        - Wrong 2xx codes (e.g., 200 for creation instead of 201)
+
+        Correct usage:
+        - 200: Success
+        - 201: Created
+        - 204: No Content (successful deletion)
+        - 400: Bad Request (client error)
+        - 401: Unauthorized (authentication required)
+        - 403: Forbidden (insufficient permissions)
+        - 404: Not Found
+        - 409: Conflict
+        - 422: Unprocessable Entity
+        - 429: Too Many Requests
+        - 500: Internal Server Error
+      severity: "error"
+      references:
+        - "https://tools.ietf.org/html/rfc7231#section-6"
+        - "https://httpstatuses.com/"
+
+    - id: "API-HTTP-002"
+      domain: "api"
+      category: "standards"
+      title: "Missing Content Negotiation"
+      description: |
+        APIs should respect Accept and Content-Type headers for proper
+        content negotiation between client and server.
+
+        Violations:
+        - Ignoring Accept header (always returning JSON regardless)
+        - Not setting Content-Type in response
+        - Returning wrong content type for the payload
+        - Not supporting requested content format
+
+        Best practice: Return 406 Not Acceptable if format is unsupported.
+      severity: "warning"
+      references:
+        - "https://tools.ietf.org/html/rfc7231#section-5.3.2"
+        - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Content_negotiation"
+
+    - id: "API-HTTP-003"
+      domain: "api"
+      category: "best_practices"
+      title: "Missing Caching Headers"
+      description: |
+        Proper caching headers improve performance and reduce server load.
+
+        Missing headers:
+        - Cache-Control: directives for caching behavior
+        - ETag: entity tag for conditional requests
+        - Last-Modified: timestamp for cache validation
+        - Expires: cache expiration time
+
+        Benefits:
+        - Reduced bandwidth usage
+        - Improved response times
+        - Better client experience
+      severity: "info"
+      references:
+        - "https://tools.ietf.org/html/rfc7234"
+        - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching"
+
+    - id: "API-HTTP-004"
+      domain: "api"
+      category: "standards"
+      title: "Missing Conditional Request Support"
+      description: |
+        Conditional requests (If-Match, If-None-Match, If-Modified-Since)
+        enable optimistic concurrency control and cache validation.
+
+        Use cases:
+        - Optimistic locking for updates (prevent lost updates)
+        - Cache validation (304 Not Modified responses)
+        - Safe concurrent modifications
+
+        Without conditional requests:
+        - Lost update problem in concurrent scenarios
+        - Unnecessary data transfers
+        - No conflict detection
+      severity: "warning"
+      references:
+        - "https://tools.ietf.org/html/rfc7232"
+        - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Conditional_requests"
+
+    # ============================================================================
+    # Rate Limiting
+    # ============================================================================
+
+    - id: "API-RATE-001"
+      domain: "api"
+      category: "standards"
+      title: "Missing Rate Limiting"
+      description: |
+        APIs must implement rate limiting to prevent abuse, ensure fair
+        usage, and protect backend resources.
+
+        Risks without rate limiting:
+        - Denial of service attacks
+        - Resource exhaustion
+        - Unfair resource consumption
+        - Cascading failures
+
+        Implementation:
+        - Token bucket or sliding window algorithm
+        - Per-client limits (API key, IP, user)
+        - Different limits for different endpoints
+      severity: "critical"
+      references:
+        - "https://tools.ietf.org/html/rfc6585#section-4"
+        - "https://cloud.google.com/architecture/rate-limiting-strategies-techniques"
+
+    - id: "API-RATE-002"
+      domain: "api"
+      category: "best_practices"
+      title: "No Burst Handling"
+      description: |
+        Rate limits should accommodate legitimate traffic bursts while
+        preventing sustained abuse. A rigid limit without burst capacity
+        hurts legitimate users.
+
+        Problems:
+        - Rejecting legitimate burst traffic
+        - Poor user experience during peak usage
+        - No differentiation between burst and sustained load
+
+        Solution: Use token bucket algorithm which allows burst up to
+        bucket capacity while maintaining average rate limit.
+      severity: "warning"
+      references:
+        - "https://en.wikipedia.org/wiki/Token_bucket"
+        - "https://stripe.com/blog/rate-limiters"
+
+    - id: "API-RATE-003"
+      domain: "api"
+      category: "standards"
+      title: "Missing Client Guidance Headers"
+      description: |
+        When rate limiting is applied, clients need clear guidance on
+        their current status and when they can retry.
+
+        Required headers:
+        - Retry-After: Seconds until next request allowed
+        - X-RateLimit-Limit: Maximum requests allowed
+        - X-RateLimit-Remaining: Requests remaining in window
+        - X-RateLimit-Reset: Timestamp when limit resets
+
+        Without these headers:
+        - Clients must guess when to retry
+        - Poor developer experience
+        - Increased support burden
+      severity: "error"
+      references:
+        - "https://tools.ietf.org/html/rfc6585#section-4"
+        - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After"
+
+    # ============================================================================
+    # Idempotency
+    # ============================================================================
+
+    - id: "API-IDEMPOTENCY-001"
+      domain: "api"
+      category: "standards"
+      title: "Unsafe Method Assumed Idempotent"
+      description: |
+        POST is inherently non-idempotent. Multiple identical POST requests
+        can create multiple resources. Never assume POST is idempotent
+        without explicit idempotency mechanisms.
+
+        Violations:
+        - Treating POST requests as idempotent
+        - Automatic retries of POST without idempotency keys
+        - No deduplication logic for duplicate submissions
+
+        Idempotent methods: GET, HEAD, PUT, DELETE
+        Non-idempotent: POST, PATCH (usually)
+      severity: "critical"
+      references:
+        - "https://tools.ietf.org/html/rfc7231#section-4.2"
+        - "https://stripe.com/docs/api/idempotent_requests"
+
+    - id: "API-IDEMPOTENCY-002"
+      domain: "api"
+      category: "best_practices"
+      title: "Missing Idempotency Key Header"
+      description: |
+        For operations that must be idempotent (payment processing, resource
+        creation), use Idempotency-Key header to prevent duplicate processing.
+
+        How it works:
+        1. Client generates unique key for operation
+        2. Server stores key with result on first request
+        3. Duplicate requests with same key return stored result
+
+        Without idempotency keys:
+        - Duplicate resource creation
+        - Double charging in payments
+        - Inconsistent state on retry
+      severity: "error"
+      references:
+        - "https://tools.ietf.org/html/draft-idempotency-key-header-01"
+        - "https://stripe.com/docs/api/idempotent_requests"
+
+    - id: "API-IDEMPOTENCY-003"
+      domain: "api"
+      category: "best_practices"
+      title: "Retry Without Idempotency Mechanism"
+      description: |
+        Client-side retries of non-idempotent operations without proper
+        idempotency mechanisms can cause serious issues.
+
+        Example scenario:
+        1. Client sends POST to create payment
+        2. Server processes but response is lost
+        3. Client retries, creating duplicate payment
+
+        Solutions:
+        - Use Idempotency-Key header
+        - Implement client-generated request IDs
+        - Use idempotent endpoints (PUT instead of POST for updates)
+      severity: "error"
+      references:
+        - "https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/"
+        - "https://stripe.com/docs/api/idempotent_requests"
+
+    # ============================================================================
+    # Error Handling
+    # ============================================================================
+
+    - id: "API-ERROR-001"
+      domain: "api"
+      category: "standards"
+      title: "Inconsistent Error Format"
+      description: |
+        All API error responses should follow a consistent format across
+        all endpoints. Inconsistent formats make client error handling difficult.
+
+        Example inconsistent formats:
+        ```json
+        // Endpoint A
+        {"error": "Invalid input"}
+
+        // Endpoint B
+        {"message": "Bad request", "code": 400}
+
+        // Endpoint C
+        {"detail": "Validation failed", "errors": [...]}
+        ```
+
+        Recommended standard (RFC 9457 - Problem Details):
+        ```json
+        {
+          "type": "https://api.example.com/errors/invalid-input",
+          "title": "Invalid Input",
+          "status": 400,
+          "detail": "The request body contains invalid data",
+          "instance": "/users/123"
+        }
+        ```
+      severity: "error"
+      references:
+        - "https://tools.ietf.org/html/rfc9457"
+        - "https://opensource.zalando.com/restful-api-guidelines/#176"
+
+    - id: "API-ERROR-002"
+      domain: "api"
+      category: "standards"
+      title: "Missing Error Codes"
+      description: |
+        Human-readable error messages are insufficient for programmatic
+        error handling. Include machine-readable error codes.
+
+        Problems with messages only:
+        - Clients must parse/pattern match error text
+        - Messages can change without notice
+        - Internationalization breaks client parsing
+        - No structured way to handle specific errors
+
+        Solution:
+        ```json
+        {
+          "error": {
+            "code": "INVALID_EMAIL_FORMAT",
+            "message": "The provided email is not valid"
+          }
+        }
+        ```
+      severity: "error"
+      references:
+        - "https://opensource.zalando.com/restful-api-guidelines/#177"
+        - "https://tools.ietf.org/html/rfc9457"
+
+    - id: "API-ERROR-003"
+      domain: "api"
+      category: "standards"
+      title: "Internal Details Leakage"
+      description: |
+        Error responses must not expose internal implementation details,
+        stack traces, or sensitive information.
+
+        Violations:
+        - SQL queries in error messages
+        - Stack traces returned to client
+        - Internal file paths exposed
+        - Database connection errors shown
+        - Framework-specific error details
+
+        Security risk: Information leakage aids attackers in reconnaissance.
+
+        Solution: Log full details internally, return generic messages externally.
+      severity: "critical"
+      references:
+        - "https://owasp.org/www-project-top-ten/2017/A6_2017-Security_Misconfiguration"
+        - "https://cwe.mitre.org/data/definitions/209.html"

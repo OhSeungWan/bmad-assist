@@ -113,9 +113,7 @@ def cleanup_stale_pause_flags(project_path: Path) -> None:
 
     # AC #6: Also clean stale stop.flag
     if stop_flag.exists():
-        logger.warning(
-            "Removed stale stop flag from previous crashed session."
-        )
+        logger.warning("Removed stale stop flag from previous crashed session.")
         try:
             stop_flag.unlink()
         except OSError as e:

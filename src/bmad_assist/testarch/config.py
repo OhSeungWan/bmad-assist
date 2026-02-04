@@ -259,9 +259,7 @@ class SourceConfigModel(BaseModel):
             # Check if all patterns are empty strings
             non_empty = [p for p in self.patterns if p.strip()]
             if not non_empty:
-                raise ValueError(
-                    "patterns must contain at least one non-empty string when enabled"
-                )
+                raise ValueError("patterns must contain at least one non-empty string when enabled")
         return self
 
 
@@ -354,20 +352,14 @@ class EvidenceConfig(BaseModel):
 
         # Check for path traversal
         if ".." in v:
-            raise ValueError(
-                "storage_path must not contain '..' (path traversal not allowed)"
-            )
+            raise ValueError("storage_path must not contain '..' (path traversal not allowed)")
 
         # Check for absolute paths (Unix or Windows)
         if v.startswith("/"):
-            raise ValueError(
-                "storage_path must be a relative path (absolute paths not allowed)"
-            )
+            raise ValueError("storage_path must be a relative path (absolute paths not allowed)")
         if len(v) >= 2 and v[1] == ":":
             # Windows drive letter (e.g., C:\)
-            raise ValueError(
-                "storage_path must be a relative path (absolute paths not allowed)"
-            )
+            raise ValueError("storage_path must be a relative path (absolute paths not allowed)")
 
         return v
 
@@ -438,20 +430,14 @@ class KnowledgeConfig(BaseModel):
 
         # Check for path traversal
         if ".." in v:
-            raise ValueError(
-                "index_path must not contain '..' (path traversal not allowed)"
-            )
+            raise ValueError("index_path must not contain '..' (path traversal not allowed)")
 
         # Check for absolute paths (Unix or Windows)
         if v.startswith("/"):
-            raise ValueError(
-                "index_path must be a relative path (absolute paths not allowed)"
-            )
+            raise ValueError("index_path must be a relative path (absolute paths not allowed)")
         if len(v) >= 2 and v[1] == ":":
             # Windows drive letter (e.g., C:\)
-            raise ValueError(
-                "index_path must be a relative path (absolute paths not allowed)"
-            )
+            raise ValueError("index_path must be a relative path (absolute paths not allowed)")
 
         return v
 
@@ -729,5 +715,3 @@ class TestarchConfig(BaseModel):
                     conflicting,
                 )
         return self
-
-

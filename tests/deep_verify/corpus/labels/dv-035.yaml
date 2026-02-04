@@ -1,0 +1,18 @@
+artifact_id: "dv-035"
+source: "synthetic"
+artifact_type: "code"
+language: "python"
+content_file: "artifacts/python/dv-035.py"
+
+expected_domains:
+  - domain: "api"
+    confidence: 0.75
+
+expected_findings: []
+
+known_false_positives: []
+
+metadata:
+  lines_of_code: 25
+  complexity: "low"
+  has_race_condition: false

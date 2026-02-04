@@ -305,9 +305,7 @@ class ValidateStorySynthesisCompiler:
                         len(file_list_paths),
                     )
             except Exception as e:
-                logger.warning(
-                    "Failed to collect source files for validate_story_synthesis: %s", e
-                )
+                logger.warning("Failed to collect source files for validate_story_synthesis: %s", e)
 
         # 2b. Story file
         files[str(story_path)] = story_content

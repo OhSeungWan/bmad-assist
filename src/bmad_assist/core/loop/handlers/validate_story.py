@@ -23,6 +23,8 @@ from bmad_assist.core.loop.types import PhaseResult
 # get_paths() NOT used - base_dir derived from self.project_path directly
 # to ensure evaluation records are saved to the correct project
 from bmad_assist.core.state import State
+from bmad_assist.deep_verify.core.types import Severity, VerdictDecision
+from bmad_assist.deep_verify.integration.reports import save_deep_verify_report
 from bmad_assist.validation.orchestrator import (
     InsufficientValidationsError,
     ValidationError,
@@ -107,13 +109,44 @@ class ValidateStoryHandler(BaseHandler):
             # Use session_id from mapping to maintain traceability
             # Story 22.8 AC#4: Pass failed_validators for synthesis context
             # TIER 2: Pass evidence_aggregate for Evidence Score caching
+            # Story 26.16: Pass Deep Verify result for synthesis
             save_validations_for_synthesis(
                 result.anonymized_validations,
                 self.project_path,
                 session_id=result.session_id,  # Use mapping session_id
                 failed_validators=result.failed_validators,
                 evidence_aggregate=result.evidence_aggregate,
+                deep_verify_result=result.deep_verify_result,
             )
+
+            # Story 26.16: Save Deep Verify report (if DV was run)
+            if result.deep_verify_result is not None:
+                from bmad_assist.core.paths import get_paths
+
+                validations_dir = get_paths().validations_dir
+                try:
+                    save_deep_verify_report(
+                        result=result.deep_verify_result,
+                        epic=epic_num,
+                        story=story_num,
+                        validations_dir=validations_dir,
+                    )
+                except Exception as e:
+                    logger.warning("Failed to save Deep Verify report: %s", e)
+
+            # Story 26.16: Check for CRITICAL findings and block if found
+            if result.deep_verify_result is not None:
+                dv = result.deep_verify_result
+                has_critical = any(f.severity == Severity.CRITICAL for f in dv.findings)
+
+                if dv.verdict == VerdictDecision.REJECT and has_critical:
+                    critical_count = sum(1 for f in dv.findings if f.severity == Severity.CRITICAL)
+                    error_msg = (
+                        f"Deep Verify CRITICAL findings detected: {critical_count}. "
+                        f"Security/concurrency issues must be fixed before proceeding."
+                    )
+                    logger.error(error_msg)
+                    return PhaseResult.fail(error_msg)
 
             # Save evaluation records for benchmarking (Story 13.4)
             if result.evaluation_records:

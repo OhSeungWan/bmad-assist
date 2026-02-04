@@ -300,9 +300,7 @@ class CodeReviewSynthesisCompiler:
         source_files = service.collect_files(file_list_paths, git_diff_files)
         files.update(source_files)
         if source_files:
-            logger.debug(
-                "Added %d source files to synthesis context", len(source_files)
-            )
+            logger.debug("Added %d source files to synthesis context", len(source_files))
 
         # 5. Story file (LAST - closest to instructions per recency-bias, REQUIRED)
         # story_matches already populated above for File List extraction

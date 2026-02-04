@@ -1,0 +1,58 @@
+# General Boundary Analysis Checklist
+# These items are always applied regardless of detected domains
+checklist:
+  - id: "GEN-001"
+    category: "empty_input"
+    question: "Does the code handle empty input gracefully?"
+    description: "Empty strings, empty arrays, empty maps, and zero-length inputs should not cause crashes or unexpected behavior"
+    severity_if_violated: "error"
+    domain: "general"
+
+  - id: "GEN-002"
+    category: "null_handling"
+    question: "Does the code handle nil/null values safely?"
+    description: "Null pointer dereferences should be prevented with proper nil checks before dereferencing"
+    severity_if_violated: "critical"
+    domain: "general"
+
+  - id: "GEN-003"
+    category: "max_size_limits"
+    question: "Are there limits on input size to prevent resource exhaustion?"
+    description: "Unbounded input sizes can lead to OOM errors, timeouts, or denial of service"
+    severity_if_violated: "error"
+    domain: "general"
+
+  - id: "GEN-004"
+    category: "concurrent_access"
+    question: "Is shared state properly protected during concurrent access?"
+    description: "Concurrent access to shared mutable state without synchronization can cause race conditions"
+    severity_if_violated: "critical"
+    domain: "general"
+
+  - id: "GEN-005"
+    category: "resource_cleanup"
+    question: "Are resources properly cleaned up in all exit paths?"
+    description: "Resources like file handles, connections, and locks must be released in success, error, and panic scenarios"
+    severity_if_violated: "error"
+    domain: "general"
+
+  - id: "GEN-006"
+    category: "storage_failure"
+    question: "Does the code handle storage/IO failures gracefully?"
+    description: "Disk full, permission denied, network timeout, and other IO errors should be handled without data corruption"
+    severity_if_violated: "error"
+    domain: "general"
+
+  - id: "GEN-007"
+    category: "division_by_zero"
+    question: "Are division and modulo operations protected against zero divisors?"
+    description: "Division or modulo by zero causes runtime panics/crashes"
+    severity_if_violated: "critical"
+    domain: "general"
+
+  - id: "GEN-008"
+    category: "integer_overflow"
+    question: "Are integer operations protected against overflow/underflow?"
+    description: "Integer overflow can cause wraparound, incorrect calculations, or security vulnerabilities"
+    severity_if_violated: "error"
+    domain: "general"

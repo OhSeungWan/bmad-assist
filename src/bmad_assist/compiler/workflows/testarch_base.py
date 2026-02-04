@@ -293,9 +293,7 @@ class TestarchTriModalCompiler:
                 token_estimate=result.token_estimate,
             )
 
-    def _get_first_step_for_mode(
-        self, workflow_ir: WorkflowIR, mode: str
-    ) -> Path | None:
+    def _get_first_step_for_mode(self, workflow_ir: WorkflowIR, mode: str) -> Path | None:
         """Get the first step file for the given mode.
 
         Args:
@@ -463,17 +461,9 @@ class TestarchTriModalCompiler:
 
         story_id = resolved.get("story_id")
         if story_id:
-            mission = (
-                f"{base_description}\n\n"
-                f"Mode: {mode_name}\n"
-                f"Target: Story {story_id}"
-            )
+            mission = f"{base_description}\n\nMode: {mode_name}\nTarget: Story {story_id}"
         else:
             epic_num = resolved.get("epic_num", "?")
-            mission = (
-                f"{base_description}\n\n"
-                f"Mode: {mode_name}\n"
-                f"Target: Epic {epic_num}"
-            )
+            mission = f"{base_description}\n\nMode: {mode_name}\nTarget: Epic {epic_num}"
 
         return mission

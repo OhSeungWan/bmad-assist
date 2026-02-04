@@ -1,0 +1,31 @@
+# Concurrency Domain Checklist for Boundary Analysis
+# Covers parallel execution, async, workers, locks, mutexes edge cases
+
+checklist:
+  - id: "CC-BOUNDARY-001"
+    category: "race_conditions"
+    question: "Are race conditions prevented with proper synchronization?"
+    description: "Shared mutable state accessed by multiple threads/processes must be protected"
+    severity_if_violated: "critical"
+    domain: "concurrency"
+
+  - id: "CC-BOUNDARY-002"
+    category: "deadlock_prevention"
+    question: "Is there protection against deadlock?"
+    description: "Lock ordering and timeouts should prevent deadlock scenarios"
+    severity_if_violated: "critical"
+    domain: "concurrency"
+
+  - id: "CC-BOUNDARY-003"
+    category: "thread_pool_exhaustion"
+    question: "Are thread pool limits enforced?"
+    description: "Unbounded thread creation can exhaust system resources"
+    severity_if_violated: "error"
+    domain: "concurrency"
+
+  - id: "CC-BOUNDARY-004"
+    category: "async_cancel_handling"
+    question: "Are async cancellations handled gracefully?"
+    description: "Cancelled tasks should clean up resources properly without leaving locks held"
+    severity_if_violated: "error"
+    domain: "concurrency"

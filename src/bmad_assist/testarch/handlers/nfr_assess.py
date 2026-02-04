@@ -199,9 +199,7 @@ class NFRAssessHandler(TestarchBaseHandler):
                 {
                     "skipped": True,
                     "reason": f"nfr-assessment.md already exists: {assessment_path}",
-                    "nfr_assess_mode": getattr(
-                        self.config.testarch, "nfr_assess_mode", "off"
-                    ),
+                    "nfr_assess_mode": getattr(self.config.testarch, "nfr_assess_mode", "off"),
                 }
             )
 

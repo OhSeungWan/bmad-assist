@@ -1,0 +1,67 @@
+patterns:
+  - id: "CC-001"
+    domain: "concurrency"
+    severity: "critical"
+    signals:
+      - "race condition"
+      - "concurrent access"
+      - >-
+        regex:\brace\b
+      - >-
+        regex:\bgo\s+func\(
+      - 'regex:\bgoroutine\b'
+    description: "Race condition in shared state access"
+    remediation: "Use proper synchronization (mutex, channels) or atomic operations"
+
+  - id: "CC-002"
+    domain: "concurrency"
+    severity: "critical"
+    signals:
+      - "deadlock"
+      - "nested lock"
+      - "lock ordering"
+      - >-
+        regex:\bRLock\(\).*Lock\(\)
+      - >-
+        regex:\bdefer\s+.*\.Unlock\(\)
+    description: "Deadlock potential from nested locks or incorrect lock ordering"
+    remediation: "Establish consistent lock ordering, avoid nested locks, use defer for unlocking"
+
+  - id: "CC-003"
+    domain: "concurrency"
+    severity: "error"
+    signals:
+      - "atomicity"
+      - "not atomic"
+      - "TOCTOU"
+      - "time of check"
+      - 'regex:\*sync\.atomic'
+    description: "Atomicity violation without proper synchronization"
+    remediation: "Use atomic operations or wrap operations in mutex for atomicity guarantees"
+
+  - id: "CC-004"
+    domain: "concurrency"
+    severity: "critical"
+    signals:
+      - "check then act"
+      - "check-then-act"
+      - >-
+        regex:\bif\s+.*len\s*\(.*\).*append
+      - >-
+        regex:\bif\s+.*nil\s*\{[^}]*create
+      - >-
+        regex:\bif\s+.*!=\s*nil\s*\{[^}]*\.
+    description: "Check-then-act pattern without proper locking - TOCTOU race condition"
+    remediation: "Use atomic check-and-set operations or wrap check+act in mutex"
+
+  - id: "CC-005"
+    domain: "concurrency"
+    severity: "error"
+    signals:
+      - "double-checked locking"
+      - "double checked"
+      - "DCL"
+      - 'regex:\bonce\b'
+      - 'regex:\bsingleton\b'
+    description: "Double-checked locking anti-pattern"
+    remediation: "Use sync.Once for lazy initialization, it provides proper memory barriers"

@@ -5,6 +5,7 @@ import pytest
 from bmad_assist.compiler.patching.config import reset_patcher_config
 from bmad_assist.compiler.patching.transforms import (
     _parse_flags,
+    fix_xml_entities,
     format_transform_prompt,
     post_process_compiled,
 )
@@ -323,3 +324,64 @@ More content"""
         result = post_process_compiled(content, rules)
         assert "{installed_path}" not in result
         assert "<workflow-yaml>" in result
+
+
+class TestFixXmlEntities:
+    """Tests for fix_xml_entities function."""
+
+    def test_valid_xml_unchanged(self) -> None:
+        """Valid XML is returned unchanged."""
+        content = "<workflow><step n='1'>Content</step></workflow>"
+        result = fix_xml_entities(content)
+        assert result == content
+
+    def test_fixes_unescaped_less_than_before_digit(self) -> None:
+        """Fixes < before digit (e.g., 'score < 3')."""
+        content = "<action>Check if score < 3</action>"
+        result = fix_xml_entities(content)
+        assert result == "<action>Check if score &lt; 3</action>"
+
+    def test_fixes_unescaped_less_than_before_space(self) -> None:
+        """Fixes < before space."""
+        content = "<action>value < other</action>"
+        result = fix_xml_entities(content)
+        assert result == "<action>value &lt; other</action>"
+
+    def test_fixes_unescaped_less_than_before_equals(self) -> None:
+        """Fixes <= pattern (less than or equal)."""
+        content = "<action>Check if score <= 5</action>"
+        result = fix_xml_entities(content)
+        assert result == "<action>Check if score &lt;= 5</action>"
+
+    def test_preserves_xml_tags(self) -> None:
+        """Does not escape < that are part of XML tags."""
+        content = "<workflow><action>test</action></workflow>"
+        result = fix_xml_entities(content)
+        assert result == content
+
+    def test_fixes_multiple_occurrences(self) -> None:
+        """Fixes multiple unescaped < characters."""
+        content = "<action>if x < 3 and y < 5</action>"
+        result = fix_xml_entities(content)
+        assert result == "<action>if x &lt; 3 and y &lt; 5</action>"
+
+    def test_real_world_score_comparison(self) -> None:
+        """Fixes real-world score comparison patterns from workflows."""
+        content = """<action>Determine Evidence Verdict:
+        - **EXCELLENT** (score ≤ -3): Many clean passes
+        - **PASS** (score < 3): Acceptable quality
+        - **MAJOR REWORK** (3 ≤ score < 7): Significant issues
+        - **REJECT** (score ≥ 7): Critical problems
+      </action>"""
+        result = fix_xml_entities(content)
+        assert "score &lt; 3" in result
+        assert "score &lt; 7" in result
+        # Unicode ≤ and ≥ should be preserved
+        assert "score ≤ -3" in result
+        assert "score ≥ 7" in result
+
+    def test_preserves_already_escaped_entities(self) -> None:
+        """Preserves already escaped &lt; entities."""
+        content = "<action>Check if score &lt; 3</action>"
+        result = fix_xml_entities(content)
+        assert result == content

@@ -200,9 +200,7 @@ class TEAVariableResolver:
             logger.warning("Failed to compute config hash: %s", e)
             return ""
 
-    def _get_testarch_config(
-        self, context: "CompilerContext"
-    ) -> "TestarchConfig | None":
+    def _get_testarch_config(self, context: "CompilerContext") -> "TestarchConfig | None":
         """Get TestarchConfig from bmad-assist config.
 
         Args:
@@ -393,9 +391,7 @@ class TEAVariableResolver:
                 resolved[key] = value
 
         # Step 3: Add workflow-specific variables (higher priority)
-        workflow_vars = self._resolve_workflow_variables(
-            context, workflow_id, testarch_config
-        )
+        workflow_vars = self._resolve_workflow_variables(context, workflow_id, testarch_config)
         resolved.update(workflow_vars)
 
         # Step 4: Existing tea.py resolution for additional variables

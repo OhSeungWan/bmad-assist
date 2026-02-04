@@ -24,7 +24,9 @@ CRITICAL RULES:
 - Apply ALL instructions below IN ORDER
 - Return the COMPLETE modified document in <transformed-document> tags
 - Preserve all content not affected by the instructions
-- If an instruction cannot be applied (target not found), skip it silently"""
+- If an instruction cannot be applied (target not found), skip it silently
+- PRESERVE XML ENTITIES: Keep &lt; &gt; &amp; &quot; &apos; exactly as they appear in the source.
+  Do NOT convert them to < > & " ' characters. These are intentional XML escapes."""
 
 DEFAULT_OUTPUT_FORMAT = """\
 Return ONLY the complete modified document after applying ALL instructions:

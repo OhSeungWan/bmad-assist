@@ -198,9 +198,7 @@ class CursorAgentProvider(BaseProvider):
         # Build command with platform-aware large prompt handling
         # Args before prompt: --print, --model, <model>, --force
         base_args = ["--print", "--model", effective_model, "--force"]
-        command, temp_file = build_cross_platform_command(
-            "cursor-agent", base_args, prompt
-        )
+        command, temp_file = build_cross_platform_command("cursor-agent", base_args, prompt)
 
         # For ProviderResult, we need original command structure (without shell wrapper)
         original_command: tuple[str, ...] = (
@@ -281,9 +279,7 @@ class CursorAgentProvider(BaseProvider):
                     if should_print_progress():
                         shown_model = display_model or effective_model
                         tag = format_tag("START", color_index)
-                        write_progress(
-                            f"{tag} Invoking Cursor Agent CLI (model={shown_model})..."
-                        )
+                        write_progress(f"{tag} Invoking Cursor Agent CLI (model={shown_model})...")
 
                     try:
                         returncode = process.wait(timeout=effective_timeout)
@@ -324,9 +320,7 @@ class CursorAgentProvider(BaseProvider):
                 if returncode != 0:
                     exit_status = ExitStatus.from_code(returncode)
                     stderr_truncated = (
-                        stderr_content[:STDERR_TRUNCATE_LENGTH]
-                        if stderr_content
-                        else "(empty)"
+                        stderr_content[:STDERR_TRUNCATE_LENGTH] if stderr_content else "(empty)"
                     )
 
                     logger.error(
@@ -338,8 +332,7 @@ class CursorAgentProvider(BaseProvider):
                     )
 
                     message = (
-                        f"Cursor Agent CLI failed with exit code {returncode}: "
-                        f"{stderr_truncated}"
+                        f"Cursor Agent CLI failed with exit code {returncode}: {stderr_truncated}"
                     )
                     error = ProviderExitCodeError(
                         message,
@@ -350,7 +343,10 @@ class CursorAgentProvider(BaseProvider):
                     )
 
                     # Use shared helper for transient error detection
-                    if is_transient_error(stderr_content, exit_status) and attempt < MAX_RETRIES - 1: # noqa: E501
+                    if (
+                        is_transient_error(stderr_content, exit_status)
+                        and attempt < MAX_RETRIES - 1
+                    ):  # noqa: E501
                         last_error = error
                         continue
 

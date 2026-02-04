@@ -95,8 +95,7 @@ def prompt_continuation(message: str) -> bool:
             else:
                 # Invalid input - re-prompt
                 console.print(
-                    "Invalid choice. Enter [bold]Y[/bold] to continue or "
-                    "[bold]q[/bold] to quit: ",
+                    "Invalid choice. Enter [bold]Y[/bold] to continue or [bold]q[/bold] to quit: ",
                     end="",
                 )
 

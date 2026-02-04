@@ -54,10 +54,12 @@ class TestarchTestReviewCompiler(TestarchTriModalCompiler):
 
         """
         base_vars = super().get_variables()
-        base_vars.update({
-            "test_dir": None,
-            "project_path": None,
-        })
+        base_vars.update(
+            {
+                "test_dir": None,
+                "project_path": None,
+            }
+        )
         return base_vars
 
     def validate_context(self, context: CompilerContext) -> None:

@@ -1,0 +1,18 @@
+artifact_id: "dv-047"
+source: "synthetic"
+artifact_type: "spec"
+language: null
+content_file: "artifacts/specs/dv-047.md"
+
+expected_domains:
+  - domain: "transform"
+    confidence: 0.8
+
+expected_findings: []
+
+known_false_positives: []
+
+metadata:
+  lines_of_code: 30
+  complexity: "low"
+  has_race_condition: false

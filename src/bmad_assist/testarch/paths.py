@@ -64,9 +64,7 @@ ARTIFACT_CONFIGS: dict[str, tuple[str, list[str]]] = {
 }
 
 # For backward compatibility: simple pattern mapping (flattened)
-ARTIFACT_PATTERNS: dict[str, list[str]] = {
-    k: v[1] for k, v in ARTIFACT_CONFIGS.items()
-}
+ARTIFACT_PATTERNS: dict[str, list[str]] = {k: v[1] for k, v in ARTIFACT_CONFIGS.items()}
 
 # Valid artifact types (for config validation) - exclude internal test-design-system
 VALID_ARTIFACT_TYPES: frozenset[str] = frozenset(
@@ -155,8 +153,7 @@ def get_artifact_patterns(
     """
     if artifact_type not in ARTIFACT_CONFIGS:
         raise ValueError(
-            f"Invalid artifact type: {artifact_type}. "
-            f"Valid types: {sorted(VALID_ARTIFACT_TYPES)}"
+            f"Invalid artifact type: {artifact_type}. Valid types: {sorted(VALID_ARTIFACT_TYPES)}"
         )
 
     _, patterns = ARTIFACT_CONFIGS[artifact_type]

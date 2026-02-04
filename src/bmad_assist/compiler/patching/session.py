@@ -14,7 +14,7 @@ import logging
 import re
 
 from bmad_assist.compiler.patching.config import get_patcher_config
-from bmad_assist.compiler.patching.transforms import format_transform_prompt
+from bmad_assist.compiler.patching.transforms import fix_xml_entities, format_transform_prompt
 from bmad_assist.compiler.patching.types import TransformResult
 from bmad_assist.core.exceptions import PatchError
 from bmad_assist.providers.base import BaseProvider
@@ -152,6 +152,9 @@ class PatchSession:
                         self.max_retries,
                     )
                     continue
+
+                # Fix any XML entity issues (LLMs may convert &lt; to <)
+                new_workflow = fix_xml_entities(new_workflow)
 
                 # Check if content changed (no-op detection)
                 if new_workflow.strip() == self.workflow_content.strip():

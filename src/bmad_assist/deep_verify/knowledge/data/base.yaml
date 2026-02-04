@@ -1,0 +1,106 @@
+# Universal knowledge base rules
+# These rules apply to all domains and are always loaded first.
+# Domain-specific rules can override these with the same ID.
+
+knowledge_base:
+  version: "1.0"
+  domain: "general"
+  description: "Universal rules applicable to all domains"
+
+  rules:
+    - id: "GEN-001"
+      domain: "general"
+      category: "best_practices"
+      title: "Comprehensive Error Handling"
+      description: |
+        Functions should handle errors explicitly rather than silently swallowing
+        exceptions. Return errors to callers or log them appropriately.
+        Error handling should be specific and not use bare except clauses.
+      severity: "warning"
+      references:
+        - "https://docs.python.org/3/tutorial/errors.html"
+
+    - id: "GEN-002"
+      domain: "general"
+      category: "best_practices"
+      title: "Input Validation"
+      description: |
+        All function inputs should be validated for type, range, and format
+        before processing. Fail fast on invalid input with clear error messages.
+        Never trust external input without validation.
+      severity: "error"
+      references:
+        - "https://owasp.org/www-project-proactive-controls/v3/en/c5-validate-inputs"
+
+    - id: "GEN-003"
+      domain: "general"
+      category: "best_practices"
+      title: "Resource Cleanup"
+      description: |
+        Resources (files, connections, locks) should be properly released
+        after use. Prefer context managers (with statements) for automatic cleanup.
+        Avoid resource leaks that can exhaust system limits.
+      severity: "warning"
+      references:
+        - "https://docs.python.org/3/library/contextlib.html"
+
+    - id: "GEN-004"
+      domain: "general"
+      category: "best_practices"
+      title: "Documentation and Comments"
+      description: |
+        Public APIs should have docstrings explaining parameters, return values,
+        and exceptions. Complex logic should have inline comments explaining why,
+        not what. Keep documentation in sync with code changes.
+      severity: "info"
+      references:
+        - "https://peps.python.org/pep-0257/"
+
+    - id: "GEN-005"
+      domain: "general"
+      category: "best_practices"
+      title: "Type Safety"
+      description: |
+        Use type hints for function parameters and return values.
+        Avoid using Any when a more specific type is possible.
+        Type hints improve code readability and enable static analysis.
+      severity: "info"
+      references:
+        - "https://peps.python.org/pep-0484/"
+
+    - id: "GEN-006"
+      domain: "general"
+      category: "heuristics"
+      title: "Magic Numbers and Strings"
+      description: |
+        Avoid magic numbers and strings in code. Define them as named constants
+        with descriptive names. This makes the code self-documenting and
+        easier to modify.
+      severity: "info"
+      references:
+        - "https://refactoring.guru/replace-magic-numbers-with-symbolic-constants"
+
+    - id: "GEN-007"
+      domain: "general"
+      category: "best_practices"
+      title: "Function Length and Complexity"
+      description: |
+        Functions should be small and focused on a single responsibility.
+        If a function is too long (e.g., >50 lines) or deeply nested,
+        consider breaking it into smaller, more manageable functions.
+      severity: "info"
+      references:
+        - "https://refactoring.guru/extract-method"
+
+    - id: "GEN-008"
+      domain: "general"
+      category: "standards"
+      title: "Sensitive Data Exposure"
+      description: |
+        Sensitive data (passwords, API keys, tokens, PII) should never be
+        logged, stored in plain text, or exposed in error messages.
+        Use secure handling practices for all sensitive information.
+      severity: "critical"
+      references:
+        - "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
+        - "https://cwe.mitre.org/data/definitions/532.html"

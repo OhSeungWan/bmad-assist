@@ -687,6 +687,7 @@ from bmad_assist.commands.patch import patch_app  # noqa: E402
 from bmad_assist.commands.qa import qa_app  # noqa: E402
 from bmad_assist.commands.sprint import sprint_app  # noqa: E402
 from bmad_assist.commands.test import test_app  # noqa: E402
+from bmad_assist.commands.verify import verify_app  # noqa: E402
 from bmad_assist.testarch.standalone.cli import tea_app  # noqa: E402
 
 app.add_typer(config_app, name="config")
@@ -696,6 +697,7 @@ app.add_typer(sprint_app, name="sprint")
 app.add_typer(experiment_app, name="experiment")
 app.add_typer(qa_app, name="qa")
 app.add_typer(test_app, name="test")
+app.add_typer(verify_app, name="verify")
 app.add_typer(tea_app, name="tea")
 
 

@@ -89,9 +89,7 @@ def apply_start_point_override(
 
     # Determine story_key and status
     if story_id is not None:
-        story_key, status = _handle_story_specified(
-            epic, story_id, epic_stories, force_restart
-        )
+        story_key, status = _handle_story_specified(epic, story_id, epic_stories, force_restart)
     else:
         result = _handle_epic_only(
             epic, epic_stories, config, project_path, project_state, force_restart
@@ -149,9 +147,7 @@ def _handle_story_specified(
 
     # Handle done stories with user interaction
     if status == "done":
-        story_key, status = _handle_done_story(
-            story_key, epic, epic_stories, force_restart
-        )
+        story_key, status = _handle_done_story(story_key, epic, epic_stories, force_restart)
 
     return story_key, status
 
@@ -187,9 +183,7 @@ def _handle_done_story(
             )
             return next_story.number, next_story.status
         else:
-            _error(
-                f"Story {story_key} is done and no other stories in epic {epic} are available"
-            )
+            _error(f"Story {story_key} is done and no other stories in epic {epic} are available")
             raise typer.Exit(code=EXIT_CONFIG_ERROR)
 
     # Interactive mode - prompt user
@@ -278,9 +272,7 @@ def _handle_fully_completed_epic(
         return story.number, "backlog"
 
     if is_non_interactive():
-        _error(
-            f"Epic {epic} is fully completed (all phases done). Use --force to restart."
-        )
+        _error(f"Epic {epic} is fully completed (all phases done). Use --force to restart.")
         raise typer.Exit(code=EXIT_CONFIG_ERROR)
 
     console.print(f"\n[bold green]Epic {epic} is fully completed![/bold green]")
@@ -330,9 +322,7 @@ def _handle_pending_phases(
 
     if is_non_interactive():
         # Auto-start next pending phase
-        _info(
-            f"Epic {epic} {lifecycle.describe()}. Starting {next_phase.value.upper()} phase."
-        )
+        _info(f"Epic {epic} {lifecycle.describe()}. Starting {next_phase.value.upper()} phase.")
         story_key = lifecycle.last_story
         assert story_key is not None
         _save_phase_state(config, project_path, epic, story_key, next_phase)
@@ -362,11 +352,11 @@ def _interactive_phase_selection(
 
     qa_mode = is_qa_enabled()
 
-    console.print(
-        f"\n[bold yellow]Epic {epic} - {lifecycle.describe()}[/bold yellow]"
-    )
+    console.print(f"\n[bold yellow]Epic {epic} - {lifecycle.describe()}[/bold yellow]")
     console.print("  [dim]- All stories done: [green]yes[/green][/dim]")
-    retro_status = "[green]done[/green]" if lifecycle.retro_completed else "[yellow]pending[/yellow]"  # noqa: E501
+    retro_status = (
+        "[green]done[/green]" if lifecycle.retro_completed else "[yellow]pending[/yellow]"
+    )  # noqa: E501
     console.print(f"  [dim]- Retrospective: {retro_status}[/dim]")
     # Only show QA status when --qa flag is enabled
     if qa_mode:

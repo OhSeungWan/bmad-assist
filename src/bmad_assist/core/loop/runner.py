@@ -111,8 +111,6 @@ _EFFECTIVE_CONFIG_TEMP_SUFFIX = ".tmp"
 _REDACTED_VALUE = "***REDACTED***"
 
 
-
-
 def _get_dangerous_field_paths(
     model: type,
     prefix: str = "",
@@ -192,9 +190,7 @@ def _redact_secrets(config_dict: dict[str, Any], dangerous_paths: set[str]) -> d
             }
             if list_item_dangerous:
                 result[key] = [
-                    _redact_secrets(item, list_item_dangerous)
-                    if isinstance(item, dict)
-                    else item
+                    _redact_secrets(item, list_item_dangerous) if isinstance(item, dict) else item
                     for item in value
                 ]
             else:
@@ -844,9 +840,7 @@ def _run_loop_body(
             # Check if this is a teardown phase failure (resume case)
             # Teardown phases should warn and continue, not halt (per ADR-002)
             teardown_phases = (
-                [Phase(p) for p in loop_config.epic_teardown]
-                if loop_config.epic_teardown
-                else []
+                [Phase(p) for p in loop_config.epic_teardown] if loop_config.epic_teardown else []
             )
             is_teardown_failure = state.current_phase in teardown_phases
 
@@ -1337,9 +1331,7 @@ def _run_loop_body(
             # Check if this is the last epic_teardown phase (in case get_next_phase
             # returns None for a phase that's part of teardown but executed separately)
             teardown_phases = (
-                [Phase(p) for p in loop_config.epic_teardown]
-                if loop_config.epic_teardown
-                else []
+                [Phase(p) for p in loop_config.epic_teardown] if loop_config.epic_teardown else []
             )
             is_teardown_phase = current_phase in teardown_phases
 

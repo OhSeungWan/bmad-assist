@@ -145,19 +145,19 @@ def _load_with_comments(path: Path) -> tuple[dict[str, Any] | None, dict[str, st
             # ruamel stores comments in .ca (Comment Attribute) structure
             # ca.items[key] contains tuples: (pre-comment, inline-comment, ...)
             for key in dev_status:
-                    comment_token = dev_status.ca.items.get(key)
-                    if comment_token is not None:
-                        # Structure: [pre_comment, inline_comment, post_comment, ...]
-                        # inline_comment is at index 2 (after key and value positions)
-                        inline = comment_token[2] if len(comment_token) > 2 else None
-                        if inline is not None:
-                            # CommentToken has .value attribute with the actual comment
-                            comment_text = getattr(inline, "value", None)
-                            if comment_text:
-                                # Strip leading # and whitespace
-                                comment_str = str(comment_text).lstrip("# \t").rstrip()
-                                if comment_str:
-                                    comments[str(key)] = comment_str
+                comment_token = dev_status.ca.items.get(key)
+                if comment_token is not None:
+                    # Structure: [pre_comment, inline_comment, post_comment, ...]
+                    # inline_comment is at index 2 (after key and value positions)
+                    inline = comment_token[2] if len(comment_token) > 2 else None
+                    if inline is not None:
+                        # CommentToken has .value attribute with the actual comment
+                        comment_text = getattr(inline, "value", None)
+                        if comment_text:
+                            # Strip leading # and whitespace
+                            comment_str = str(comment_text).lstrip("# \t").rstrip()
+                            if comment_str:
+                                comments[str(key)] = comment_str
 
         return data, comments
 
@@ -347,9 +347,7 @@ def _add_epic_comments(dev_status: CommentedMap) -> None:
         if epic_id != current_epic and epic_id is not None:
             # Add comment before this entry - ruamel adds "# " prefix automatically
             # Use indent=2 to align with the YAML structure
-            dev_status.yaml_set_comment_before_after_key(
-                key, before=f"Epic {epic_id}", indent=2
-            )
+            dev_status.yaml_set_comment_before_after_key(key, before=f"Epic {epic_id}", indent=2)
             current_epic = epic_id
 
 

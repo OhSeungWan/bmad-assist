@@ -1,0 +1,38 @@
+# Storage Boundary Analysis Checklist
+# Applied when STORAGE domain is detected
+
+checklist:
+  - id: "STORAGE-BOUNDARY-001"
+    category: "transaction_boundaries"
+    question: "Are transactions properly scoped and committed/rolled back?"
+    description: "Missing transaction boundaries or improper rollback can cause data inconsistency and corruption"
+    severity_if_violated: "error"
+    domain: "storage"
+
+  - id: "STORAGE-BOUNDARY-002"
+    category: "connection_pool_exhaustion"
+    question: "Are database connections returned to the pool in all paths?"
+    description: "Connection leaks exhaust the pool causing application-wide outages"
+    severity_if_violated: "critical"
+    domain: "storage"
+
+  - id: "STORAGE-BOUNDARY-003"
+    category: "disk_space"
+    question: "Does the code handle disk space exhaustion gracefully?"
+    description: "Disk full errors during writes can cause data corruption or application crashes"
+    severity_if_violated: "error"
+    domain: "storage"
+
+  - id: "STORAGE-BOUNDARY-004"
+    category: "query_timeouts"
+    question: "Do database queries have appropriate timeouts?"
+    description: "Long-running queries without timeouts can block resources and cause cascading failures"
+    severity_if_violated: "error"
+    domain: "storage"
+
+  - id: "STORAGE-BOUNDARY-005"
+    category: "concurrent_writes"
+    question: "Are concurrent write operations handled safely?"
+    description: "Race conditions in concurrent writes can cause lost updates or inconsistent state"
+    severity_if_violated: "critical"
+    domain: "storage"

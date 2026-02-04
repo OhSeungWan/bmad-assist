@@ -1,0 +1,66 @@
+patterns:
+  - id: "SEC-001"
+    domain: "security"
+    severity: "error"
+    signals:
+      - "timing attack"
+      - "constant time"
+      - 'regex:\btime\.Now\(\)'
+      - 'regex:\bhmac\.Equal'
+      - 'regex:\bsubtle\.ConstantTimeCompare'
+    description: "Timing attack vulnerability in sensitive comparison"
+    remediation: "Use constant-time comparison functions (crypto/subtle.ConstantTimeCompare)"
+
+  - id: "SEC-002"
+    domain: "security"
+    severity: "critical"
+    signals:
+      - "weak crypto"
+      - "weak encryption"
+      - "MD5"
+      - "SHA1"
+      - "DES"
+      - 'regex:\bcrypto/md5'
+      - 'regex:\bcrypto/sha1'
+    description: "Weak cryptographic algorithm usage"
+    remediation: "Use strong algorithms: SHA-256/SHA-3 for hashing, AES-256 for encryption"
+
+  - id: "SEC-003"
+    domain: "security"
+    severity: "critical"
+    signals:
+      - "secret in log"
+      - "log credential"
+      - "password in"
+      - "token in"
+      - >-
+        regex:\b(log|Log|LOG)\.(Print|Debug|Info|Warn|Error).*\+
+    description: "Secret potentially leaked in log output"
+    remediation: "Sanitize logs to exclude secrets, tokens, and credentials"
+
+  - id: "SEC-004"
+    domain: "security"
+    severity: "critical"
+    signals:
+      - "auth bypass"
+      - "authentication bypass"
+      - "skip auth"
+      - "bypass check"
+      - >-
+        regex:/\*\s*TODO.*auth
+      - >-
+        regex:\breturn\s+nil\s*//\s*skip
+    description: "Potential authentication bypass"
+    remediation: "Ensure all code paths enforce authentication checks, remove temporary bypasses"
+
+  - id: "SEC-005"
+    domain: "security"
+    severity: "error"
+    signals:
+      - "replay attack"
+      - "nonce"
+      - "timestamp"
+      - 'regex:\bnonce\b'
+      - 'regex:\btimestamp\b'
+    description: "Replay attack vulnerability - missing nonce/timestamp validation"
+    remediation: "Include nonces or timestamps with cryptographic signatures, validate freshness"

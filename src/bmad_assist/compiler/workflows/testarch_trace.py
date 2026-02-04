@@ -66,11 +66,13 @@ class TestarchTraceCompiler(TestarchTriModalCompiler):
 
         """
         base_vars = super().get_variables()
-        base_vars.update({
-            "test_dir": None,  # From workflow.yaml variables
-            "source_dir": None,  # From workflow.yaml variables
-            "gate_type": None,  # story|epic|release|hotfix
-        })
+        base_vars.update(
+            {
+                "test_dir": None,  # From workflow.yaml variables
+                "source_dir": None,  # From workflow.yaml variables
+                "gate_type": None,  # story|epic|release|hotfix
+            }
+        )
         return base_vars
 
     def _get_workflow_specific_variables(

@@ -150,7 +150,9 @@ def should_run_workflow(
 
     # model == "auto" - defer to handler's individual mode check
     # Just return True and let the handler's _execute_with_mode_check handle it
-    logger.debug("Workflow %s allowed by engagement_model=auto (defers to handler mode check)", workflow_id)
+    logger.debug(
+        "Workflow %s allowed by engagement_model=auto (defers to handler mode check)", workflow_id
+    )
     return True
 
 

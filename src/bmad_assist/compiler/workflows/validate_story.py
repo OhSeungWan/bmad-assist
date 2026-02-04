@@ -323,15 +323,12 @@ class ValidateStoryCompiler:
                     )
                 else:
                     logger.warning(
-                        "No source files collected for validate_story "
-                        "(budget=%d, candidates=%d)",
+                        "No source files collected for validate_story (budget=%d, candidates=%d)",
                         service.budget,
                         len(file_list_paths),
                     )
             except Exception as e:
-                logger.warning(
-                    "Failed to collect source files for validate_story: %s", e
-                )
+                logger.warning("Failed to collect source files for validate_story: %s", e)
 
         # 6b. Insert story LAST (closest to instructions per recency-bias)
         files[str(story_path)] = story_content

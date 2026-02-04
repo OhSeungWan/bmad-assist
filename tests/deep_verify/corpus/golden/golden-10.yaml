@@ -1,0 +1,15 @@
+artifact_id: "golden-10"
+content_file: "artifacts/python/golden-10.py"
+
+expected_verdict:
+  decision: "ACCEPT"
+  score: 0.0
+  findings: []
+  domains_detected:
+    - domain: "security"
+      confidence: 0.8
+  methods_executed: ["#153", "#154"]
+
+tolerance:
+  score: 0.5
+  confidence: 0.1

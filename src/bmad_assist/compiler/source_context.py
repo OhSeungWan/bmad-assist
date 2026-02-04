@@ -36,25 +36,71 @@ MIN_ENABLED_BUDGET = 100
 MAX_AST_PARSE_SIZE = 100 * 1024
 
 # Binary file extensions to skip
-BINARY_EXTENSIONS: frozenset[str] = frozenset({
-    ".png", ".jpg", ".jpeg", ".gif", ".ico", ".svg", ".webp", ".bmp",
-    ".woff", ".woff2", ".ttf", ".eot", ".otf",
-    ".mp3", ".mp4", ".wav", ".avi", ".mov", ".webm",
-    ".zip", ".tar", ".gz", ".bz2", ".7z", ".rar",
-    ".pdf", ".doc", ".docx", ".xls", ".xlsx",
-    ".exe", ".dll", ".so", ".dylib",
-    ".pyc", ".pyo", ".pyd", ".class",
-    ".db", ".sqlite", ".sqlite3",
-})
+BINARY_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".ico",
+        ".svg",
+        ".webp",
+        ".bmp",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".eot",
+        ".otf",
+        ".mp3",
+        ".mp4",
+        ".wav",
+        ".avi",
+        ".mov",
+        ".webm",
+        ".zip",
+        ".tar",
+        ".gz",
+        ".bz2",
+        ".7z",
+        ".rar",
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".xls",
+        ".xlsx",
+        ".exe",
+        ".dll",
+        ".so",
+        ".dylib",
+        ".pyc",
+        ".pyo",
+        ".pyd",
+        ".class",
+        ".db",
+        ".sqlite",
+        ".sqlite3",
+    }
+)
 
 # Config file extensions (for scoring penalty)
-CONFIG_EXTENSIONS: frozenset[str] = frozenset({
-    ".yaml", ".yml", ".json", ".toml", ".ini", ".cfg", ".conf",
-})
+CONFIG_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".yaml",
+        ".yml",
+        ".json",
+        ".toml",
+        ".ini",
+        ".cfg",
+        ".conf",
+    }
+)
 
 # Test file patterns
 TEST_PATH_PATTERNS: tuple[str, ...] = (
-    "tests/", "test/", "__tests__/", "spec/",
+    "tests/",
+    "test/",
+    "__tests__/",
+    "spec/",
 )
 TEST_FILE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^test_.*\.py$"),
@@ -336,7 +382,9 @@ class SourceContextService:
 
         """
         if not self.is_enabled():
-            logger.debug("Source context disabled for %s (budget=%d)", self.workflow_name, self.budget) # noqa: E501
+            logger.debug(
+                "Source context disabled for %s (budget=%d)", self.workflow_name, self.budget
+            )  # noqa: E501
             return {}
 
         git_diff_files = git_diff_files or []
@@ -533,9 +581,11 @@ class SourceContextService:
 
         # Calculate threshold for adaptive mode
         effective_files = len(selected_files)
-        threshold_tokens = int(
-            (self.budget / effective_files) * extraction.adaptive_threshold
-        ) if effective_files > 0 else self.budget
+        threshold_tokens = (
+            int((self.budget / effective_files) * extraction.adaptive_threshold)
+            if effective_files > 0
+            else self.budget
+        )
 
         logger.debug(
             "Adaptive threshold: %d tokens (budget=%d, files=%d, threshold=%.2f)",
@@ -824,11 +874,13 @@ def get_git_diff_files(
     result: list[GitDiffFile] = []
     for path, changes in files:
         hunk_ranges = _get_hunk_ranges(project_root, path)
-        result.append(GitDiffFile(
-            path=path,
-            change_lines=changes,
-            hunk_ranges=hunk_ranges,
-        ))
+        result.append(
+            GitDiffFile(
+                path=path,
+                change_lines=changes,
+                hunk_ranges=hunk_ranges,
+            )
+        )
 
     return result
 
@@ -851,7 +903,7 @@ def _parse_git_stat(stat_output: str) -> list[tuple[str, int]]:
 
     # Extract stat section (before summary line)
     stat_end = re.search(r"^\s*\d+\s+files?\s+changed", stat_output, re.MULTILINE | re.IGNORECASE)
-    stat_section = stat_output[:stat_end.start()] if stat_end else stat_output
+    stat_section = stat_output[: stat_end.start()] if stat_end else stat_output
 
     result: list[tuple[str, int]] = []
     seen: set[str] = set()
@@ -870,7 +922,7 @@ def _parse_git_stat(stat_output: str) -> list[tuple[str, int]]:
         changes = int(match.group(2))
 
         # Skip if already handled as rename or if it looks like binary
-        if path in seen or "=>" in path or "Bin" in stat_output[match.start():match.end() + 50]:
+        if path in seen or "=>" in path or "Bin" in stat_output[match.start() : match.end() + 50]:
             continue
 
         result.append((path, changes))

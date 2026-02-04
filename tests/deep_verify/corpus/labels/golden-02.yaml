@@ -1,0 +1,18 @@
+artifact_id: "golden-02"
+source: "synthetic"
+artifact_type: "code"
+language: "python"
+content_file: "artifacts/python/golden-02.py"
+
+expected_domains:
+  - domain: "security"
+    confidence: 0.8
+
+expected_findings: []
+
+known_false_positives: []
+
+metadata:
+  lines_of_code: 5
+  complexity: "low"
+  has_race_condition: false

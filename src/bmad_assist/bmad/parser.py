@@ -247,9 +247,7 @@ def _has_story_anchor(section: str) -> bool:
         True if section contains **Status:** or **Priority:** field.
 
     """
-    return bool(
-        STATUS_PATTERN.search(section) or PRIORITY_PATTERN.search(section)
-    )
+    return bool(STATUS_PATTERN.search(section) or PRIORITY_PATTERN.search(section))
 
 
 def _extract_dependencies(section: str) -> list[str]:

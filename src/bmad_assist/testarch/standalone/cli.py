@@ -582,8 +582,7 @@ def nfr_assess_command(
     valid_categories = {"performance", "security", "reliability", "maintainability", "all"}
     if category and category not in valid_categories:
         _error(
-            f"Invalid category '{category}'. "
-            f"Valid values: {', '.join(sorted(valid_categories))}"
+            f"Invalid category '{category}'. Valid values: {', '.join(sorted(valid_categories))}"
         )
         raise typer.Exit(code=EXIT_ERROR)
 

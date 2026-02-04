@@ -2,6 +2,34 @@
 
 All notable changes to bmad-assist are documented in this file.
 
+## [0.4.18] - 2026-02-04
+
+### Added
+- **Epic 26: Deep Verify Integration** - Complete verification module with 23 stories:
+  - `bmad-assist verify <file>` - Standalone CLI command for code verification
+  - 8 verification methods: Pattern Match (#153), Boundary Analysis (#154), Assumption Surfacing (#155), Temporal Consistency (#157), Adversarial Review (#201), Domain Expert (#203), Integration Analysis (#204), Worst-Case Construction (#205)
+  - Domain detection with LLM-based classification (Security, API, Messaging, Storage, Concurrency, Transform)
+  - Pattern library with 50+ regex-based detection patterns
+  - Evidence-based scoring with configurable severity weights
+  - Integration hooks for validation and code review synthesis phases
+  - LLM infrastructure: retry handler, rate limiter, cost tracker
+  - Benchmarking corpus with golden test cases
+- **IPC Foundation** - Tech-spec and Epics 29-32 for JSON-RPC protocol over Unix sockets
+- **Sprint Management Guide** - Documentation for sprint-status.yaml workflow
+
+### Changed
+- **Deep Verify: Configurable Provider** - Use `helper` provider from config instead of hardcoded `haiku` model
+- **CI: Streamlined Pipeline** - Remove LLM benchmark steps from GitHub Actions (too slow/expensive for CI)
+
+### Fixed
+- **Test Performance** - Suite optimized from 12 minutes to 1:53 (under 2 minute target)
+  - Fixed fixture dependency bugs causing real LLM API calls in mocked tests
+  - Added `@pytest.mark.slow` decorator for tests requiring real LLM calls
+  - Default pytest config now skips slow tests (`-m "not slow"`)
+- **Type Safety** - Resolved all mypy errors (25 → 0) with proper generic types and annotations
+- **Linting** - Fixed ruff errors (F821 undefined names, type annotations)
+- **Corpus Loader** - Made `source` and `artifact_type` optional in label loading
+
 ## [0.4.17] - 2026-02-02
 
 ### Added

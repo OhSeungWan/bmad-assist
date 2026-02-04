@@ -1,0 +1,45 @@
+# Security Boundary Analysis Checklist
+# Applied when SECURITY domain is detected
+
+checklist:
+  - id: "SEC-BOUNDARY-001"
+    category: "auth_bypass"
+    question: "Are all authentication bypasses intentional and documented?"
+    description: "Undocumented auth bypasses create critical security vulnerabilities allowing unauthorized access"
+    severity_if_violated: "critical"
+    domain: "security"
+
+  - id: "SEC-BOUNDARY-002"
+    category: "secret_exposure"
+    question: "Are secrets (keys, tokens, passwords) properly protected from exposure?"
+    description: "Secrets should not be logged, returned in errors, or exposed through debug endpoints"
+    severity_if_violated: "critical"
+    domain: "security"
+
+  - id: "SEC-BOUNDARY-003"
+    category: "timing_attacks"
+    question: "Are sensitive operations protected against timing attacks?"
+    description: "String comparison, lookup operations, and crypto operations should use constant-time algorithms"
+    severity_if_violated: "error"
+    domain: "security"
+
+  - id: "SEC-BOUNDARY-004"
+    category: "input_validation"
+    question: "Is all user input validated before processing?"
+    description: "Unvalidated input can lead to injection attacks, XSS, path traversal, and other vulnerabilities"
+    severity_if_violated: "error"
+    domain: "security"
+
+  - id: "SEC-BOUNDARY-005"
+    category: "privilege_escalation"
+    question: "Are authorization checks enforced on all privileged operations?"
+    description: "Missing authorization checks allow privilege escalation and unauthorized actions"
+    severity_if_violated: "critical"
+    domain: "security"
+
+  - id: "SEC-BOUNDARY-006"
+    category: "rate_limiting"
+    question: "Are sensitive endpoints protected by rate limiting?"
+    description: "Without rate limiting, endpoints are vulnerable to brute force, enumeration, and DoS attacks"
+    severity_if_violated: "error"
+    domain: "security"

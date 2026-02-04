@@ -25,9 +25,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Regex patterns for extraction
-ISSUES_SECTION_PATTERN = re.compile(
-    r"## Issues Verified.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL
-)
+ISSUES_SECTION_PATTERN = re.compile(r"## Issues Verified.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL)
 SEVERITY_HEADER_PATTERN = re.compile(
     r"^###\s+(Critical|High|Medium|Low)", re.IGNORECASE | re.MULTILINE
 )

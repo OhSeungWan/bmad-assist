@@ -149,9 +149,7 @@ def get_workflow_not_found_message(workflow_name: str, project_root: Path) -> st
 
     return (
         f"Workflow '{workflow_name}' not found!\n\n"
-        f"Checked locations:\n"
-        + "\n".join(f"  - {loc}" for loc in checked)
-        + "\n\n"
+        f"Checked locations:\n" + "\n".join(f"  - {loc}" for loc in checked) + "\n\n"
         f"To fix:\n"
         f"  1. Reinstall bmad-assist: pip install -e .\n"
         f"  2. Or install BMAD: Copy _bmad/ from github.com/bmad-code-org/BMAD-METHOD\n"

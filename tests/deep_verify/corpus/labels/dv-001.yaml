@@ -1,0 +1,26 @@
+artifact_id: "dv-001"
+source: "synthetic"
+artifact_type: "code"
+language: "go"
+content_file: "artifacts/go/dv-001.go"
+
+expected_domains:
+  - domain: "concurrency"
+    confidence: 0.9
+
+expected_findings:
+  - pattern_id: "CC-004"
+    severity: "critical"
+    title: "Check-then-act race condition"
+    description: "Check-then-act operation without proper synchronization"
+    method_id: "#153"
+    domain: "concurrency"
+    line_number: 28
+    quote: "if len(b.data) < 100 { b.data = append(b.data, item) }"
+
+known_false_positives: []
+
+metadata:
+  lines_of_code: 35
+  complexity: "low"
+  has_race_condition: true

@@ -496,9 +496,7 @@ class DashboardServer:
             await self._loop_controller.stop()
             self._loop_controller.shutdown()
             self._loop_controller = None  # Reset for fresh config on next start
-            await self.sse_broadcaster.broadcast_output(
-                "⏹️ Loop stopped.", provider="dashboard"
-            )
+            await self.sse_broadcaster.broadcast_output("⏹️ Loop stopped.", provider="dashboard")
             return {"status": "stopped", "message": "Loop stopped"}
 
         # Write stop.flag for subprocess to detect (Story 22.10 - Task 3)
@@ -1135,7 +1133,9 @@ class DashboardServer:
             result["epics"].append(epic_data)
 
         # Sort epics by id (numeric first, then string)
-        result["epics"].sort(key=lambda e: (0, int(e["id"])) if str(e["id"]).isdigit() else (1, str(e["id"])))
+        result["epics"].sort(
+            key=lambda e: (0, int(e["id"])) if str(e["id"]).isdigit() else (1, str(e["id"]))
+        )
 
         return result
 
@@ -1393,9 +1393,7 @@ class DashboardServer:
             logger.exception("Failed to get story %s in epic %s", story_id, epic_id)
             return None
 
-    def get_story_file_content(
-        self, epic_id: str, story_id: str
-    ) -> dict[str, Any] | None:
+    def get_story_file_content(self, epic_id: str, story_id: str) -> dict[str, Any] | None:
         """Get story file content from implementation-artifacts directory.
 
         Story 24.5: Searches for story files matching pattern {epic}-{story}-*.md
@@ -1460,14 +1458,10 @@ class DashboardServer:
             }
 
         except Exception:
-            logger.exception(
-                "Failed to get story file content for %s.%s", epic_id, story_id
-            )
+            logger.exception("Failed to get story file content for %s.%s", epic_id, story_id)
             return None
 
-    def _extract_story_title(
-        self, content: str, filename: str, epic_id: str, story_id: str
-    ) -> str:
+    def _extract_story_title(self, content: str, filename: str, epic_id: str, story_id: str) -> str:
         """Extract story title with fallback hierarchy.
 
         Story 24.5: Title extraction order:

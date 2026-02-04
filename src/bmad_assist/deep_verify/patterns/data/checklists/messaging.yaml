@@ -1,0 +1,45 @@
+# Messaging Boundary Analysis Checklist
+# Applied when MESSAGING domain is detected
+
+checklist:
+  - id: "MSG-BOUNDARY-001"
+    category: "ordering_guarantees"
+    question: "Is message ordering handled correctly when order matters?"
+    description: "Out-of-order message processing can cause state inconsistencies and incorrect behavior"
+    severity_if_violated: "error"
+    domain: "messaging"
+
+  - id: "MSG-BOUNDARY-002"
+    category: "timeout_handling"
+    question: "Are message processing timeouts properly configured and handled?"
+    description: "Missing or excessive timeouts can cause message loss, duplicate processing, or resource exhaustion"
+    severity_if_violated: "error"
+    domain: "messaging"
+
+  - id: "MSG-BOUNDARY-003"
+    category: "retry_storms"
+    question: "Is retry logic designed to prevent retry storms?"
+    description: "Aggressive retry without backoff can overwhelm downstream services and amplify failures"
+    severity_if_violated: "error"
+    domain: "messaging"
+
+  - id: "MSG-BOUNDARY-004"
+    category: "dead_letter_handling"
+    question: "Are poison messages handled via dead letter queues?"
+    description: "Messages that repeatedly fail processing should be diverted to prevent blocking the queue"
+    severity_if_violated: "error"
+    domain: "messaging"
+
+  - id: "MSG-BOUNDARY-005"
+    category: "duplicate_processing"
+    question: "Is the system idempotent to handle duplicate messages?"
+    description: "At-least-once delivery guarantees require idempotent processing to avoid side effects"
+    severity_if_violated: "error"
+    domain: "messaging"
+
+  - id: "MSG-BOUNDARY-006"
+    category: "message_size_limits"
+    question: "Are message sizes validated against limits?"
+    description: "Oversized messages can cause memory issues, timeouts, or broker rejection"
+    severity_if_violated: "warning"
+    domain: "messaging"

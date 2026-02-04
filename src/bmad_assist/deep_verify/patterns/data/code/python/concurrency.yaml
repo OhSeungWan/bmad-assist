@@ -1,0 +1,114 @@
+patterns:
+  # Example:
+  #   t = threading.Thread(target=worker)
+  #   t.start()
+  #   # BAD: No t.join() - thread may not complete
+  - id: "CC-001-CODE-PY"
+    domain: "concurrency"
+    severity: "error"
+    signals:
+      - "threading.Thread"
+      - ".start("
+      - 'regex:\.start\s*\(\s*\)'
+    description: "Thread started without join - zombie thread risk"
+    remediation: "Always call thread.join() or use ThreadPoolExecutor with context manager"
+
+  # Example:
+  #   counter = 0
+  #   def worker():
+  #       global counter
+  #       counter += 1  # BAD: Race condition
+  - id: "CC-002-CODE-PY"
+    domain: "concurrency"
+    severity: "critical"
+    signals:
+      - "global "
+      - 'regex:\bglobal\s+\w+'
+      - "threading"
+    description: "Global variable mutation in threaded code - race condition"
+    remediation: "Use threading.Lock, queue.Queue, or thread-local storage"
+
+  # Example:
+  #   lock = threading.Lock()
+  #   lock.acquire()
+  #   # ... critical section ...
+  #   lock.release()  # BAD: May not release on exception
+  - id: "CC-003-CODE-PY"
+    domain: "concurrency"
+    severity: "error"
+    signals:
+      - "threading.Lock"
+      - "threading.RLock"
+      - 'regex:\.acquire\s*\(\s*\)'
+      - 'regex:\.release\s*\(\s*\)'
+    description: "Lock not used as context manager - risk of not releasing"
+    remediation: "Use `with lock:` context manager to ensure release"
+
+  # Example:
+  #   async def main():
+  #       asyncio.create_task(worker())  # BAD: Task not awaited
+  - id: "CC-004-CODE-PY"
+    domain: "concurrency"
+    severity: "error"
+    signals:
+      - "asyncio.create_task"
+      - 'regex:\bcreate_task\s*\('
+    description: "asyncio task created but not awaited or gathered"
+    remediation: "Use await task, asyncio.gather(), or store task reference and await later"
+
+  # Example:
+  #   with concurrent.futures.ThreadPoolExecutor() as executor:
+  #       future = executor.submit(worker)  # BAD: No timeout
+  #       result = future.result()  # May block forever
+  - id: "CC-005-CODE-PY"
+    domain: "concurrency"
+    severity: "error"
+    signals:
+      - "concurrent.futures"
+      - "ThreadPoolExecutor"
+      - "ProcessPoolExecutor"
+      - 'regex:\.submit\s*\('
+      - 'regex:\.result\s*\(\s*\)'
+    description: "concurrent.futures usage without timeout - potential indefinite block"
+    remediation: "Always use future.result(timeout=seconds) or executor with timeout"
+
+  # Example:
+  #   async with aiohttp.ClientSession() as session:
+  #       async with session.get(url) as resp:  # BAD: No timeout
+  - id: "CC-006-CODE-PY"
+    domain: "concurrency"
+    severity: "error"
+    signals:
+      - "aiohttp"
+      - "ClientSession"
+      - 'regex:\bsession\.get\s*\('
+      - 'regex:\bsession\.post\s*\('
+    description: "Async HTTP request without timeout - may hang indefinitely"
+    remediation: "Use aiohttp.ClientTimeout or timeout= parameter on requests"
+
+  # Example:
+  #   event = threading.Event()
+  #   event.wait()  # BAD: No timeout, may wait forever
+  - id: "CC-007-CODE-PY"
+    domain: "concurrency"
+    severity: "warning"
+    signals:
+      - "threading.Event"
+      - 'regex:\.wait\s*\(\s*\)'
+      - "asyncio.Event"
+    description: "Event.wait() without timeout - potential indefinite wait"
+    remediation: "Use wait(timeout=seconds) or ensure event is always set"
+
+  # Example:
+  #   queue = Queue()
+  #   queue.get()  # BAD: Blocking get without timeout
+  - id: "CC-008-CODE-PY"
+    domain: "concurrency"
+    severity: "warning"
+    signals:
+      - "queue.Queue"
+      - "asyncio.Queue"
+      - 'regex:\.get\s*\(\s*\)'
+      - 'regex:\.put\s*\('
+    description: "Queue operation may block indefinitely"
+    remediation: "Use get(block=False), get(timeout=seconds), or check queue.empty()"

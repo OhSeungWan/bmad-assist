@@ -1,0 +1,23 @@
+artifact_id: "golden-01"
+source: "synthetic"
+artifact_type: "code"
+language: "go"
+content_file: "artifacts/go/golden-01.go"
+
+expected_domains:
+  - domain: "concurrency"
+    confidence: 0.9
+
+expected_findings:
+  - pattern_id: "CC-004"
+    severity: "critical"
+    title: "Check-then-act race condition"
+    line_number: 14
+    quote: "if c.count >= 0 { c.count++ }"
+
+known_false_positives: []
+
+metadata:
+  lines_of_code: 15
+  complexity: "low"
+  has_race_condition: true

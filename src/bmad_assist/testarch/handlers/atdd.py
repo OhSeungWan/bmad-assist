@@ -254,7 +254,7 @@ class ATDDHandler(TestarchBaseHandler):
 
         # Check ATDD mode
         mode, _ = self._check_mode(state, "atdd_mode")
-        should_check_eligibility = (mode == "auto")
+        should_check_eligibility = mode == "auto"
 
         # Handle not configured case
         if mode == "not_configured":

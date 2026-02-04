@@ -219,8 +219,7 @@ def _execute_epic_teardown(
         if not result.success:
             # Teardown failure - log warning and CONTINUE (per ADR-002)
             logger.warning(
-                "Epic teardown phase %s failed for epic %s: %s. "
-                "Continuing to next teardown phase.",
+                "Epic teardown phase %s failed for epic %s: %s. Continuing to next teardown phase.",
                 phase_name,
                 state.current_epic,
                 result.error,

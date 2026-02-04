@@ -1,0 +1,345 @@
+# Storage domain knowledge base
+# Covers ACID properties, indexing, query optimization, and connection pooling
+
+knowledge_base:
+  version: "1.0"
+  domain: "storage"
+  description: "Storage domain knowledge base - ACID properties, indexing, query optimization, connection pooling"
+
+  rules:
+    # ============================================================================
+    # ACID Properties
+    # ============================================================================
+
+    - id: "DB-ACID-001"
+      domain: "storage"
+      category: "standards"
+      title: "Atomicity Violation - Multiple Operations Without Transaction"
+      description: |
+        Multiple related database operations should be wrapped in a transaction
+        to ensure atomicity. Without a transaction, partial failures can leave
+        the database in an inconsistent state.
+
+        Example violation:
+        ```go
+        db.Exec("UPDATE accounts SET balance = balance - 100 WHERE id = 1")
+        db.Exec("UPDATE accounts SET balance = balance + 100 WHERE id = 2")
+        ```
+
+        If the second operation fails, the first has already committed,
+        creating an inconsistency (100 units lost).
+      severity: "critical"
+      references:
+        - "https://www.postgresql.org/docs/current/tutorial-transactions.html"
+        - "https://dev.mysql.com/doc/refman/8.0/en/commit.html"
+
+    - id: "DB-ACID-002"
+      domain: "storage"
+      category: "standards"
+      title: "Consistency Violation - Data Validation Bypassed or Deferred"
+      description: |
+        Data consistency rules (constraints, foreign keys, triggers) should be
+        enforced at the database level, not just in application code. Relying
+        solely on application validation allows data inconsistencies when
+        bypassing the application layer.
+
+        Common issues:
+        - Foreign key constraints disabled for "performance"
+        - Check constraints missing on critical fields
+        - Validation only in application, not database
+        - Data migrations bypassing application logic
+      severity: "error"
+      references:
+        - "https://www.postgresql.org/docs/current/ddl-constraints.html"
+        - "https://dev.mysql.com/doc/refman/8.0/en/create-table-check-constraints.html"
+
+    - id: "DB-ACID-003"
+      domain: "storage"
+      category: "standards"
+      title: "Isolation Violation - Concurrent Access Without Proper Locking"
+      description: |
+        Concurrent database operations on shared data require proper isolation
+        to prevent race conditions. Without proper locking or transaction
+        isolation, concurrent operations can cause lost updates, dirty reads,
+        or inconsistent states.
+
+        Common issues:
+        - Read-modify-write cycles without locking
+        - SELECT without FOR UPDATE in concurrent scenarios
+        - Improper transaction isolation level
+        - Missing row-level locks during updates
+      severity: "critical"
+      references:
+        - "https://www.postgresql.org/docs/current/transaction-iso.html"
+        - "https://dev.mysql.com/doc/refman/8.0/en/innodb-transaction-isolation-levels.html"
+
+    - id: "DB-ACID-004"
+      domain: "storage"
+      category: "standards"
+      title: "Durability Gap - Write Acknowledged Before Commit Confirmed"
+      description: |
+        Durability ensures that committed transactions survive system failures.
+        Code that acknowledges writes before the database confirms commit
+        risks data loss during crashes.
+
+        Common issues:
+        - Async writes without confirmation
+        - Caching layers returning success before DB commit
+        - Fire-and-forget database operations
+        - Missing fsync/durable writes for critical data
+      severity: "error"
+      references:
+        - "https://www.postgresql.org/docs/current/wal-reliability.html"
+        - "https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_flush_log_at_trx_commit"
+
+    # ============================================================================
+    # Indexing Best Practices
+    # ============================================================================
+
+    - id: "DB-INDEX-001"
+      domain: "storage"
+      category: "best_practices"
+      title: "Missing Primary Key - Table Without Explicit Primary Key"
+      description: |
+        Tables should always have an explicit primary key. Without a primary key:
+        - Rows cannot be uniquely identified
+        - Replication may fail or be inefficient
+        - ORM frameworks may behave unexpectedly
+        - Row-level operations are unreliable
+
+        Even surrogate keys (auto-increment, UUID) are better than no primary key.
+      severity: "error"
+      references:
+        - "https://www.postgresql.org/docs/current/ddl-constraints.html#DDL-CONSTRAINTS-PRIMARY-KEYS"
+        - "https://dev.mysql.com/doc/refman/8.0/en/optimizing-primary-keys.html"
+
+    - id: "DB-INDEX-002"
+      domain: "storage"
+      category: "best_practices"
+      title: "Missing Foreign Key Index - Foreign Key Without Supporting Index"
+      description: |
+        Foreign key columns should have indexes to support efficient JOIN
+        operations and constraint checking. Without indexes, foreign key
+        validation can cause full table scans.
+
+        Also needed for:
+        - Efficient cascading updates/deletes
+        - Fast referential integrity checks
+        - Query performance on JOIN conditions
+      severity: "warning"
+      references:
+        - "https://www.postgresql.org/docs/current/indexes-types.html"
+        - "https://dev.mysql.com/doc/refman/8.0/en/create-index.html"
+
+    - id: "DB-INDEX-003"
+      domain: "storage"
+      category: "best_practices"
+      title: "Inefficient Composite Index - Column Order Violates Selectivity"
+      description: |
+        Composite indexes should have columns ordered by selectivity (most
+        selective first). Poor column ordering results in indexes that cannot
+        be used effectively for queries.
+
+        Guidelines:
+        - Most selective columns first
+        - Columns used in equality conditions before range conditions
+        - Consider query patterns when designing indexes
+      severity: "warning"
+      references:
+        - "https://use-the-index-luke.com/sql/where-clause/the-equals-operator/concatenated-keys"
+        - "https://www.postgresql.org/docs/current/indexes-multicolumn.html"
+
+    - id: "DB-INDEX-004"
+      domain: "storage"
+      category: "best_practices"
+      title: "Missing Covering Index - Frequent Query Could Use Covering Index"
+      description: |
+        Queries that frequently access a small set of columns can benefit from
+        covering indexes, where all needed columns are in the index itself,
+        avoiding table lookups.
+
+        Benefits:
+        - Eliminates table access (index-only scans)
+        - Reduces I/O operations
+        - Improves query performance significantly
+      severity: "info"
+      references:
+        - "https://use-the-index-luke.com/sql/clustering/index-only-scan-covering-index"
+        - "https://www.postgresql.org/docs/current/indexes-index-only-scans.html"
+
+    # ============================================================================
+    # Query Optimization
+    # ============================================================================
+
+    - id: "DB-QUERY-001"
+      domain: "storage"
+      category: "standards"
+      title: "N+1 Query Pattern - Loop With Individual Queries Instead of Batch"
+      description: |
+        The N+1 query anti-pattern occurs when code executes one query to
+        fetch a list, then N additional queries to fetch related data for
+        each item. This causes severe performance degradation.
+
+        Example violation:
+        ```python
+        users = db.query("SELECT * FROM users")
+        for user in users:
+            orders = db.query(f"SELECT * FROM orders WHERE user_id = {user.id}")
+        ```
+
+        Solution: Use JOIN or IN clause to fetch all data in single query.
+      severity: "error"
+      references:
+        - "https://secure.phabricator.com/book/phabcontrib/article/n_plus_one/"
+        - "https://docs.sqlalchemy.org/en/14/orm/loading_relationships.html"
+
+    - id: "DB-QUERY-002"
+      domain: "storage"
+      category: "standards"
+      title: "Unbounded SELECT - Query Without LIMIT or Pagination"
+      description: |
+        SELECT queries without LIMIT clauses can return unlimited result sets,
+        causing:
+        - Memory exhaustion on application server
+        - Network congestion
+        - Database resource exhaustion
+        - Timeouts and degraded performance
+
+        Always implement pagination for queries that may return many rows.
+      severity: "error"
+      references:
+        - "https://www.postgresql.org/docs/current/queries-limit.html"
+        - "https://dev.mysql.com/doc/refman/8.0/en/limit-optimization.html"
+
+    - id: "DB-QUERY-003"
+      domain: "storage"
+      category: "standards"
+      title: "Missing WHERE Clause - UPDATE or DELETE Without WHERE"
+      description: |
+        UPDATE or DELETE statements without WHERE clauses affect ALL rows in
+        the table. This is rarely the intended behavior and can cause
+        catastrophic data loss or corruption.
+
+        Always:
+        - Include explicit WHERE clause
+        - Validate affected rows count
+        - Use transactions for safety
+        - Test on non-production data first
+      severity: "critical"
+      references:
+        - "https://www.postgresql.org/docs/current/sql-update.html"
+        - "https://dev.mysql.com/doc/refman/8.0/en/update.html"
+
+    - id: "DB-QUERY-004"
+      domain: "storage"
+      category: "best_practices"
+      title: "SELECT * Anti-Pattern - Selecting All Columns When Few Needed"
+      description: |
+        Using SELECT * retrieves all columns when only a subset are needed.
+        This wastes:
+        - Network bandwidth
+        - Memory resources
+        - CPU for serialization/deserialization
+        - Caching efficiency
+
+        Explicitly list only the columns needed for the specific use case.
+      severity: "warning"
+      references:
+        - "https://www.postgresql.org/docs/current/queries-select-lists.html"
+        - "https://use-the-index-luke.com/sql/columns/select-all-columns"
+
+    # ============================================================================
+    # Connection Pooling
+    # ============================================================================
+
+    - id: "DB-POOL-001"
+      domain: "storage"
+      category: "standards"
+      title: "Connection Pool Exhaustion - Unbounded Concurrent Database Access"
+      description: |
+        Creating unlimited concurrent database connections can exhaust the
+        connection pool, causing:
+        - Application deadlock (waiting for available connection)
+        - Database server overload
+        - Cascading failures across services
+
+        Use connection pools with appropriate limits and timeout settings.
+      severity: "error"
+      references:
+        - "https://www.postgresql.org/docs/current/connect-estab.html"
+        - "https://github.com/brettwooldridge/HikariCP/wiki/About-Pool-Sizing"
+
+    - id: "DB-POOL-002"
+      domain: "storage"
+      category: "standards"
+      title: "Connection Leak - Connection Not Returned to Pool"
+      description: |
+        Database connections must be returned to the pool after use. Connection
+        leaks gradually exhaust the pool until the application fails.
+
+        Always:
+        - Use defer/ensure/finally to return connections
+        - Set connection timeouts
+        - Monitor pool metrics
+        - Close connections in all code paths (including error paths)
+      severity: "error"
+      references:
+        - "https://wiki.postgresql.org/wiki/Number_Of_Database_Connections"
+        - "https://docs.python.org/3/library/contextlib.html"
+
+    - id: "DB-POOL-003"
+      domain: "storage"
+      category: "best_practices"
+      title: "Improper Pool Sizing - Pool Size Mismatched to Workload"
+      description: |
+        Connection pool size should match the actual workload. Incorrect sizing
+        causes:
+        - Too small: contention and latency under load
+        - Too large: wasted resources and database overhead
+
+        Formula: connections = ((core_count * 2) + effective_spindle_count)
+        Adjust based on actual workload monitoring.
+      severity: "warning"
+      references:
+        - "https://github.com/brettwooldridge/HikariCP/wiki/About-Pool-Sizing"
+        - "https://www.postgresql.org/docs/current/runtime-config-connection.html"
+
+    # ============================================================================
+    # Additional Storage Best Practices
+    # ============================================================================
+
+    - id: "DB-MIGRATION-001"
+      domain: "storage"
+      category: "best_practices"
+      title: "Non-Transactional Migration - Schema Change Without Transaction"
+      description: |
+        Database migrations should run within transactions when possible so
+        that failed migrations can be rolled back cleanly. Without transactions,
+        partial migrations leave the database in an inconsistent state.
+
+        Best practices:
+        - Wrap migrations in transactions
+        - Make migrations backward-compatible when possible
+        - Test migrations on copies of production data
+        - Have rollback procedures ready
+      severity: "warning"
+      references:
+        - "https://www.postgresql.org/docs/current/sql-begin.html"
+        - "https://flywaydb.org/documentation/concepts/migrations.html"
+
+    - id: "DB-TIMEOUT-001"
+      domain: "storage"
+      category: "best_practices"
+      title: "Missing Query Timeout - Query Without Execution Time Limit"
+      description: |
+        Long-running queries without timeouts can:
+        - Block other operations
+        - Hold locks for extended periods
+        - Exhaust connection pools
+        - Cause cascading failures
+
+        Always set appropriate statement timeouts based on expected query duration.
+      severity: "warning"
+      references:
+        - "https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-STATEMENT-TIMEOUT"
+        - "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_max_execution_time"

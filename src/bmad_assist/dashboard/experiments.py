@@ -798,7 +798,11 @@ def manifest_to_details(manifest: RunManifest) -> ExperimentRunDetails:
     def _resolve_loop(loop_obj: Any) -> dict[str, Any]:
         if loop_obj is None:
             return {"name": None, "source": None, "sequence": []}
-        return {"name": loop_obj.name, "source": loop_obj.source, "sequence": list(loop_obj.sequence)} # noqa: E501
+        return {
+            "name": loop_obj.name,
+            "source": loop_obj.source,
+            "sequence": list(loop_obj.sequence),
+        }  # noqa: E501
 
     resolved = ResolvedDetails(
         fixture=_resolve_fixture(manifest.resolved.fixture if manifest.resolved else None),
@@ -1470,7 +1474,7 @@ def _read_yaml_content_sync(source_path: str) -> str | None:
         content = path.read_text(encoding="utf-8")
         if len(content) > MAX_YAML_CONTENT_SIZE:
             truncated = content[: 95 * 1024]  # First 95KB
-            return f"# Content truncated (exceeds {MAX_YAML_CONTENT_SIZE // 1024}KB limit)\n{truncated}" # noqa: E501
+            return f"# Content truncated (exceeds {MAX_YAML_CONTENT_SIZE // 1024}KB limit)\n{truncated}"  # noqa: E501
         return content
     except (OSError, UnicodeDecodeError) as e:
         logger.warning("Failed to read YAML content from %s: %s", source_path, e)

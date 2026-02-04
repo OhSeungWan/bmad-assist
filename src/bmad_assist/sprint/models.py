@@ -225,9 +225,8 @@ class SprintStatus(BaseModel):
         pattern = _get_epic_pattern(epic_str)
 
         for entry in self.entries.values():
-            if (
-                entry.entry_type in (EntryType.EPIC_STORY, EntryType.MODULE_STORY)
-                and pattern.match(entry.key)
+            if entry.entry_type in (EntryType.EPIC_STORY, EntryType.MODULE_STORY) and pattern.match(
+                entry.key
             ):
                 results.append(entry)
 

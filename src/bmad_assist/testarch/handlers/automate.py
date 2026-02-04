@@ -199,9 +199,7 @@ class AutomateHandler(TestarchBaseHandler):
                 {
                     "skipped": True,
                     "reason": f"automation-summary.md already exists: {summary_path}",
-                    "automate_mode": getattr(
-                        self.config.testarch, "automate_mode", "off"
-                    ),
+                    "automate_mode": getattr(self.config.testarch, "automate_mode", "off"),
                 }
             )
 

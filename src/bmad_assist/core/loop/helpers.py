@@ -57,6 +57,7 @@ def _print_phase_banner(phase: str, epic: EpicId | None, story: int | str | None
     except Exception:
         pass  # Dashboard not available or hook failed
 
+
 # Type alias for state parameter
 LoopState = State
 

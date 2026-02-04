@@ -1,0 +1,333 @@
+# Messaging domain knowledge base
+# Covers delivery semantics, ordering guarantees, DLQ patterns, and backoff strategies
+
+knowledge_base:
+  version: "1.0"
+  domain: "messaging"
+  description: "Messaging domain knowledge base - delivery semantics, ordering, DLQ patterns, backoff strategies"
+
+  rules:
+    # ============================================================================
+    # Delivery Semantics
+    # ============================================================================
+
+    - id: "MSG-SEMANTICS-001"
+      domain: "messaging"
+      category: "standards"
+      title: "Missing Idempotency - At-Least-Once Delivery Without Idempotent Consumer"
+      description: |
+        Most message brokers guarantee at-least-once delivery. Without
+        idempotent consumers, duplicate message processing can cause:
+        - Duplicate charges or transactions
+        - Data inconsistencies
+        - Side effects executed multiple times
+
+        Implement idempotency keys or deduplication logic in consumers.
+      severity: "critical"
+      references:
+        - "https://docs.aws.amazon.com/sqs/latest/dg/at-least-once-delivery.html"
+        - "https://kafka.apache.org/documentation/#semantics"
+
+    - id: "MSG-SEMANTICS-002"
+      domain: "messaging"
+      category: "standards"
+      title: "Duplicate Processing Risk - No Deduplication Mechanism"
+      description: |
+        Message consumers should implement deduplication to prevent processing
+        the same message multiple times. This is critical for at-least-once
+        delivery systems.
+
+        Deduplication strategies:
+        - Idempotency keys in message payload
+        - Message ID tracking with TTL
+        - Conditional updates based on version/timestamp
+        - Database unique constraints
+      severity: "error"
+      references:
+        - "https://docs.aws.amazon.com/sqs/latest/dg/sqs-deduplication.html"
+        - "https://www.rabbitmq.com/consumers.html#message-properties"
+
+    - id: "MSG-SEMANTICS-003"
+      domain: "messaging"
+      category: "standards"
+      title: "Wrong Semantics Assumption - Code Assumes Exactly-Once Without Guarantee"
+      description: |
+        Code that assumes exactly-once delivery without broker guarantees is
+        flawed. Few systems provide exactly-once semantics (requires
+        distributed transactions or idempotency).
+
+        Common mistakes:
+        - Assuming ordered + delivered once = exactly-once
+        - Not handling duplicates from broker redelivery
+        - No deduplication with "sufficiently unique" timestamps
+      severity: "error"
+      references:
+        - "https://kafka.apache.org/documentation/#semantics"
+        - "https://docs.aws.amazon.com/sqs/latest/dg/sqs-visibility-timeout.html"
+
+    - id: "MSG-SEMANTICS-004"
+      domain: "messaging"
+      category: "best_practices"
+      title: "Message Loss Risk - At-Most-Once Without Acknowledgment"
+      description: |
+        At-most-once delivery without proper acknowledgment handling risks
+        message loss. If a consumer crashes after processing but before
+        acknowledging, the message is lost.
+
+        Best practices:
+        - Use at-least-once with idempotency (preferred)
+        - Implement manual acknowledgment after processing
+        - Handle acknowledgment failures gracefully
+        - Consider dual-write problem solutions
+      severity: "warning"
+      references:
+        - "https://www.rabbitmq.com/confirms.html"
+        - "https://docs.aws.amazon.com/sqs/latest/dg/sqs-visibility-timeout.html"
+
+    # ============================================================================
+    # Ordering Guarantees
+    # ============================================================================
+
+    - id: "MSG-ORDER-001"
+      domain: "messaging"
+      category: "standards"
+      title: "FIFO Assumption Without Guarantee - Code Assumes Ordering Broker Does Not Provide"
+      description: |
+        Many message brokers (SQS standard, RabbitMQ) do not guarantee FIFO
+        ordering. Code that assumes ordering without explicit FIFO configuration
+        will experience race conditions.
+
+        Solutions:
+        - Use FIFO queues when ordering is required (SQS FIFO, Kafka partitions)
+        - Implement ordering in application layer if needed
+        - Design for out-of-order message handling
+      severity: "error"
+      references:
+        - "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/FIFO-queues.html"
+        - "https://kafka.apache.org/documentation/#intro_guarantees"
+
+    - id: "MSG-ORDER-002"
+      domain: "messaging"
+      category: "standards"
+      title: "Partition Ordering Violation - Cross-Partition Ordering Assumed"
+      description: |
+        Partitioned systems (Kafka, Kinesis) only guarantee ordering within
+        a partition. Assuming ordering across partitions causes race conditions.
+
+        Rules:
+        - Messages with ordering requirements must use same partition key
+        - Different partition keys = no ordering guarantee
+        - Consumer parallelism breaks partition ordering
+      severity: "error"
+      references:
+        - "https://kafka.apache.org/documentation/streams/core-concepts#streams_concepts_aggregations"
+        - "https://docs.aws.amazon.com/streams/latest/dev/key-concepts.html"
+
+    - id: "MSG-ORDER-003"
+      domain: "messaging"
+      category: "best_practices"
+      title: "Concurrent Processing Without Ordering - Parallel Consumers Violate Ordering Needs"
+      description: |
+        When message ordering is required, parallel consumer processing can
+        violate ordering guarantees. Later messages may complete processing
+        before earlier messages.
+
+        Solutions:
+        - Single-threaded processing per partition/ordering key
+        - Sequence numbers with in-order commit
+        - Out-of-order buffer with reordering logic
+      severity: "warning"
+      references:
+        - "https://kafka.apache.org/documentation/#maxpollrecords"
+        - "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/throughput.html"
+
+    # ============================================================================
+    # DLQ (Dead Letter Queue) Patterns
+    # ============================================================================
+
+    - id: "MSG-DLQ-001"
+      domain: "messaging"
+      category: "standards"
+      title: "Missing DLQ Configuration - No Dead Letter Queue for Failed Messages"
+      description: |
+        Without a Dead Letter Queue, messages that repeatedly fail processing
+        will:
+        - Block the main queue
+        - Cause infinite retry loops
+        - Prevent other messages from being processed
+        - Hide systemic issues
+
+        Always configure DLQs with appropriate max retry counts.
+      severity: "error"
+      references:
+        - "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html"
+        - "https://www.rabbitmq.com/dlx.html"
+
+    - id: "MSG-DLQ-002"
+      domain: "messaging"
+      category: "best_practices"
+      title: "No Redrive Policy - DLQ Messages Never Reprocessed"
+      description: |
+        Messages in DLQs should have a redrive mechanism for recovery:
+        - Manual inspection and replay
+        - Automated redrive after fix deployment
+        - Alerting on DLQ depth
+
+        Without redrive capability, DLQ messages are effectively lost.
+      severity: "warning"
+      references:
+        - "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html#sqs-dead-letter-queues-redrive"
+        - "https://docs.aws.amazon.com/lambda/latest/dg/dlq.html"
+
+    - id: "MSG-DLQ-003"
+      domain: "messaging"
+      category: "best_practices"
+      title: "DLQ Without Monitoring - Failed Messages Not Alerted"
+      description: |
+        DLQs must be monitored to detect systemic issues:
+        - CloudWatch alarms on DLQ depth
+        - PagerDuty/Slack alerts for DLQ messages
+        - Dashboards showing DLQ trends
+        - Runbooks for DLQ investigation
+
+        Unmonitored DLQs hide failures and delay incident response.
+      severity: "warning"
+      references:
+        - "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-monitoring.html"
+        - "https://docs.aws.amazon.com/lambda/latest/dg/monitoring-metrics.html"
+
+    - id: "MSG-DLQ-004"
+      domain: "messaging"
+      category: "standards"
+      title: "Infinite DLQ Retry - Immediate Redrive Without Backoff"
+      description: |
+        Redriving DLQ messages immediately without backoff can:
+        - Amplify failures during outages
+        - Overwhelm downstream services
+        - Cause thundering herd on recovery
+
+        Always implement exponential backoff for DLQ redrive operations.
+      severity: "error"
+      references:
+        - "https://aws.amazon.com/blogs/compute/using-lambda-to-reprocess-dlq-messages/"
+        - "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html"
+
+    # ============================================================================
+    # Backoff Strategies
+    # ============================================================================
+
+    - id: "MSG-BACKOFF-001"
+      domain: "messaging"
+      category: "standards"
+      title: "Fixed Interval Backoff - Synchronized Retry Causes Thundering Herd"
+      description: |
+        Fixed interval retry (e.g., retry every 5 seconds) causes all failed
+        consumers to retry simultaneously, creating:
+        - Thundering herd on downstream services
+        - DDoS-like traffic spikes
+        - Cascading failures
+
+        Use exponential backoff with jitter instead.
+      severity: "error"
+      references:
+        - "https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/"
+        - "https://docs.aws.amazon.com/general/latest/gr/api-retries.html"
+
+    - id: "MSG-BACKOFF-002"
+      domain: "messaging"
+      category: "standards"
+      title: "Missing Jitter - Retry Collisions Under Load"
+      description: |
+        Exponential backoff without jitter still causes retry collisions:
+        - Multiple consumers retry at exact same times
+        - Synchronized waves of requests
+        - Brief outages become extended outages
+
+        Add random jitter (±20-50%) to spread retry attempts.
+      severity: "error"
+      references:
+        - "https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/"
+        - "https://grpc.io/docs/guides/retry/"
+
+    - id: "MSG-BACKOFF-003"
+      domain: "messaging"
+      category: "standards"
+      title: "No Circuit Breaker - Unlimited Retry During Outage"
+      description: |
+        Without circuit breakers, consumers will retry indefinitely during
+        downstream outages, causing:
+        - Resource exhaustion
+        - Thread pool saturation
+        - Memory leaks from queued retries
+        - Delayed recovery
+
+        Implement circuit breakers that stop retries after consecutive failures.
+      severity: "error"
+      references:
+        - "https://martinfowler.com/bliki/CircuitBreaker.html"
+        - "https://docs.aws.amazon.com/whitepapers/latest/saas-architecture-fundamentals/circuit-breakers.html"
+
+    - id: "MSG-BACKOFF-004"
+      domain: "messaging"
+      category: "best_practices"
+      title: "Unbounded Retry - No Maximum Retry Limit"
+      description: |
+        Infinite or very high retry counts can:
+        - Keep failed messages active indefinitely
+        - Block queues with poison messages
+        - Waste resources on unrecoverable errors
+
+        Set maximum retry limits appropriate for the use case:
+        - Transient errors: 3-5 retries
+        - External services: 5-10 retries
+        - Always have a final DLQ destination
+      severity: "warning"
+      references:
+        - "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html"
+        - "https://www.rabbitmq.com/quorum-queues.html#poison-message-handling"
+
+    # ============================================================================
+    # Additional Messaging Best Practices
+    # ============================================================================
+
+    - id: "MSG-SIZE-001"
+      domain: "messaging"
+      category: "best_practices"
+      title: "Oversized Messages - Messages Exceeding Size Limits"
+      description: |
+        Large messages cause:
+        - Broker performance degradation
+        - Network congestion
+        - Memory pressure on consumers
+        - Potential message rejection
+
+        Size limits:
+        - SQS: 256 KB (or use S3 with pointers)
+        - Kafka: 1 MB default (configurable)
+        - RabbitMQ: configurable, but large messages are anti-pattern
+
+        Use references/pointers for large payloads.
+      severity: "warning"
+      references:
+        - "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/quotas-messages.html"
+        - "https://kafka.apache.org/documentation/#message.max.bytes"
+
+    - id: "MSG-VISIBILITY-001"
+      domain: "messaging"
+      category: "standards"
+      title: "Visibility Timeout Mismatch - Processing Time Exceeds Timeout"
+      description: |
+        Message visibility timeout must exceed maximum expected processing time.
+        If processing takes longer than visibility timeout:
+        - Message becomes visible to other consumers
+        - Duplicate processing occurs
+        - Race conditions and conflicts
+
+        Guidelines:
+        - Set visibility timeout > 2x max processing time
+        - Implement heartbeat/renewal for long tasks
+        - Consider step functions for multi-step workflows
+      severity: "error"
+      references:
+        - "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html"
+        - "https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html"
