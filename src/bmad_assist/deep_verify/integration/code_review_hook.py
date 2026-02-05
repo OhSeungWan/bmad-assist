@@ -38,7 +38,7 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from bmad_assist.core.exceptions import BmadAssistError, ProviderError, ProviderTimeoutError
 from bmad_assist.core.types import EpicId
@@ -390,14 +390,14 @@ def _resolve_code_files(
 
 
 def _find_story_file(
-    project_path: Path,
+    _project_path: Path,
     epic_num: EpicId,
     story_num: int | str,
 ) -> Path | None:
     """Find story file by epic and story numbers.
 
     Args:
-        project_path: Project root path.
+        _project_path: Project root path (unused, kept for backward compat).
         epic_num: Epic number.
         story_num: Story number.
 
@@ -405,14 +405,20 @@ def _find_story_file(
         Path to story file if found, None otherwise.
 
     """
-    stories_dir = project_path / "_bmad-output" / "implementation-artifacts" / "stories"
+    from bmad_assist.core.paths import get_paths
+
+    try:
+        stories_dir = get_paths().stories_dir
+    except RuntimeError:
+        logger.warning("Paths not initialized, cannot find story file")
+        return None
 
     if not stories_dir.exists():
         return None
 
     # Pattern: {epic}-{story}-*.md
     pattern = f"{epic_num}-{story_num}-*.md"
-    matches = list(stories_dir.glob(pattern))
+    matches = sorted(stories_dir.glob(pattern))  # Sorted for deterministic behavior
 
     if matches:
         return matches[0]
@@ -477,7 +483,7 @@ def load_dv_findings_from_cache(
     """Load DV findings from cache by session ID.
 
     For multi-file stories, provide file_path to load specific file's results.
-    If file_path is None, loads the global/single result for the session.
+    If file_path is None, aggregates all DV findings for the session.
 
     Args:
         session_id: Session ID from save_dv_findings_for_synthesis.
@@ -490,10 +496,86 @@ def load_dv_findings_from_cache(
     """
     cache_dir = project_path / ".bmad-assist" / "cache"
 
-    # Build filename consistent with save_dv_findings_for_synthesis
-    file_id = hashlib.md5(str(file_path).encode()).hexdigest()[:8] if file_path else "global"
-    cache_file_path = cache_dir / f"deep-verify-{session_id}-{file_id}.json"
+    if file_path is not None:
+        # Load specific file's results
+        file_id = hashlib.md5(str(file_path).encode()).hexdigest()[:8]
+        cache_file_path = cache_dir / f"deep-verify-{session_id}-{file_id}.json"
+        return _load_single_dv_cache(cache_file_path)
 
+    # No file_path - aggregate all DV findings for this session
+    pattern = f"deep-verify-{session_id}-*.json"
+    cache_files = list(cache_dir.glob(pattern)) if cache_dir.exists() else []
+
+    if not cache_files:
+        logger.debug("DV findings cache not found for session: %s", session_id)
+        return None
+
+    # Load and aggregate all findings
+    all_findings: list[Any] = []
+    all_domains: list[Any] = []
+    all_methods: set[str] = set()
+    total_duration = 0
+    worst_verdict = None
+    min_score = 100.0
+
+    from bmad_assist.deep_verify.core.types import (
+        DeepVerifyValidationResult,
+        VerdictDecision,
+    )
+
+    for cache_file in cache_files:
+        result = _load_single_dv_cache(cache_file)
+        if result is None:
+            continue
+
+        all_findings.extend(result.findings)
+        all_domains.extend(result.domains_detected)
+        all_methods.update(result.methods_executed)
+        total_duration += result.duration_ms
+        min_score = min(min_score, result.score)
+
+        # Track worst verdict (REJECT > UNCERTAIN > ACCEPT)
+        if worst_verdict is None:
+            worst_verdict = result.verdict
+        elif result.verdict == VerdictDecision.REJECT:
+            worst_verdict = VerdictDecision.REJECT
+        elif result.verdict == VerdictDecision.UNCERTAIN and worst_verdict == VerdictDecision.ACCEPT:
+            worst_verdict = VerdictDecision.UNCERTAIN
+
+    if not all_findings and worst_verdict is None:
+        logger.debug("No valid DV findings loaded for session: %s", session_id)
+        return None
+
+    logger.debug(
+        "Aggregated DV findings from %d files: %d findings, verdict=%s",
+        len(cache_files),
+        len(all_findings),
+        worst_verdict.value if worst_verdict else "none",
+    )
+
+    from bmad_assist.deep_verify.core.types import MethodId
+
+    return DeepVerifyValidationResult(
+        verdict=worst_verdict or VerdictDecision.ACCEPT,
+        score=min_score,
+        findings=all_findings,
+        domains_detected=all_domains,
+        methods_executed=[MethodId(m) for m in all_methods],
+        duration_ms=total_duration,
+        error=None,
+    )
+
+
+def _load_single_dv_cache(cache_file_path: Path) -> DeepVerifyValidationResult | None:
+    """Load a single DV cache file.
+
+    Args:
+        cache_file_path: Path to the cache file.
+
+    Returns:
+        DeepVerifyValidationResult if valid, None otherwise.
+
+    """
     if not cache_file_path.exists():
         logger.debug("DV findings cache not found: %s", cache_file_path)
         return None
@@ -511,5 +593,5 @@ def load_dv_findings_from_cache(
 
         return deserialize_validation_result(data)
     except (json.JSONDecodeError, OSError, KeyError) as e:
-        logger.warning("Failed to load DV findings from cache: %s", e)
+        logger.warning("Failed to load DV findings from cache %s: %s", cache_file_path, e)
         return None

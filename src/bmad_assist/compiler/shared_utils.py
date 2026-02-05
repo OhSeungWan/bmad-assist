@@ -907,3 +907,104 @@ def apply_post_process(xml: str, context: CompilerContext) -> str:
     except Exception as e:
         logger.warning("Failed to load/apply patch %s: %s", context.patch_path.name, e)
         return xml
+
+
+def format_dv_findings_for_prompt(dv_findings: dict[str, Any]) -> str:
+    """Format Deep Verify findings dict as markdown for LLM prompt.
+
+    Handles two dict schemas:
+    - Code review handler: domains/methods/method keys, pre-computed counts
+    - Validate story handler (serialize_validation_result): domains_detected/
+      methods_executed/method_id keys, no pre-computed counts
+
+    Args:
+        dv_findings: Dict with verdict, score, findings list, domains, methods.
+
+    Returns:
+        Markdown-formatted string for inclusion in prompt.
+
+    """
+    if not isinstance(dv_findings, dict):
+        return "# Deep Verify: No data available"
+
+    # F1: Support both handler schemas for findings list
+    findings = dv_findings.get("findings", [])
+
+    # F1: Compute counts from findings when pre-computed fields absent
+    findings_count = dv_findings.get("findings_count", len(findings))
+    critical_count = dv_findings.get(
+        "critical_count",
+        sum(1 for f in findings if isinstance(f, dict) and f.get("severity") == "critical"),
+    )
+    error_count = dv_findings.get(
+        "error_count",
+        sum(1 for f in findings if isinstance(f, dict) and f.get("severity") == "error"),
+    )
+
+    lines = [
+        "# Deep Verify Analysis Results",
+        "",
+        f"**Verdict:** {dv_findings.get('verdict', 'UNKNOWN')}",
+        f"**Score:** {dv_findings.get('score', 0):.1f}",
+        f"**Findings:** {findings_count} "
+        f"({critical_count} critical, "
+        f"{error_count} error)",
+        "",
+        "## Domains Detected",
+        "",
+    ]
+
+    # F1: Support both "domains" (code_review handler) and "domains_detected" (serialize)
+    domains = dv_findings.get("domains") or dv_findings.get("domains_detected", [])
+    for domain in domains:
+        if not isinstance(domain, dict):
+            continue
+        # F3: Use .get() instead of direct dict access
+        lines.append(
+            f"- **{domain.get('domain', '?')}** (confidence: {domain.get('confidence', 0):.2f})"
+        )
+
+    lines.extend(["", "## Methods Executed", ""])
+    # F1: Support both "methods" (code_review handler) and "methods_executed" (serialize)
+    methods = dv_findings.get("methods") or dv_findings.get("methods_executed", [])
+    lines.append(", ".join(str(m) for m in methods) if methods else "None")
+
+    # F6: Only emit Findings header if there are findings
+    if findings:
+        lines.extend(["", "## Findings", ""])
+
+        for finding in findings:
+            if not isinstance(finding, dict):
+                continue
+            severity = finding.get("severity", "unknown").upper()
+            lines.append(
+                f"### [{severity}] {finding.get('id', '?')}: {finding.get('title', 'Untitled')}"
+            )
+            lines.append("")
+            # F1: Support both "method" (code_review handler) and "method_id" (serialize)
+            method = finding.get("method") or finding.get("method_id", "?")
+            lines.append(f"**Method:** {method}")
+            if finding.get("domain"):
+                lines.append(f"**Domain:** {finding.get('domain')}")
+            lines.append("")
+            lines.append(finding.get("description", "No description"))
+            lines.append("")
+
+            evidence = finding.get("evidence", [])
+            if evidence:
+                lines.append("**Evidence:**")
+                for e in evidence:
+                    if not isinstance(e, dict):
+                        continue
+                    quote = e.get("quote", "")
+                    line_num = e.get("line_number")
+                    if quote:
+                        lines.append(f"> {quote}")
+                    # F5: Show line number even when quote is empty
+                    if line_num is not None:
+                        lines.append(f"> *Line {line_num}*")
+                    if quote or line_num is not None:
+                        lines.append("")
+            lines.append("")
+
+    return "\n".join(lines)

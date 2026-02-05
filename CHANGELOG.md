@@ -2,6 +2,22 @@
 
 All notable changes to bmad-assist are documented in this file.
 
+## [0.4.20] - 2026-02-05
+
+> Massive thanks to [@LKrysik](https://github.com/LKrysik) for the Deep Verify system - a game-changing addition to bmad-assist's quality pipeline.
+
+### Added
+- **Deep Verify: Synthesis Instructions** - Both synthesis workflows now include step 1.5 guiding LLM on DV finding severity handling, cross-referencing with reviewer/validator findings, and structured output sections
+- **Deep Verify: Output Templates** - Synthesis reports now include "Deep Verify Integration" section with DV Findings Fixed/Addressed, Dismissed, and DV-Reviewer/Validator Overlap subsections
+- **Story File Rescue** - Automatic retry with fresh story file when story content is missing or corrupt, with configurable previous stories limit (default: 1)
+
+### Fixed
+- **Deep Verify: Schema Mismatch** - DV findings formatter now handles both handler dict schemas (`domains`/`methods`/`method` from code_review handler and `domains_detected`/`methods_executed`/`method_id` from serialize_validation_result)
+- **Deep Verify: Raw Dict in Prompt** - validate_story_synthesis was passing raw Python dict instead of formatted markdown to LLM; now uses shared `format_dv_findings_for_prompt()` formatter
+- **Deep Verify: Code Review Synthesis Missing DV** - code_review_synthesis compiler was not adding DV findings to prompt at all despite handler passing them in context
+- **Deep Verify: Story vs Compiled Prompt** - DV now analyzes the actual story file instead of the compiled prompt, producing relevant findings
+- **Deep Verify: Cache Aggregation** - Fixed DV cache aggregation for synthesis phase
+
 ## [0.4.19] - 2026-02-04
 
 ### Added

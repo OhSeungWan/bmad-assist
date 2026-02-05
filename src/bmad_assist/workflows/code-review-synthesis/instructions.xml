@@ -17,6 +17,37 @@
     <action>Group related findings that address the same underlying problem</action>
   </step>
 
+  <step n="1.5" goal="Review Deep Verify code analysis" conditional="[Deep Verify Findings] section present">
+    <critical>Deep Verify analyzed the actual source code files for this story.
+      DV findings are based on static analysis patterns and may identify issues reviewers missed.</critical>
+
+    <action>Review each DV finding:
+      - CRITICAL findings: Security vulnerabilities, race conditions, resource leaks - must address
+      - ERROR findings: Bugs, missing error handling, boundary issues - should address
+      - WARNING findings: Code quality concerns - consider addressing
+    </action>
+
+    <action>Cross-reference DV findings with reviewer findings:
+      - DV + Reviewers agree: High confidence issue, prioritize in fix order
+      - Only DV flags: Verify in source code - DV has precise line numbers
+      - Only reviewers flag: May be design/logic issues DV can't detect
+    </action>
+
+    <action>DV findings may include evidence with:
+      - Code quotes (exact text from source)
+      - Line numbers (precise location, when available)
+      - Pattern IDs (known antipattern reference)
+      Use this evidence when applying fixes.</action>
+
+    <action>DV patterns reference:
+      - CC-*: Concurrency issues (race conditions, deadlocks)
+      - SEC-*: Security vulnerabilities
+      - DB-*: Database/storage issues
+      - DT-*: Data transformation issues
+      - GEN-*: General code quality (null handling, resource cleanup)
+    </action>
+  </step>
+
   <step n="2" goal="Verify issues and identify false positives">
     <action>For each issue, verify against embedded code context:
       - Does the issue actually exist in the current code?
@@ -155,6 +186,21 @@
   ```
 ]
 [If no changes: "No source code changes required."]
+
+## Deep Verify Integration
+[If DV findings were present, document how they were handled]
+
+### DV Findings Fixed
+[List DV findings that resulted in code changes]
+[Format: "- **{ID}** [{SEVERITY}]: {Title} | **File**: {path} | **Fix**: {What was changed}"]
+
+### DV Findings Dismissed
+[List DV findings determined to be false positives]
+[Format: "- **{ID}** [{SEVERITY}]: {Title} | **Reason**: {Why this is not an issue}"]
+
+### DV-Reviewer Overlap
+[Note findings flagged by both DV and reviewers - highest confidence fixes]
+[If no DV findings: "Deep Verify did not produce findings for this story."]
 
 ## Files Modified
 [Simple list of all files that were modified]

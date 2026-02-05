@@ -584,3 +584,145 @@ class TestEstimateTokensAC2:
         content = "0123456789\n" * 5
         result = estimate_tokens(content)
         assert result == 13  # 55 / 4 = 13 (integer division)
+
+
+class TestFormatDvFindingsForPrompt:
+    """Tests for format_dv_findings_for_prompt()."""
+
+    def _make_findings(self, **overrides: object) -> dict:
+        """Build a code_review handler-style DV findings dict."""
+        base: dict = {
+            "verdict": "REJECT",
+            "score": 8.5,
+            "findings_count": 1,
+            "critical_count": 1,
+            "error_count": 0,
+            "domains": [{"domain": "security", "confidence": 0.95}],
+            "methods": ["#153"],
+            "findings": [
+                {
+                    "id": "F1",
+                    "severity": "critical",
+                    "title": "SQL Injection Risk",
+                    "description": "User input not sanitized",
+                    "method": "#153",
+                    "domain": "security",
+                    "evidence": [
+                        {"quote": 'query = f"SELECT * FROM {table}"', "line_number": 42}
+                    ],
+                }
+            ],
+        }
+        base.update(overrides)
+        return base
+
+    def _make_serialize_findings(self, **overrides: object) -> dict:
+        """Build a serialize_validation_result-style DV findings dict."""
+        base: dict = {
+            "verdict": "REJECT",
+            "score": 7.0,
+            "domains_detected": [{"domain": "concurrency", "confidence": 0.8}],
+            "methods_executed": ["#201", "#202"],
+            "findings": [
+                {
+                    "id": "F1",
+                    "severity": "error",
+                    "title": "Race Condition",
+                    "description": "Shared state without lock",
+                    "method_id": "#201",
+                    "domain": "concurrency",
+                    "evidence": [
+                        {"quote": "self.data[key] = value", "line_number": 99, "confidence": 0.9}
+                    ],
+                }
+            ],
+        }
+        base.update(overrides)
+        return base
+
+    def test_basic_formatting(self) -> None:
+        """Basic code_review handler format produces expected markdown."""
+        from bmad_assist.compiler.shared_utils import format_dv_findings_for_prompt
+
+        result = format_dv_findings_for_prompt(self._make_findings())
+        assert "# Deep Verify Analysis Results" in result
+        assert "**Verdict:** REJECT" in result
+        assert "**Score:** 8.5" in result
+        assert "SQL Injection Risk" in result
+        assert "Line 42" in result
+        assert "**Method:** #153" in result
+
+    def test_serialize_format(self) -> None:
+        """serialize_validation_result format (domains_detected/methods_executed/method_id)."""
+        from bmad_assist.compiler.shared_utils import format_dv_findings_for_prompt
+
+        result = format_dv_findings_for_prompt(self._make_serialize_findings())
+        assert "**Verdict:** REJECT" in result
+        assert "concurrency" in result
+        assert "#201" in result
+        assert "Race Condition" in result
+        assert "**Method:** #201" in result
+        assert "Line 99" in result
+
+    def test_counts_computed_from_findings_when_missing(self) -> None:
+        """When pre-computed count fields absent, compute from findings list."""
+        from bmad_assist.compiler.shared_utils import format_dv_findings_for_prompt
+
+        data = self._make_serialize_findings()
+        # serialize format has no count fields
+        assert "findings_count" not in data
+        result = format_dv_findings_for_prompt(data)
+        assert "**Findings:** 1 " in result
+        assert "(0 critical, 1 error)" in result
+
+    def test_invalid_input_returns_fallback(self) -> None:
+        """Non-dict input returns safe fallback string."""
+        from bmad_assist.compiler.shared_utils import format_dv_findings_for_prompt
+
+        assert "No data available" in format_dv_findings_for_prompt("not a dict")  # type: ignore[arg-type]
+        assert "No data available" in format_dv_findings_for_prompt(None)  # type: ignore[arg-type]
+
+    def test_empty_findings_no_orphan_header(self) -> None:
+        """Empty findings list doesn't produce orphan ## Findings header."""
+        from bmad_assist.compiler.shared_utils import format_dv_findings_for_prompt
+
+        data = self._make_findings(findings=[])
+        result = format_dv_findings_for_prompt(data)
+        assert "## Findings" not in result
+
+    def test_malformed_domain_skipped(self) -> None:
+        """Non-dict domain entries are skipped gracefully."""
+        from bmad_assist.compiler.shared_utils import format_dv_findings_for_prompt
+
+        data = self._make_findings(domains=["not-a-dict", {"domain": "security", "confidence": 0.9}])
+        result = format_dv_findings_for_prompt(data)
+        assert "security" in result
+        # no crash
+
+    def test_line_number_without_quote(self) -> None:
+        """Line number shown even when quote is empty."""
+        from bmad_assist.compiler.shared_utils import format_dv_findings_for_prompt
+
+        data = self._make_findings(
+            findings=[
+                {
+                    "id": "F1",
+                    "severity": "warning",
+                    "title": "Test",
+                    "description": "desc",
+                    "method": "#1",
+                    "evidence": [{"quote": "", "line_number": 77}],
+                }
+            ]
+        )
+        result = format_dv_findings_for_prompt(data)
+        assert "Line 77" in result
+
+    def test_no_findings_no_domains_no_methods(self) -> None:
+        """Minimal dict with no optional fields still produces valid output."""
+        from bmad_assist.compiler.shared_utils import format_dv_findings_for_prompt
+
+        result = format_dv_findings_for_prompt({"verdict": "ACCEPT", "score": 0.0})
+        assert "**Verdict:** ACCEPT" in result
+        assert "## Findings" not in result
+        assert "None" in result  # methods fallback

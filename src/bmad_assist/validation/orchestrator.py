@@ -597,7 +597,7 @@ async def run_validation_phase(
     if dv_enabled:
         dv_delay = parse_parallel_delay(config.parallel_delay) * len(tasks)
         dv_coro = run_deep_verify_validation(
-            artifact_text=prompt,
+            artifact_text=None,  # Hook loads story file internally
             config=config,
             project_path=project_path,
             epic_num=epic_num,
