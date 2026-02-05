@@ -58,6 +58,12 @@ logger = logging.getLogger(__name__)
 # Maximum combined code size (100KB) to prevent timeout
 MAX_CODE_SIZE_BYTES = 100 * 1024
 
+# Module dependency patterns to filter from File List extraction
+# These are Go/etc. module paths, not local project files
+_MODULE_DEP_PATTERN = re.compile(
+    r"^(?:github\.com|gopkg\.in|golang\.org|bitbucket\.org|gitlab\.com)/",
+)
+
 
 async def run_deep_verify_code_review(
     file_path: Path,
@@ -288,9 +294,9 @@ def _resolve_code_files(
         logger.warning("Failed to read story file %s: %s", story_file, e)
         return []
 
-    # Extract File List section
+    # Extract File List section (stop at any ## or ### header)
     file_list_match = re.search(
-        r"##\s*File\s*List.*?(?=##\s|$)",
+        r"##\s*File\s*List.*?(?=\n#{2,}\s|$)",
         content,
         re.DOTALL | re.IGNORECASE,
     )
@@ -306,6 +312,11 @@ def _resolve_code_files(
     file_paths = re.findall(
         r"[-*]\s+`?([^`\n]+?)`?(?:\s+-\s+|\s*$)", file_list_content, re.MULTILINE
     )
+
+    # Filter out module dependencies (e.g., "github.com/go-chi/chi/v5 v5.2.5")
+    file_paths = [
+        p for p in file_paths if not _MODULE_DEP_PATTERN.match(p.strip())
+    ]
 
     if not file_paths:
         logger.info(

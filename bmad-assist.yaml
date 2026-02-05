@@ -194,13 +194,13 @@ compiler:
   source_context:
     # Per-workflow token budgets (0-99 = disabled)
     budgets:
-      create_story: 30000
+      create_story: 60000
       validate_story: 15000
       validate_story_synthesis: 15000
       dev_story: 15000
       code_review: 15000
       code_review_synthesis: 15000
-      default: 20000             # Fallback for unlisted workflows
+      default: 30000             # Fallback for unlisted workflows
 
     # File prioritization scoring weights
     scoring:
@@ -339,30 +339,30 @@ deep_verify:
   # Always-run methods (foundational)
   method_153_pattern_match:           # Regex pattern matching for vulnerabilities
     enabled: true
-    timeout_seconds: 120
+    timeout_seconds: 60
   method_154_boundary_analysis:       # Edge cases, off-by-one, null checks
     enabled: true
-    timeout_seconds: 120
+    timeout_seconds: 60
 
   # Conditional methods (run based on detected domains)
   method_155_assumption_surfacing:    # Hidden assumptions, race conditions (CONCURRENCY, API)
     enabled: true
-    timeout_seconds: 180
+    timeout_seconds: 90
   method_157_temporal_consistency:    # Race conditions, ordering (MESSAGING, STORAGE)
     enabled: true
-    timeout_seconds: 180
+    timeout_seconds: 90
   method_201_adversarial_review:      # Attacks, exploits, malicious input (SECURITY, API)
     enabled: true
-    timeout_seconds: 180
+    timeout_seconds: 120
   method_203_domain_expert:           # LLM simulates domain expert (all domains)
     enabled: true
-    timeout_seconds: 180
+    timeout_seconds: 120
   method_204_integration_analysis:    # External service failures (API, MESSAGING)
     enabled: true
-    timeout_seconds: 180
+    timeout_seconds: 90
   method_205_worst_case:              # Worst-case scenario construction (CONCURRENCY, MESSAGING)
     enabled: true
-    timeout_seconds: 180
+    timeout_seconds: 90
 
 notifications:
   enabled: true
