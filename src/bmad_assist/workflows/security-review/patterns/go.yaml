@@ -111,8 +111,8 @@ patterns:
     detection_hint: "exec.Command with sh -c and string concatenation"
 
   - cwe_id: CWE-918
-    severity: MEDIUM
-    tier: 2
+    severity: HIGH
+    tier: 1
     title: "Go: Server-Side Request Forgery (SSRF)"
     vulnerable_example: |
       resp, _ := http.Get(userProvidedURL)
@@ -120,6 +120,23 @@ patterns:
       parsed, _ := url.Parse(userProvidedURL)
       if !isAllowedHost(parsed.Host) { return errForbidden }
     detection_hint: "http.Get/http.Post with user-provided URL without allowlist"
+
+  - cwe_id: CWE-306
+    severity: HIGH
+    tier: 1
+    title: "Go: Missing Authentication for Critical Function"
+    vulnerable_example: |
+      func handleTransfer(w http.ResponseWriter, r *http.Request) {
+          // No auth check — processes request directly
+          processTransfer(r.Body)
+      }
+    safe_example: |
+      func handleTransfer(w http.ResponseWriter, r *http.Request) {
+          user, err := authenticate(r)
+          if err != nil { http.Error(w, "Unauthorized", 401); return }
+          processTransfer(r.Body)
+      }
+    detection_hint: "HTTP handler for sensitive operation without auth middleware or token verification"
 
   - cwe_id: CWE-200
     severity: MEDIUM

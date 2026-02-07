@@ -308,10 +308,15 @@ def _resolve_code_files(
         return []
 
     # Extract file paths from bullet points
+    # Primary: backtick-wrapped paths (e.g., "- `cmd/relay/main.go` (new) - description")
+    # Fallback: first path-like token without backticks (e.g., "- src/main.py - description")
     file_list_content = file_list_match.group()
-    file_paths = re.findall(
-        r"[-*]\s+`?([^`\n]+?)`?(?:\s+-\s+|\s*$)", file_list_content, re.MULTILINE
-    )
+    file_paths = re.findall(r"[-*]\s+`([^`\n]+)`", file_list_content, re.MULTILINE)
+    if not file_paths:
+        # Fallback: extract first token that looks like a file path
+        file_paths = re.findall(
+            r"[-*]\s+(\S+\.\w+)", file_list_content, re.MULTILINE
+        )
 
     # Filter out module dependencies (e.g., "github.com/go-chi/chi/v5 v5.2.5")
     # and markdown artifacts (e.g., "*Status: ready-for-dev*")

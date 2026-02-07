@@ -92,6 +92,7 @@ async def run_security_review(
                 languages_detected=languages or [],
                 patterns_loaded=patterns_loaded,
                 scan_duration_seconds=duration,
+                analysis_quality="degraded",
             )
 
         # Parse structured output
@@ -102,6 +103,7 @@ async def run_security_review(
             languages_detected=languages or [],
             patterns_loaded=patterns_loaded,
             scan_duration_seconds=duration,
+            analysis_quality="full",
         )
 
         logger.info(
@@ -120,6 +122,7 @@ async def run_security_review(
             patterns_loaded=patterns_loaded,
             scan_duration_seconds=duration,
             timed_out=True,
+            analysis_quality="failed",
         )
 
     except (ProviderError, BmadAssistError) as e:
@@ -129,6 +132,7 @@ async def run_security_review(
             languages_detected=languages or [],
             patterns_loaded=patterns_loaded,
             scan_duration_seconds=duration,
+            analysis_quality="failed",
         )
 
     except (RuntimeError, OSError, ValueError, TypeError, AttributeError) as e:
@@ -142,6 +146,7 @@ async def run_security_review(
             languages_detected=languages or [],
             patterns_loaded=patterns_loaded,
             scan_duration_seconds=duration,
+            analysis_quality="failed",
         )
 
 

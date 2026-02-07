@@ -34,7 +34,7 @@ from bmad_assist.security.tech_stack import detect_tech_stack
 logger = logging.getLogger(__name__)
 
 # Default token budget for CWE patterns
-DEFAULT_PATTERN_BUDGET = 8000
+DEFAULT_PATTERN_BUDGET = 12000
 
 # Approximate tokens per character (conservative)
 _CHARS_PER_TOKEN = 4
@@ -118,8 +118,8 @@ class SecurityReviewCompiler:
         # Step 3: Calculate token budget for patterns
         diff_tokens = len(diff_content) // _CHARS_PER_TOKEN if diff_content else 0
         available_pattern_budget = max(
-            2000,  # minimum
-            DEFAULT_PATTERN_BUDGET - max(0, diff_tokens - 4000),
+            4000,  # enough for all Tier 1 + most Tier 2
+            DEFAULT_PATTERN_BUDGET - max(0, diff_tokens - 6000),
         )
 
         # Step 4: Load CWE patterns

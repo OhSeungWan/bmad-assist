@@ -6,7 +6,7 @@ confidence filtering for synthesis prompt inclusion.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -63,6 +63,10 @@ class SecurityReport(BaseModel):
     patterns_loaded: int = Field(default=0)
     scan_duration_seconds: float = Field(default=0.0)
     timed_out: bool = Field(default=False)
+    analysis_quality: Literal["full", "partial", "degraded", "failed"] = Field(
+        default="full",
+        description="Scan quality: full/partial/degraded/failed",
+    )
 
     def to_cache_dict(self) -> dict[str, Any]:
         """Serialize to dict for cache JSON storage."""
@@ -72,6 +76,7 @@ class SecurityReport(BaseModel):
             "patterns_loaded": self.patterns_loaded,
             "scan_duration_seconds": self.scan_duration_seconds,
             "timed_out": self.timed_out,
+            "analysis_quality": self.analysis_quality,
         }
 
     @classmethod
@@ -92,6 +97,7 @@ class SecurityReport(BaseModel):
             patterns_loaded=data.get("patterns_loaded", 0),
             scan_duration_seconds=data.get("scan_duration_seconds", 0.0),
             timed_out=data.get("timed_out", False),
+            analysis_quality=data.get("analysis_quality", "full"),
         )
 
     def filter_for_synthesis(
@@ -139,6 +145,7 @@ class SecurityReport(BaseModel):
             f"patterns_loaded: {self.patterns_loaded}",
             f"scan_duration_seconds: {self.scan_duration_seconds:.1f}",
             f"timed_out: {self.timed_out}",
+            f"analysis_quality: {self.analysis_quality}",
             f"total_findings: {len(self.findings)}",
             "---",
             "",

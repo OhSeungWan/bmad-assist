@@ -301,8 +301,10 @@ class ClaudeSDKProvider(BaseProvider):
 
         """
         # Ignored parameters (SDK doesn't support these)
-        _ = disable_tools, no_cache, color_index
+        _ = no_cache, color_index
         # Note: allowed_tools IS supported - passed to _invoke_async
+        if disable_tools and allowed_tools is None:
+            allowed_tools = []
 
         # Validate timeout parameter
         if timeout is not None and timeout <= 0:

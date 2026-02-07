@@ -454,3 +454,55 @@ class TestToMarkdown:
         r = SecurityReport(findings=[_make_finding()])
         md = r.to_markdown()
         assert isinstance(md, str)
+
+    def test_analysis_quality_in_frontmatter(self):
+        r = SecurityReport(findings=[_make_finding()], analysis_quality="degraded")
+        md = r.to_markdown()
+        assert "analysis_quality: degraded" in md
+
+
+class TestAnalysisQuality:
+    """Tests for analysis_quality field."""
+
+    def test_default_is_full(self):
+        r = SecurityReport()
+        assert r.analysis_quality == "full"
+
+    def test_set_to_degraded(self):
+        r = SecurityReport(analysis_quality="degraded")
+        assert r.analysis_quality == "degraded"
+
+    def test_set_to_failed(self):
+        r = SecurityReport(analysis_quality="failed")
+        assert r.analysis_quality == "failed"
+
+    def test_set_to_partial(self):
+        r = SecurityReport(analysis_quality="partial")
+        assert r.analysis_quality == "partial"
+
+    def test_invalid_value_rejected(self):
+        with pytest.raises(Exception):
+            SecurityReport(analysis_quality="invalid")  # type: ignore[arg-type]
+
+    def test_cache_round_trip(self):
+        r = SecurityReport(
+            findings=[_make_finding()],
+            analysis_quality="degraded",
+        )
+        cache = r.to_cache_dict()
+        assert cache["analysis_quality"] == "degraded"
+        restored = SecurityReport.from_cache_dict(cache)
+        assert restored.analysis_quality == "degraded"
+
+    def test_cache_backward_compat_defaults_to_full(self):
+        """Old cache entries without analysis_quality should default to 'full'."""
+        cache = {
+            "findings": [],
+            "languages_detected": ["python"],
+            "patterns_loaded": 10,
+            "scan_duration_seconds": 1.5,
+            "timed_out": False,
+            # No analysis_quality key
+        }
+        restored = SecurityReport.from_cache_dict(cache)
+        assert restored.analysis_quality == "full"

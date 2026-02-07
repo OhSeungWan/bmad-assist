@@ -117,6 +117,19 @@ patterns:
       requests.get("https://api.internal/data")
     detection_hint: "HTTP (not HTTPS) for sensitive data, cookies without secure flag"
 
+  - cwe_id: CWE-306
+    severity: HIGH
+    tier: 1
+    title: Missing Authentication for Critical Function
+    vulnerable_example: |
+      @app.route("/api/transfer", methods=["POST"])
+      def transfer(): process_transfer(request.json)  # no auth
+    safe_example: |
+      @app.route("/api/transfer", methods=["POST"])
+      @require_auth
+      def transfer(): process_transfer(request.json)
+    detection_hint: "HTTP handler for sensitive operation (transfer, delete, admin) without authentication middleware or token check"
+
   # ===== TIER 2: MEDIUM SEVERITY (if budget allows) =====
 
   - cwe_id: CWE-20
@@ -223,3 +236,16 @@ patterns:
     safe_example: |
       key = RSA.generate(2048)  # minimum 2048-bit for RSA
     detection_hint: "RSA < 2048 bits, AES < 128 bits, DES/3DES usage"
+
+  - cwe_id: CWE-307
+    severity: MEDIUM
+    tier: 2
+    title: Improper Restriction of Excessive Authentication Attempts
+    vulnerable_example: |
+      @app.route("/login", methods=["POST"])
+      def login(): return check_password(request.json)  # no rate limit
+    safe_example: |
+      @app.route("/login", methods=["POST"])
+      @rate_limit(max_attempts=5, window=300)
+      def login(): return check_password(request.json)
+    detection_hint: "login/auth endpoint without rate limiting, account lockout, or backoff"

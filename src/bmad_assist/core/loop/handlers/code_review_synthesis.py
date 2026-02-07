@@ -144,7 +144,7 @@ class CodeReviewSynthesisHandler(BaseHandler):
                 max_findings=max_findings,
             )
 
-            if not filtered and not report.timed_out:
+            if not filtered and not report.timed_out and report.analysis_quality == "full":
                 logger.debug("No security findings passed confidence filter")
                 return None
 
@@ -175,6 +175,7 @@ class CodeReviewSynthesisHandler(BaseHandler):
                 ],
                 "languages_detected": report.languages_detected,
                 "timed_out": report.timed_out,
+                "analysis_quality": report.analysis_quality,
                 "total_findings": len(report.findings),
                 "filtered_count": len(filtered),
             }

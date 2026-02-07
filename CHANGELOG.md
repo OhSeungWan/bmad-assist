@@ -2,6 +2,21 @@
 
 All notable changes to bmad-assist are documented in this file.
 
+## [0.4.24] - 2026-02-07
+
+### Changed
+- **Config: .example Convention** - Renamed `bmad-assist.yaml` to `bmad-assist.yaml.example` in published repo; user config (`bmad-assist.yaml`) is now gitignored. Standard copy-and-customize pattern
+
+### Performance
+- **Deep Verify: Batch Boundary Analysis** - Consolidate per-finding boundary analysis into single LLM call, reducing token usage and latency in code review phase
+
+### Fixed
+- **Security Review: 0% Detection Rate** - Security agent received empty diffs after artifact exclusions; fixed source code extraction and pattern matching
+- **Deep Verify: File List Extraction** - Regex was extracting file descriptions instead of paths from DV output
+- **Deep Verify: DV Report Aggregation** - Aggregate per-file DV results into single archival report during code review phase
+- **Scorecard: Broken Metric** - Replaced non-functional `stories_completed` with `test_to_code_ratio` metric
+- **Dashboard: Mixed ID Sorting** - Resolve `TypeError` when sorting stories with mixed numeric/string IDs (PR #11, thanks [@juanarboleda](https://github.com/juanarboleda))
+
 ## [0.4.23] - 2026-02-06
 
 ### Added

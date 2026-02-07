@@ -90,6 +90,7 @@ def _make_report(
     findings: list[SecurityFinding] | None = None,
     timed_out: bool = False,
     languages: list[str] | None = None,
+    analysis_quality: str = "full",
 ) -> SecurityReport:
     """Create a SecurityReport with given findings."""
     return SecurityReport(
@@ -98,6 +99,7 @@ def _make_report(
         patterns_loaded=42,
         scan_duration_seconds=5.0,
         timed_out=timed_out,
+        analysis_quality=analysis_quality,  # type: ignore[arg-type]
     )
 
 
@@ -636,3 +638,69 @@ class TestTimedOutReportHandling:
         assert result["timed_out"] is True
         assert result["filtered_count"] == 0
         assert result["findings"] == []
+
+
+# ============================================================================
+# Tests: analysis_quality surfaced in synthesis
+# ============================================================================
+
+
+class TestAnalysisQualityInSynthesis:
+    """Test that analysis_quality is surfaced to synthesis context."""
+
+    def test_quality_full_no_findings_returns_none(self, tmp_path: Path) -> None:
+        """Full quality + no findings → clean scan, return None."""
+        report = _make_report(findings=[], analysis_quality="full")
+        handler = _make_handler(tmp_path)
+
+        with patch(
+            "bmad_assist.core.loop.handlers.code_review_synthesis.load_security_findings_from_cache",
+            return_value=report,
+        ):
+            result = handler._get_security_findings_from_cache("session-clean")
+
+        assert result is None
+
+    def test_quality_degraded_no_findings_returns_data(self, tmp_path: Path) -> None:
+        """Degraded quality + no findings → NOT a clean scan, return context."""
+        report = _make_report(findings=[], analysis_quality="degraded")
+        handler = _make_handler(tmp_path)
+
+        with patch(
+            "bmad_assist.core.loop.handlers.code_review_synthesis.load_security_findings_from_cache",
+            return_value=report,
+        ):
+            result = handler._get_security_findings_from_cache("session-degraded")
+
+        assert result is not None
+        assert result["analysis_quality"] == "degraded"
+        assert result["filtered_count"] == 0
+
+    def test_quality_failed_no_findings_returns_data(self, tmp_path: Path) -> None:
+        """Failed quality + no findings → scan failed, return context."""
+        report = _make_report(findings=[], analysis_quality="failed")
+        handler = _make_handler(tmp_path)
+
+        with patch(
+            "bmad_assist.core.loop.handlers.code_review_synthesis.load_security_findings_from_cache",
+            return_value=report,
+        ):
+            result = handler._get_security_findings_from_cache("session-failed")
+
+        assert result is not None
+        assert result["analysis_quality"] == "failed"
+
+    def test_quality_included_in_result_dict(self, tmp_path: Path) -> None:
+        """analysis_quality is included in the returned dict."""
+        findings = [_make_finding(id="SEC-001", confidence=0.9)]
+        report = _make_report(findings=findings, analysis_quality="full")
+        handler = _make_handler(tmp_path)
+
+        with patch(
+            "bmad_assist.core.loop.handlers.code_review_synthesis.load_security_findings_from_cache",
+            return_value=report,
+        ):
+            result = handler._get_security_findings_from_cache("session-with-findings")
+
+        assert result is not None
+        assert result["analysis_quality"] == "full"

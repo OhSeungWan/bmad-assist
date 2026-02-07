@@ -19,14 +19,12 @@ timeouts:
   validate_story_synthesis: 900 # 15 m
   dev_story: 3600               # 1 h
   code_review_synthesis: 1200   # 20 m
-  retrospective: 900            # 15 m
   
 providers:
   # Default provider used for single-LLM phases when no phase_models specified
   master:
-    provider: kimi
-    model: kimi-code/kimi-for-coding
-    thinking: true
+    provider: claude-subprocess
+    model: opus
     # model_name: glm-4.7
     # settings: ~/.claude/glm.json
 
@@ -40,29 +38,29 @@ providers:
   # Additional providers for multi-provider scenarios
   multi:
     # Gemini providers
-    - provider: gemini
-      model: gemini-3-pro-preview
+    # - provider: gemini
+    #   model: gemini-3-pro-preview
     - provider: gemini
       model: gemini-3-flash-preview
-    # - provider: gemini
-    #   model: gemini-2.5-flash
+    - provider: gemini
+      model: gemini-2.5-flash
     - provider: gemini
       model: gemini-2.5-flash-lite
-    # - provider: gemini
-    #   model: gemini-2.5-flash-lite
-    - provider: kimi
-      model: kimi-code/kimi-for-coding
-      thinking: true
+    - provider: gemini
+      model: gemini-2.5-flash-lite
+    # - provider: kimi
+    #   model: kimi-code/kimi-for-coding
+    #   thinking: true
 
     # Claude subprocess providers
     - provider: claude-subprocess
       model: sonnet
       model_name: glm-4.7
       settings: ~/.claude/glm.json
-    # - provider: claude-subprocess
-    #   model: sonnet
-    #   model_name: glm-4.7
-    #   settings: ~/.claude/glm.json
+    - provider: claude-subprocess
+      model: sonnet
+      model_name: glm-4.7
+      settings: ~/.claude/glm.json
 
     # OpenCode providers (NEW)
     # - provider: opencode
@@ -101,87 +99,86 @@ providers:
 phase_models:
   # Single-LLM phases - object format
   create_story:
-    provider: kimi
-    model: kimi-code/kimi-for-coding
-    thinking: true
+    provider: claude-subprocess
+    model: opus
   validate_story_synthesis:
-    provider: kimi
-    model: kimi-code/kimi-for-coding
-    thinking: true
+    provider: claude-subprocess
+    model: sonnet
+    model_name: glm-4.7
+    settings: ~/.claude/glm.json
   dev_story:
-    provider: kimi
-    model: kimi-code/kimi-for-coding
-    thinking: true
+    provider: claude-subprocess
+    model: opus
   code_review_synthesis:
-    provider: kimi
-    model: kimi-code/kimi-for-coding
-    thinking: true
+    provider: claude-subprocess
+    model: opus
   retrospective:
-    provider: kimi
-    model: kimi-code/kimi-for-coding
-    thinking: true
+    provider: claude-subprocess
+    model: sonnet
+    model_name: glm-4.7
+    settings: ~/.claude/glm.json
 
   # Multi-LLM phases - array format
   # When phase_models defines a multi-LLM phase, ONLY the listed providers are used.
   # Master is NOT auto-added - you have full control over the validator/reviewer list.
   validate_story:
-    - provider: gemini
-      model: gemini-3-pro-preview
+    # - provider: gemini
+    #   model: gemini-3-pro-preview
     - provider: gemini
       model: gemini-3-flash-preview
-    # - provider: gemini
-    #   model: gemini-2.5-flash
+    - provider: gemini
+      model: gemini-2.5-flash
     - provider: gemini
       model: gemini-2.5-flash-lite
-    # - provider: gemini
-    #   model: gemini-2.5-flash-lite
-    - provider: kimi
-      model: kimi-code/kimi-for-coding
-      thinking: true
-    - provider: kimi
-      model: kimi-code/kimi-for-coding
+    - provider: gemini
+      model: gemini-2.5-flash-lite
+    # - provider: kimi
+    #   model: kimi-code/kimi-for-coding
+    #   thinking: true
+    # - provider: kimi
+    #   model: kimi-code/kimi-for-coding
       thinking: true
     - provider: claude-subprocess
-      model: opus
+      model: sonnet
+      model_name: glm-4.7
+      settings: ~/.claude/glm.json
+    - provider: claude-subprocess
+      model: sonnet
       model_name: glm-4.7
       settings: ~/.claude/glm.json
     # - provider: claude-subprocess
-    #   model: opus
-    #   model_name: glm-4.7
-    #   settings: ~/.claude/glm.json
-    # - provider: claude-subprocess
-    #   model: opus
+    #   model: sonnet
     #   model_name: glm-4.7
     #   settings: ~/.claude/glm.json
 
   # Same for code_review - full control over reviewer list
   code_review:
-    - provider: gemini
-      model: gemini-3-pro-preview
+    # - provider: gemini
+    #   model: gemini-3-pro-preview
     - provider: gemini
       model: gemini-3-flash-preview
-    # - provider: gemini
-    #   model: gemini-2.5-flash
+    - provider: gemini
+      model: gemini-2.5-flash
     - provider: gemini
       model: gemini-2.5-flash-lite
-    # - provider: gemini
-    #   model: gemini-2.5-flash-lite
-    - provider: kimi
-      model: kimi-code/kimi-for-coding
-      thinking: true
-    - provider: kimi
-      model: kimi-code/kimi-for-coding
-      thinking: true
+    - provider: gemini
+      model: gemini-2.5-flash-lite
+    # - provider: kimi
+    #   model: kimi-code/kimi-for-coding
+    #   thinking: true
+    # - provider: kimi
+    #   model: kimi-code/kimi-for-coding
+    #   thinking: true
     - provider: claude-subprocess
-      model: opus
+      model: sonnet
+      model_name: glm-4.7
+      settings: ~/.claude/glm.json
+    - provider: claude-subprocess
+      model: sonnet
       model_name: glm-4.7
       settings: ~/.claude/glm.json
     # - provider: claude-subprocess
-    #   model: opus
-    #   model_name: glm-4.7
-    #   settings: ~/.claude/glm.json
-    # - provider: claude-subprocess
-    #   model: opus
+    #   model: sonnet
     #   model_name: glm-4.7
     #   settings: ~/.claude/glm.json
 
@@ -198,8 +195,8 @@ compiler:
       validate_story: 15000
       validate_story_synthesis: 15000
       dev_story: 15000
-      code_review: 15000
-      code_review_synthesis: 15000
+      code_review: 30000
+      code_review_synthesis: 30000
       default: 30000             # Fallback for unlisted workflows
 
     # File prioritization scoring weights
@@ -363,6 +360,10 @@ deep_verify:
   method_205_worst_case:              # Worst-case scenario construction (CONCURRENCY, MESSAGING)
     enabled: true
     timeout_seconds: 90
+
+security_agent:
+  enabled: true
+  max_findings: 15
 
 notifications:
   enabled: true

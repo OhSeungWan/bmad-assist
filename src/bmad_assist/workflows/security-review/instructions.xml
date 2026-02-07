@@ -26,12 +26,21 @@
          * 0.4 = possible match, insufficient evidence
          * 0.2 = weak signal, may be false positive
        - Provide specific remediation advice with safe code alternative</step>
-    <step>5. DO NOT report:
+    <step>5. Exclusions (narrow — only skip these):
        - Test files (unless they contain hardcoded production credentials)
-       - Configuration files with placeholder/example values
-       - Known-safe patterns that look similar to vulnerabilities
-       - Issues in generated or vendored code</step>
-    <step>6. Output your findings in the structured format below.</step>
+       - Generated or vendored code (e.g., protobuf stubs, node_modules)
+       If a finding is ambiguous, report it with lower confidence (0.2-0.4)
+       rather than omitting it.</step>
+    <step>6. MANDATORY zero-finding re-examination:
+       If your analysis produces zero findings, re-examine the diff specifically for:
+       - Missing authentication on HTTP handlers or sensitive endpoints
+       - SSRF (user-controlled URLs passed to HTTP clients)
+       - Missing rate limiting on auth/login endpoints
+       - Unbounded resource consumption (goroutine spawning, unlimited reads)
+       - Sensitive data logged or exposed in error responses
+       If still zero findings after re-examination, include a "notes" field in
+       your output explaining why no vulnerabilities were found.</step>
+    <step>7. Output your findings in the structured format below.</step>
   </analysis-instructions>
 
   <output-format>
@@ -61,11 +70,12 @@
     </template>
 
     <rules>
-      - If no vulnerabilities found, output: {"findings": []}
+      - If no vulnerabilities found, output: {"findings": [], "notes": "explanation of why no issues found"}
       - Each finding MUST have all fields shown in the template
       - severity MUST be one of: HIGH, MEDIUM, LOW
       - confidence MUST be a float between 0.0 and 1.0
       - id format: SEC-NNN (sequential, starting from SEC-001)
+      - The optional "notes" field (string) may be included at the top level alongside "findings"
     </rules>
   </output-format>
 </instructions>
