@@ -12,7 +12,7 @@ You write the docs (or have AI help you write them with BMAD). bmad-assist reads
 2. **Validates** the story using multiple LLMs in parallel (catches issues a single LLM would miss)
 3. **Implements** the story - writes code, tests, updates files
 4. **Reviews** the code with multiple LLMs as adversarial reviewers
-5. **Asks you** what to do next (continue, fix, skip) - or runs fully autonomously with `-n`
+5. **Pauses** between stories and epics to let you quit gracefully - or skip prompts with `--skip-story-prompts` / `-n`
 6. **Repeats** for every story in the epic, then runs a retrospective and moves to the next epic
 
 One LLM (Master) writes all code. The others only validate and review - they never touch your files.
