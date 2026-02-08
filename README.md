@@ -4,7 +4,7 @@ CLI tool that reads your project documentation (PRD, architecture, epics) and im
 
 ## What does it do?
 
-[BMAD](https://github.com/bmad-code-org/BMAD-METHOD) (Breakthrough Method of Agile AI Driven Development) structures AI-driven projects into docs: PRD, architecture, epics, and stories. Think of it as a project plan that AI agents can execute. bmad-assist is the engine that takes those docs and turns them into working code.
+[BMAD](https://github.com/bmad-code-org/BMAD-METHOD) (Breakthrough Method of Agile AI Driven Development) structures AI-driven projects into docs: PRD, architecture, epics, and stories. bmad-assist uses BMAD workflows to produce code, adding multi-LLM orchestration, automated quality loops, and hands-free execution on top.
 
 You write the docs (or have AI help you write them with BMAD). bmad-assist reads them and runs an automated loop:
 
